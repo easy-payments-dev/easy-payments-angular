@@ -1218,12 +1218,14 @@ describe('EasyPaymentButtonsComponent real Apple Pay express', () => {
         'isProcessing',
         'getAvailabilityStatus',
         'setAvailabilityListener',
+        'addAvailabilityListener',
         'createPayment',
       ],
       { provider: 'applePay', isMock: false },
     );
     applePay.initialize.and.resolveTo();
     applePay.isConfigured.and.returnValue(true);
+    applePay.addAvailabilityListener.and.returnValue(() => undefined);
     applePay.createMountId.and.returnValue('apple-pay-ece-buttons-1');
     applePay.getAvailabilityStatus.and.returnValue('available');
     applePay.isAvailable.and.resolveTo(true);
@@ -1411,6 +1413,7 @@ describe('EasyPaymentButtonsComponent Apple Pay dual-host cleanup', () => {
         'isProcessing',
         'getAvailabilityStatus',
         'setAvailabilityListener',
+        'addAvailabilityListener',
         'createPayment',
         'getActiveEceMountCount',
       ],
@@ -1418,6 +1421,7 @@ describe('EasyPaymentButtonsComponent Apple Pay dual-host cleanup', () => {
     );
     applePay.initialize.and.resolveTo();
     applePay.isConfigured.and.returnValue(true);
+    applePay.addAvailabilityListener.and.returnValue(() => undefined);
     applePay.isAvailable.and.resolveTo(true);
     applePay.getAvailabilityStatus.and.returnValue('available');
     applePay.isProcessing.and.returnValue(false);

@@ -22,6 +22,7 @@ import {
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import { buildPayPalRenderKey, PayPalUiState } from '../../adapters/paypal/paypal.types';
 import { mapPayPalError } from '../../adapters/paypal/paypal-error.mapper';
 import {
@@ -189,6 +190,10 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   private captureEmitted = false;
   /** Ownership token for this host's Buttons mount on the shared PayPalAdapter. */
   private buttonsMountId: string | null = null;
+  /** Owner token for order-create guards on the shared PayPalAdapter. */
+  private readonly orderOwnerId = createPaymentOwnerId('paypal');
+  /** This host's most recent order — never another host's. */
+  private currentOrderId: string | null = null;
 
   constructor() {
     // Product/checkout/locale identity may require re-rendering Buttons (createOrder closure).
@@ -236,7 +241,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       state === 'creating-order' ||
       state === 'waiting-approval' ||
       state === 'capturing' ||
-      this.paypalAdapter.isBusy()
+      this.paypalAdapter.isBusy(this.orderOwnerId, this.currentOrderId)
     );
   }
 
@@ -286,7 +291,10 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
           onCancel: () => this.onCancel(generation),
           onError: (err) => this.onSdkError(err, generation),
           onClick: async (_data, actions) => {
-            if (this.paypalAdapter.isBusy() || this.uiState() === 'success') {
+            if (
+              this.paypalAdapter.isBusy(this.orderOwnerId, this.currentOrderId) ||
+              this.uiState() === 'success'
+            ) {
               await actions.reject();
               return;
             }
@@ -342,8 +350,9 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     try {
-      const orderId = await this.paypalAdapter.createOrder(product, checkout);
+      const orderId = await this.paypalAdapter.createOrder(product, checkout, this.orderOwnerId);
       if (generation === this.renderGeneration) {
+        this.currentOrderId = orderId;
         this.uiState.set('waiting-approval');
       }
       return orderId;
@@ -438,7 +447,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       method: 'paypal',
       provider: 'paypal',
       message: 'PayPal checkout was cancelled.',
-      sessionId: this.paypalAdapter.getActiveOrderId() ?? undefined,
+      sessionId: this.currentOrderId ?? undefined,
     });
 
     // Allow another attempt without remounting Buttons.

@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import type { Stripe, StripeElements, StripePaymentElement, StripeElementLocale } from '@stripe/stripe-js';
+import type { Stripe, StripeElementLocale } from '@stripe/stripe-js';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
 import { backendEndpointUrl } from '../../config/resolve-backend-url';
 import {
@@ -21,6 +21,8 @@ import {
   mapResolvedThemeToStripeAppearance,
   STRIPE_PAYMENT_ELEMENT_OPTIONS,
 } from './stripe-appearance';
+import { StripeConfirmationGate } from './stripe-confirmation-gate';
+import { StripeElementSession, StripeElementSessionStore } from './stripe-element-sessions';
 import { mapStripeError } from './stripe-error.mapper';
 import { StripeSdkLoader } from './stripe-sdk.loader';
 import { StripeSessionResult } from './stripe.types';
@@ -42,14 +44,11 @@ export class StripeCardAdapter extends BaseProviderAdapter {
   private readonly browser = inject(BrowserGuard);
   private readonly sdkLoader = inject(StripeSdkLoader);
 
+  private readonly gate = inject(StripeConfirmationGate);
+
   private stripe: Stripe | null = null;
-  private elements: StripeElements | null = null;
-  private paymentElement: StripePaymentElement | null = null;
-  private clientSecret: string | null = null;
-  private sessionId: string | undefined;
-  private paymentIntentId: string | undefined;
+  private readonly sessions = new StripeElementSessionStore();
   private loadPromise: Promise<Stripe> | null = null;
-  private confirming = false;
   private configReady = false;
 
   /**
@@ -188,6 +187,7 @@ export class StripeCardAdapter extends BaseProviderAdapter {
   async createPaymentSession(
     product: PaymentProduct,
     checkout?: CheckoutOptions,
+    ownerId?: string,
   ): Promise<StripeSessionResult> {
     if (!this.configService.getSnapshot().backend?.createPaymentUrl?.trim()) {
       throw new PaymentError({
@@ -221,9 +221,10 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     const response = await this.backend.createStripePayment(payload);
     this.assertValidStripeResponse(response);
 
-    this.clientSecret = response.clientSecret;
-    this.sessionId = response.sessionId;
-    this.paymentIntentId = response.paymentIntentId;
+    const session = this.sessions.get(ownerId);
+    session.clientSecret = response.clientSecret;
+    session.sessionId = response.sessionId;
+    session.paymentIntentId = response.paymentIntentId;
 
     return {
       clientSecret: response.clientSecret,
@@ -237,21 +238,23 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     clientSecret: string,
     theme: ResolvedPaymentTheme,
     locale?: string,
+    ownerId?: string,
   ): Promise<void> {
     const stripe = await this.ensureStripeLoaded();
 
-    this.unmountPaymentElement();
+    this.sessions.unmount(ownerId);
+    const session = this.sessions.get(ownerId);
 
     try {
-      this.clientSecret = clientSecret;
-      this.elements = stripe.elements({
+      session.clientSecret = clientSecret;
+      const elements = stripe.elements({
         clientSecret,
         appearance: mapResolvedThemeToStripeAppearance(theme),
         ...(locale ? { locale: locale as StripeElementLocale } : {}),
       });
-
-      this.paymentElement = this.elements.create('payment', STRIPE_PAYMENT_ELEMENT_OPTIONS);
-      this.paymentElement.mount(container);
+      session.elements = elements;
+      session.paymentElement = elements.create('payment', STRIPE_PAYMENT_ELEMENT_OPTIONS);
+      session.paymentElement.mount(container);
     } catch (error) {
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
@@ -263,17 +266,19 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     }
   }
 
-  async updateAppearance(theme: ResolvedPaymentTheme): Promise<void> {
-    if (!this.elements) {
+  async updateAppearance(theme: ResolvedPaymentTheme, ownerId?: string): Promise<void> {
+    const elements = this.sessions.peek(ownerId)?.elements;
+    if (!elements) {
       return;
     }
-    this.elements.update({
+    elements.update({
       appearance: mapResolvedThemeToStripeAppearance(theme),
     });
   }
 
-  async confirmPayment(returnUrl?: string): Promise<PaymentResult> {
-    if (this.confirming) {
+  async confirmPayment(returnUrl?: string, ownerId?: string): Promise<PaymentResult> {
+    const session = this.sessions.get(ownerId);
+    if (session.confirming) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A Stripe payment confirmation is already in progress.',
@@ -282,11 +287,13 @@ export class StripeCardAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.confirming = true;
+    const release = this.gate.acquire(`card:${ownerId ?? 'legacy'}`, 'card', 'stripe');
+    session.confirming = true;
 
     try {
       const stripe = await this.ensureStripeLoaded();
-      if (!this.elements) {
+      const elements = session.elements;
+      if (!elements) {
         throw new PaymentError({
           code: 'PROVIDER_UNAVAILABLE',
           message: 'Stripe Payment Element is not ready.',
@@ -295,7 +302,7 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         });
       }
 
-      const { error: submitError } = await this.elements.submit();
+      const { error: submitError } = await elements.submit();
       if (submitError) {
         throw mapStripeError(submitError);
       }
@@ -305,7 +312,7 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         (this.browser.isBrowser ? `${window.location.origin}${window.location.pathname}` : undefined);
 
       const { error, paymentIntent } = await stripe.confirmPayment({
-        elements: this.elements,
+        elements,
         confirmParams: resolvedReturnUrl
           ? {
               return_url: resolvedReturnUrl,
@@ -318,36 +325,29 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         throw mapStripeError(error);
       }
 
-      return this.normalizeIntent(paymentIntent);
+      return this.normalizeIntent(paymentIntent, session);
     } finally {
-      this.confirming = false;
+      session.confirming = false;
+      release();
     }
   }
 
-  isConfirming(): boolean {
-    return this.confirming;
+  isConfirming(ownerId?: string): boolean {
+    return this.sessions.peek(ownerId)?.confirming ?? false;
   }
 
-  unmountPaymentElement(): void {
-    try {
-      this.paymentElement?.unmount();
-    } catch {
-      // Element may already be unmounted.
-    }
-    this.paymentElement = null;
-    this.elements = null;
+  unmountPaymentElement(ownerId?: string): void {
+    this.sessions.unmount(ownerId);
   }
 
-  hasMountedElement(): boolean {
-    return !!this.elements && !!this.paymentElement;
+  hasMountedElement(ownerId?: string): boolean {
+    const session = this.sessions.peek(ownerId);
+    return !!session?.elements && !!session.paymentElement;
   }
 
-  async destroy(): Promise<void> {
-    this.unmountPaymentElement();
-    this.clientSecret = null;
-    this.sessionId = undefined;
-    this.paymentIntentId = undefined;
-    this.confirming = false;
+  /** Destroys one host's session, or every session (adapter re-init) when ownerId is omitted. */
+  async destroy(ownerId?: string): Promise<void> {
+    this.sessions.destroy(ownerId);
   }
 
   private assertValidStripeResponse(response: CreateStripePaymentResponse): void {
@@ -379,16 +379,32 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     }
   }
 
-  private normalizeIntent(paymentIntent: PaymentIntentLike | undefined): PaymentResult {
+  private normalizeIntent(
+    paymentIntent: PaymentIntentLike | undefined,
+    session: StripeElementSession,
+  ): PaymentResult {
     const status = paymentIntent?.status;
 
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+    if (status === 'processing') {
+      // Not a confirmed success. The payment may still settle, so the customer
+      // must not be prompted to pay again; the backend/webhook is authoritative.
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message:
+          'Card payment is still processing. Do not retry — check your order status for confirmation.',
+        method: 'card',
+        provider: 'stripe',
+        originalError: paymentIntent,
+      });
+    }
+
+    if (status === 'succeeded' || status === 'requires_capture') {
       return normalizePaymentResult({
         status: 'success',
         method: 'card',
         provider: 'stripe',
-        transactionId: paymentIntent?.id ?? this.paymentIntentId,
-        sessionId: this.sessionId,
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
         message:
           status === 'succeeded'
             ? 'Card payment completed successfully.'
@@ -404,8 +420,8 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         status: 'cancelled',
         method: 'card',
         provider: 'stripe',
-        transactionId: paymentIntent?.id ?? this.paymentIntentId,
-        sessionId: this.sessionId,
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
         message: 'Card payment was cancelled.',
       });
     }

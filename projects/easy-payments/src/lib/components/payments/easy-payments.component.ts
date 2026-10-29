@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   NgZone,
+  PendingTasks,
   computed,
   effect,
   inject,
@@ -34,6 +35,7 @@ import {
 } from '../../diagnostics/provider-diagnostics';
 import { appendMetadataSessionPart } from '../../metadata/merchant-metadata';
 import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
+import { CheckoutHostContext } from '../../services/checkout-host-context';
 import {
   PaymentOrchestratorService,
   type AvailablePaymentMethod,
@@ -120,7 +122,7 @@ import {
    * (adapters / processPayment / global diagnostics). Each host owns a local
    * {@link CheckoutAvailabilitySession} so readiness tiles do not clobber siblings.
    */
-  providers: [EasyPaymentsI18nService, ThemeService],
+  providers: [EasyPaymentsI18nService, ThemeService, CheckoutHostContext],
 })
 export class EasyPaymentsComponent {
   private readonly orchestrator = inject(PaymentOrchestratorService);
@@ -130,6 +132,8 @@ export class EasyPaymentsComponent {
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly ngZone = inject(NgZone);
+  private readonly hostContext = inject(CheckoutHostContext);
+  private readonly pendingTasks = inject(PendingTasks);
   private destroyed = false;
   /** True while this component owns the availability ECE mount (Minimal-style host). */
   private applePayBootstrapOwned = false;
@@ -235,6 +239,11 @@ export class EasyPaymentsComponent {
 
   /** Prevents duplicate Stripe BNPL return recovery / success emits on one page load. */
   private stripeReturnRecoveryStarted = false;
+  /** Method of a Stripe BNPL return seen at construction, until ownership is claimed. */
+  private stripeReturnMethod: StripeRedirectMethod | null = null;
+  private stripeReturnClaimed = false;
+  /** Re-runs default method selection after a non-owned return releases this host. */
+  private readonly selectionRefresh = signal(0);
   private terminalSuccessEmitted = false;
   /** One in-flight attempt. `settled` drops duplicate terminal callbacks until the next attempt. */
   private paymentAttempt: 'idle' | 'active' | 'settled' = 'idle';
@@ -432,15 +441,9 @@ export class EasyPaymentsComponent {
   );
 
   constructor() {
-    this.destroyRef.onDestroy(() => {
-      this.destroyed = true;
-      this.applePayAdapter.setAvailabilityListener(null);
-    });
-
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
-    // Note: ApplePayAdapter still allows a single global listener — concurrent
-    // checkouts sharing Apple Pay ECE remain a known adapter-level limitation.
-    this.applePayAdapter.setAvailabilityListener(() => {
+    // One listener per host, so concurrent checkouts each refresh their own tiles.
+    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(() => {
       this.ngZone.run(() => {
         if (this.destroyed) {
           return;
@@ -459,18 +462,31 @@ export class EasyPaymentsComponent {
       });
     });
 
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      removeApplePayListener();
+    });
+
     // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm.
-    // Recovery itself is owned here (not only by the BNPL panel), so Processing
-    // always resolves even if the panel has not mounted yet.
+    // Recovery is owned by exactly one host on the page (decided by the recovery
+    // service), so Processing always resolves even if the panel has not mounted yet.
     if (typeof window !== 'undefined' && isStripeReturnAttempt()) {
       const method = detectStripeReturnMethod() ?? 'klarna';
+      this.stripeReturnMethod = method;
+      this.hostContext.setReturnPhase('pending', method);
       this.viewState.set('processing');
       this.updateSelectedMethod(method);
       this.providerBusy.set(true);
-      queueMicrotask(() => {
-        void this.recoverStripeReturn(method);
-      });
     }
+
+    effect(() => {
+      const product = this.product();
+      const methods = this.methods();
+      untracked(() => {
+        this.hostContext.setProductId(product.id);
+        this.claimStripeReturnOnce(methods);
+      });
+    });
 
     effect(() => {
       this.themeService.setTheme(this.theme());
@@ -494,12 +510,16 @@ export class EasyPaymentsComponent {
       this.i18n.setOverrides(this.translations());
     });
 
-    // Merchant removed apple-pay from allowed methods — drop any preserved ECE ready state.
+    // Merchant removed apple-pay from allowed methods — drop this checkout's preserved
+    // ECE ready state only (sibling hosts keep their own Apple Pay availability).
+    let allowedApplePay = false;
     effect(() => {
       const allowsApplePay = this.methods().includes('apple-pay');
-      if (!allowsApplePay) {
-        untracked(() => this.applePayAdapter.clearAvailability());
+      if (allowedApplePay && !allowsApplePay) {
+        const product = untracked(() => this.product());
+        untracked(() => this.applePayAdapter.clearAvailability(product));
       }
+      allowedApplePay = allowsApplePay;
     });
 
     effect(() => {
@@ -519,6 +539,7 @@ export class EasyPaymentsComponent {
     });
 
     effect(() => {
+      this.selectionRefresh();
       const express = this.applePayExpressInList();
       // Express methods own their own button and are never the selected tile.
       const visible = this.visibleMethods().filter(
@@ -672,6 +693,41 @@ export class EasyPaymentsComponent {
     }
   }
 
+  private claimStripeReturnOnce(methods: readonly PaymentMethod[]): void {
+    const method = this.stripeReturnMethod;
+    if (!method || this.stripeReturnClaimed) {
+      return;
+    }
+    this.stripeReturnClaimed = true;
+    const done = this.pendingTasks.add();
+    void this.stripeRedirectRecovery
+      .claimReturn(this.hostContext, methods)
+      .then(async (claim) => {
+        if (this.destroyed) {
+          return;
+        }
+        if (claim === 'owner') {
+          this.hostContext.setReturnPhase('owner', method);
+          await this.recoverStripeReturn(method);
+        } else {
+          this.releaseStripeReturn();
+        }
+      })
+      .finally(done);
+  }
+
+  /** Another host owns the return (or it was unattributable): show a normal checkout. */
+  private releaseStripeReturn(): void {
+    this.stripeReturnMethod = null;
+    this.hostContext.setReturnPhase('none');
+    this.providerBusy.set(false);
+    this.viewState.set('checkout');
+    // The provisional selection was set before outputs were subscribed; revert it silently
+    // and let default selection run as on a fresh load.
+    this.selectedMethod.set(null);
+    this.selectionRefresh.update((value) => value + 1);
+  }
+
   /**
    * Library-owned Stripe BNPL redirect recovery (Klarna / Affirm). Always leaves
    * processing for a terminal state (success / error / cancelled). Idempotent per page load.
@@ -735,8 +791,13 @@ export class EasyPaymentsComponent {
         this.handlePaymentError(paymentError);
       }
     } finally {
+      this.stripeReturnMethod = null;
       if (!this.destroyed) {
         this.providerBusy.set(false);
+        // After a non-success return the panel may create a fresh PaymentIntent for retry.
+        if (this.viewState() !== 'success' && !this.terminalSuccessEmitted) {
+          this.hostContext.setReturnPhase('none');
+        }
       }
     }
   }
@@ -938,6 +999,7 @@ export class EasyPaymentsComponent {
     this.providerBusy.set(false);
     this.terminalSuccessEmitted = false;
     this.paymentAttempt = 'idle';
+    this.hostContext.setReturnPhase('none');
     this.providerMountKey.update((value) => value + 1);
   }
 

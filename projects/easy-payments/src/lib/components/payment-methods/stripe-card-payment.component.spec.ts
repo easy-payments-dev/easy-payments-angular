@@ -88,7 +88,7 @@ describe('StripeCardPaymentComponent session reuse', () => {
 
     expect(adapter.createPaymentSession).not.toHaveBeenCalled();
     expect(adapter.mountPaymentElement).not.toHaveBeenCalled();
-    expect(adapter.updateAppearance).toHaveBeenCalledWith('dark');
+    expect(adapter.updateAppearance).toHaveBeenCalledWith('dark', jasmine.any(String));
   });
 
   it('does not recreate the session when product identity is unchanged', async () => {

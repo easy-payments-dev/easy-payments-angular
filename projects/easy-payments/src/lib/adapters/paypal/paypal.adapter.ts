@@ -35,6 +35,8 @@ declare global {
   }
 }
 
+const LEGACY_PAYPAL_OWNER = 'paypal-legacy';
+
 @Injectable({ providedIn: 'root' })
 export class PayPalAdapter extends BaseProviderAdapter {
   readonly provider = 'paypal' as const;
@@ -54,8 +56,8 @@ export class PayPalAdapter extends BaseProviderAdapter {
    */
   private readonly buttonMounts = new Map<string, PayPalButtonsHandle>();
   private nextMountId = 0;
-  private creatingOrder = false;
-  private capturing = false;
+  private readonly creatingOwners = new Set<string>();
+  private readonly capturingOrders = new Set<string>();
   private activeOrderId: string | null = null;
 
   /**
@@ -176,8 +178,16 @@ export class PayPalAdapter extends BaseProviderAdapter {
     this.sdkLoader.unloadScript('easy-payments-paypal-sdk');
   }
 
-  async createOrder(product: PaymentProduct, _checkout?: CheckoutOptions): Promise<string> {
-    if (this.creatingOrder) {
+  /**
+   * Creates a PayPal order for one host. Concurrent creates are rejected per
+   * `ownerId` only, so sibling hosts on the same page are independent.
+   */
+  async createOrder(
+    product: PaymentProduct,
+    _checkout?: CheckoutOptions,
+    ownerId: string = LEGACY_PAYPAL_OWNER,
+  ): Promise<string> {
+    if (this.creatingOwners.has(ownerId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A PayPal order is already being created.',
@@ -186,7 +196,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.creatingOrder = true;
+    this.creatingOwners.add(ownerId);
     try {
       const metadata = assertMerchantMetadata(product.metadata, 'paypal', 'paypal');
       const orderId = metadata?.[PAYPAL_ORDER_REFERENCE_KEY];
@@ -203,12 +213,13 @@ export class PayPalAdapter extends BaseProviderAdapter {
     } catch (error) {
       throw mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create PayPal order.');
     } finally {
-      this.creatingOrder = false;
+      this.creatingOwners.delete(ownerId);
     }
   }
 
+  /** Captures one order. A second capture of the same order id is rejected (never double-captured). */
   async captureOrder(orderId: string): Promise<PaymentResult> {
-    if (this.capturing) {
+    if (this.capturingOrders.has(orderId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A PayPal capture is already in progress.',
@@ -217,7 +228,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.capturing = true;
+    this.capturingOrders.add(orderId);
     try {
       const response = await this.backend.capturePayPalOrder(orderId);
       return normalizePaymentResult({
@@ -234,7 +245,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
     } catch (error) {
       throw mapPayPalError(error, 'PAYMENT_FAILED', 'Failed to capture PayPal payment.');
     } finally {
-      this.capturing = false;
+      this.capturingOrders.delete(orderId);
     }
   }
 
@@ -303,10 +314,21 @@ export class PayPalAdapter extends BaseProviderAdapter {
     return this.buttonMounts.size;
   }
 
-  isBusy(): boolean {
-    return this.creatingOrder || this.capturing;
+  /**
+   * With `ownerId`: true while that owner is creating an order or `orderId` is capturing.
+   * Without arguments: true while any order is being created or captured (legacy).
+   */
+  isBusy(ownerId?: string, orderId?: string | null): boolean {
+    if (ownerId === undefined && orderId === undefined) {
+      return this.creatingOwners.size > 0 || this.capturingOrders.size > 0;
+    }
+    return (
+      (ownerId !== undefined && this.creatingOwners.has(ownerId)) ||
+      (!!orderId && this.capturingOrders.has(orderId))
+    );
   }
 
+  /** Most recent order created on the page (any host). Hosts should track their own order id. */
   getActiveOrderId(): string | null {
     return this.activeOrderId;
   }
@@ -318,8 +340,8 @@ export class PayPalAdapter extends BaseProviderAdapter {
   async destroy(): Promise<void> {
     await this.destroyButtons();
     this.activeOrderId = null;
-    this.creatingOrder = false;
-    this.capturing = false;
+    this.creatingOwners.clear();
+    this.capturingOrders.clear();
   }
 
   private allocateMountId(): string {

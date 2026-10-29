@@ -10,6 +10,11 @@ import {
   KLARNA_PENDING_STORAGE_KEY,
   markKlarnaPendingReturn,
 } from '../../adapters/klarna/klarna-return';
+import {
+  markStripePendingReturn,
+  readStripePendingReturn,
+} from '../../adapters/stripe/stripe-redirect-return';
+import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
 
 @Component({
   standalone: true,
@@ -124,7 +129,7 @@ describe('KlarnaPaymentComponent session reuse', () => {
 
     expect(adapter.createPaymentSession).not.toHaveBeenCalled();
     expect(adapter.mountPaymentElement).not.toHaveBeenCalled();
-    expect(adapter.updateAppearance).toHaveBeenCalledWith('dark');
+    expect(adapter.updateAppearance).toHaveBeenCalledWith('dark', jasmine.any(String));
   });
 
   it('does not recreate the session when product identity is unchanged', async () => {
@@ -190,6 +195,77 @@ describe('KlarnaPaymentComponent session reuse', () => {
     expect(fixture.componentInstance.lastSuccess?.method).toBe('klarna');
     expect(fixture.componentInstance.lastSuccess?.transactionId).toBe('pi_klarna_1');
     expect(sessionStorage.getItem(KLARNA_PENDING_STORAGE_KEY)).toBeNull();
+  });
+
+  it('allows a retry after a failed confirm and emits each terminal outcome once', async () => {
+    adapter.confirmPayment.and.rejectWith(
+      new PaymentError({ code: 'PAYMENT_FAILED', message: 'declined', method: 'klarna', provider: 'klarna' }),
+    );
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+
+    await klarnaCmp.onPay();
+    expect(fixture.componentInstance.lastError?.code).toBe('PAYMENT_FAILED');
+    expect(fixture.componentInstance.successCount).toBe(0);
+
+    adapter.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_retry_ok',
+    });
+    fixture.detectChanges();
+    await klarnaCmp.onPay();
+    expect(adapter.confirmPayment).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.successCount).toBe(1);
+    expect(fixture.componentInstance.lastSuccess?.transactionId).toBe('pi_retry_ok');
+    const [returnUrl, ownerId] = adapter.confirmPayment.calls.mostRecent().args;
+    expect(new URL(returnUrl!).searchParams.get('ep_attempt')).toMatch(/^[a-f0-9]{16}$/);
+    expect(ownerId).toMatch(/^klarna/);
+  });
+
+  it('does not overwrite or clear a sibling host pending marker while that host is confirming', async () => {
+    const gate = TestBed.inject(StripeConfirmationGate);
+    const releaseSibling = gate.acquire('affirm:sibling', 'affirm', 'affirm');
+    markStripePendingReturn('affirm', 'other-plan', undefined, {
+      attemptId: 'sibling0attempt1',
+      hostKind: 'buttons',
+      hostOrdinal: 0,
+    });
+    adapter.confirmPayment.and.callFake(async () => {
+      gate.acquire('klarna:test', 'klarna', 'klarna');
+      throw new Error('unreachable');
+    });
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+
+    await klarnaCmp.onPay();
+    expect(fixture.componentInstance.lastError?.code).toBe('PROVIDER_UNAVAILABLE');
+    expect(readStripePendingReturn()?.attemptId).toBe('sibling0attempt1');
+    releaseSibling();
+  });
+
+  it('emits nothing after the panel is destroyed mid-confirm', async () => {
+    let resolveConfirm!: (r: PaymentResult) => void;
+    adapter.confirmPayment.and.returnValue(new Promise((resolve) => (resolveConfirm = resolve)));
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+
+    const pay = klarnaCmp.onPay();
+    fixture.destroy();
+    resolveConfirm({ status: 'success', method: 'klarna', provider: 'klarna', transactionId: 'pi_late' });
+    await pay;
+    expect(fixture.componentInstance.successCount).toBe(0);
+    expect(fixture.componentInstance.lastError).toBeNull();
   });
 });
 

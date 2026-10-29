@@ -284,7 +284,10 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
 
   isBusy(): boolean {
     const state = this.uiState();
-    return state === 'processing' || this.applePayAdapter.isProcessing();
+    return (
+      state === 'processing' ||
+      (this.eceMountId !== null && this.applePayAdapter.isProcessing(this.eceMountId))
+    );
   }
 
   private async ensureButton(
@@ -328,7 +331,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
     // Availability was already proven by the bootstrap `ready`; don't fall back to
     // "Preparing Apple Pay…" while the button re-renders in this panel.
     this.uiState.set(
-      this.applePayAdapter.getAvailabilityStatus() === 'available' ? 'ready' : 'initializing',
+      this.applePayAdapter.getAvailabilityStatus(product) === 'available' ? 'ready' : 'initializing',
     );
     this.inlineError.set(null);
 
@@ -386,12 +389,10 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       this.eceMountId = mountId;
 
       // Stay initializing until ready fires (or unavailable/error).
-      if (this.applePayAdapter.getAvailabilityStatus() === 'available') {
+      const status = this.applePayAdapter.getAvailabilityStatus(product);
+      if (status === 'available') {
         this.uiState.set('ready');
-      } else if (
-        this.applePayAdapter.getAvailabilityStatus() === 'unavailable' ||
-        this.applePayAdapter.getAvailabilityStatus() === 'error'
-      ) {
+      } else if (status === 'unavailable' || status === 'error') {
         this.uiState.set('unavailable');
       }
     } catch (err) {

@@ -22,6 +22,7 @@ import {
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import { buildGooglePayRenderKey, GooglePayUiState } from '../../adapters/google-pay/google-pay.types';
 import { mapGooglePayError } from '../../adapters/google-pay/google-pay-error.mapper';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
@@ -205,6 +206,8 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   private renderGeneration = 0;
   /** Ownership token for this host's button mount on the shared GooglePayAdapter. */
   private buttonMountId: string | null = null;
+  /** Ownership token for this host's in-flight Google Pay attempt. */
+  private readonly payOwnerId = createPaymentOwnerId('google-pay');
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -269,7 +272,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       state === 'creating-session' ||
       state === 'awaiting-sheet' ||
       state === 'processing' ||
-      this.googlePayAdapter.isProcessing()
+      this.googlePayAdapter.isProcessing(this.payOwnerId)
     );
   }
 
@@ -376,7 +379,11 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     try {
       // Intermediate UI while PaymentIntent is created, then sheet opens.
       this.uiState.set('awaiting-sheet');
-      const result = await this.googlePayAdapter.payWithGooglePay(product, checkout);
+      const result = await this.googlePayAdapter.payWithGooglePay(
+        product,
+        checkout,
+        this.payOwnerId,
+      );
       if (generation !== this.renderGeneration) {
         return;
       }

@@ -128,7 +128,9 @@ Selecting a method tile does not fire `started`. A repeated click or a second SD
 
 ### Success, failure, and cancellation
 
-`success` still fires only after the existing provider flow confirms success. PayPal `success` fires after capture, not when the order is created. Stripe card `success` keeps the current adapter rule: PaymentIntent statuses `succeeded`, `processing`, and `requires_capture` are already reported as success.
+`success` still fires only after the existing provider flow confirms success. PayPal `success` fires after capture, not when the order is created. Stripe card, Google Pay, and Apple Pay `success` fires for PaymentIntent statuses `succeeded` and `requires_capture`.
+
+> **Behavior change (Phase 4):** a PaymentIntent that is still `processing` after confirm is no longer reported as `success` for Card, Google Pay, or Apple Pay. It emits `error` with code `PAYMENT_FAILED` and a "still processing — do not retry" message. Klarna and Affirm already behaved this way. Confirm the final status on your backend (for example with a webhook) before fulfilling.
 
 `error` still uses `PaymentError` and its stable `code`. A declined card uses `CARD_DECLINED` or `PAYMENT_FAILED`, depending on the existing mapper. Configuration failures such as `SDK_LOAD_FAILED` still use `error` and do not emit `cancel` or `started`. An availability refresh error still uses the existing `error` output and is not a payment attempt.
 
@@ -185,7 +187,19 @@ Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backe
 
 #### Klarna / Affirm redirects
 
-Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` (no secret keys). A light `sessionStorage` marker records method + product id only. After return, `<easy-payment-buttons>` owns recovery via the shared `StripeRedirectRecoveryService` (same path as `<easy-payments>`): it retrieves the PaymentIntent and emits `success` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Recovery is once-per-page-load on the shared service — prefer a single recovering host if both checkout modes are on the page. Duplicate terminal events after reload are suppressed.
+Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records the method, product id, attempt token, host kind (`checkout` or `buttons`), and the host's position among same-kind hosts for that product. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed.
+
+**Return ownership on pages with several hosts.** Only the host that started the redirect recovers it. Other hosts revert silently to their normal idle state and emit nothing. Easy Payments never guesses an owner:
+
+| Situation | Behavior |
+|-----------|----------|
+| `ep_attempt` matches the marker and the originating host is mounted | That host recovers. |
+| The originating host is not mounted yet (or was destroyed before recovery started) | The return waits. A host that mounts later at the same position recovers it. Dev-mode warning `STRIPE_RETURN_OWNER_NOT_MOUNTED`. |
+| `ep_attempt` does not match the marker (stale or replayed URL) | Not recovered. Return params are removed from the URL; the newer marker is kept. Dev-mode warning `STRIPE_RETURN_UNATTRIBUTED (STALE_ATTEMPT)`. |
+| Legacy return without `ep_attempt` and exactly one eligible host | That host recovers (1.1 behavior). |
+| Legacy return without `ep_attempt` and several eligible hosts | Not recovered (no events). Params and marker are cleared. Dev-mode warning `STRIPE_RETURN_UNATTRIBUTED (AMBIGUOUS_HOSTS)`. |
+
+When a return is not recovered, no `success` / `cancel` / `error` is emitted. Confirm the payment status on your backend. Host positions follow render order, so keep the same host layout on the return page.
 
 #### Mock mode
 
@@ -214,11 +228,19 @@ Same payload types as `<easy-payments>`:
 | `started` | **Card / Klarna / Affirm:** buyer confirms pay in the Stripe/mock UI. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). Not fired for redirect return recovery. |
 | `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Card / Google Pay / Apple Pay / Klarna / Affirm `success` only after Stripe **confirm** (or verified retrieve after redirect) — never on token/wallet authorization, PaymentIntent create, redirect URL, or pending/processing alone. |
 
-Duplicate terminal events for one attempt are suppressed. Destroyed hosts do not emit success from stale provider callbacks.
+Duplicate terminal events for one attempt are suppressed. Destroyed hosts emit nothing from stale provider callbacks. After an `error` or `cancel`, the buyer can retry from the same host.
 
 ### Shared orchestrator note
 
-`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and provider adapters. **PayPal**, **Google Pay**, and **Apple Pay** mounts are **ownership-scoped**: destroying one host tears down only that host’s mount id and must not clear a sibling. Klarna and Affirm adapters are **root singletons** (Payment Element + confirm flags) — concurrent live BNPL mounts across hosts are **not** safe; destroy unmounts the shared element. Stripe BNPL redirect recovery is also shared once-per-page-load. Concurrent live create/capture/confirm across hosts remains **not** guaranteed safe. Apple Pay also uses a **single global ECE availability listener**. Prefer one active BNPL / Apple Pay host when combining Ready-to-Use Checkout and Payment Buttons on the same page. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
+`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and provider adapters, but per-payment state is owned by each host:
+
+- **Card, Klarna, Affirm:** each host has its own Payment Element session and PaymentIntent client secret. Mounting, destroying, or confirming on one host never touches a sibling's element or PaymentIntent.
+- **PayPal:** each host creates and captures its own order. Two hosts may create or capture different orders at the same time. The same order is never captured twice. Cancel reports the host's own order id.
+- **Google Pay / Apple Pay:** busy state and mounts are per host. Apple Pay availability is tracked per product session, and every host receives availability updates.
+- **One Stripe confirmation per page at a time.** Card, Klarna, Affirm, Google Pay, and Apple Pay share one Stripe account and the buyer's attention, so only one Stripe confirmation can be in flight on the page. A second host that tries to confirm meanwhile gets `error` with code `PROVIDER_UNAVAILABLE` ("Another payment is already being confirmed on this page…") on **that** host only. Nothing is sent to Stripe for it, and the first payment is unaffected. The buyer can retry after the first payment finishes. Easy Payments never retries a payment automatically. PayPal is not part of this rule.
+- Adapter initialization runs once even when many hosts mount together. A provider that fails to initialize is unavailable on every host, without disabling other providers.
+
+Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
 
 ### Example
 

@@ -1,6 +1,6 @@
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, isDevMode } from '@angular/core';
 import type { Stripe } from '@stripe/stripe-js';
-import { PaymentResult, normalizePaymentResult } from '../../models';
+import { PaymentMethod, PaymentResult, normalizePaymentResult } from '../../models';
 import { PaymentError } from '../../errors/payment-error';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
 import { BrowserGuard } from '../../utils/browser-guard';
@@ -11,11 +11,93 @@ import {
   clearStripeReturnParamsFromUrl,
   detectStripeReturnMethod,
   isStripeReturnAttempt,
+  readStripePendingReturn,
   readStripeReturnParams,
   STRIPE_PROCESSING_DELAY_MS,
   STRIPE_PROCESSING_MAX_ATTEMPTS,
+  type StripePendingReturn,
   type StripeRedirectMethod,
+  type StripeReturnHostKind,
+  type StripeReturnOrigin,
+  type StripeReturnParams,
 } from './stripe-redirect-return';
+
+/** A checkout host (`<easy-payments>` / `<easy-payment-buttons>`) that can own a redirect return. */
+export interface StripeReturnHost {
+  readonly kind: StripeReturnHostKind;
+  productId(): string | null;
+}
+
+export type StripeReturnClaim = 'owner' | 'not-owner';
+
+export type StripeReturnUnattributedReason =
+  | 'STALE_ATTEMPT'
+  | 'AMBIGUOUS_HOSTS'
+  | 'MISSING_METHOD';
+
+export type StripeReturnDecision<T> =
+  | { kind: 'owner'; owner: T }
+  | { kind: 'wait' }
+  | { kind: 'unattributed'; reason: StripeReturnUnattributedReason };
+
+export interface StripeReturnCandidate<T> {
+  host: T;
+  kind: StripeReturnHostKind;
+  productId: string | null;
+  ordinal: number;
+  methods: readonly PaymentMethod[];
+}
+
+/**
+ * Pure ownership rule for a Stripe redirect return. Never guesses: a return is
+ * attributed only to the host recorded in the pending marker, or — for legacy
+ * returns without an attempt marker — to the single eligible host on the page.
+ */
+export function decideStripeReturnOwner<T>(
+  candidates: readonly StripeReturnCandidate<T>[],
+  params: StripeReturnParams,
+  marker: StripePendingReturn | null,
+): StripeReturnDecision<T> {
+  const method = params.method ?? marker?.method ?? null;
+  if (!method) {
+    return { kind: 'unattributed', reason: 'MISSING_METHOD' };
+  }
+  const eligible = candidates.filter((c) => c.methods.includes(method));
+
+  if (params.attemptId && marker?.attemptId && params.attemptId !== marker.attemptId) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  if (
+    params.attemptId &&
+    marker?.attemptId === params.attemptId &&
+    marker.hostKind &&
+    typeof marker.hostOrdinal === 'number'
+  ) {
+    const match = eligible.find(
+      (c) =>
+        c.kind === marker.hostKind &&
+        c.productId === marker.productId &&
+        c.ordinal === marker.hostOrdinal,
+    );
+    return match ? { kind: 'owner', owner: match.host } : { kind: 'wait' };
+  }
+
+  const pool = marker ? eligible.filter((c) => c.productId === marker.productId) : eligible;
+  if (pool.length === 1) {
+    return { kind: 'owner', owner: pool[0].host };
+  }
+  if (pool.length === 0) {
+    return { kind: 'wait' };
+  }
+  return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };
+}
+
+interface PendingClaim {
+  host: StripeReturnHost;
+  methods: readonly PaymentMethod[];
+  resolve: (claim: StripeReturnClaim) => void;
+}
 
 function looksLikeSecretKey(value: string): boolean {
   return /^sk_(test|live)_/i.test(value.trim());
@@ -44,8 +126,111 @@ export class StripeRedirectRecoveryService {
   private consumePromise: Promise<PaymentResult | null> | null = null;
   private consumed = false;
 
+  /** Live hosts in registration (render) order — used for return ownership ordinals. */
+  private readonly hosts: StripeReturnHost[] = [];
+  private pendingClaims: PendingClaim[] = [];
+  private claimScheduled = false;
+  private returnOwner: StripeReturnHost | null = null;
+  private returnClosed = false;
+  private waitWarned = false;
+
   wasReturnConsumed(): boolean {
     return this.consumed;
+  }
+
+  registerHost(host: StripeReturnHost): void {
+    if (!this.hosts.includes(host)) {
+      this.hosts.push(host);
+    }
+  }
+
+  unregisterHost(host: StripeReturnHost): void {
+    const index = this.hosts.indexOf(host);
+    if (index >= 0) {
+      this.hosts.splice(index, 1);
+    }
+    // An owner destroyed before it started recovery hands the return back to a remount.
+    if (this.returnOwner === host && !this.consumed) {
+      this.returnOwner = null;
+    }
+  }
+
+  /** Non-secret origin stamp stored before a redirect so only this host recovers it. */
+  describeReturnOrigin(host: StripeReturnHost, attemptId: string): StripeReturnOrigin {
+    return { attemptId, hostKind: host.kind, hostOrdinal: this.ordinalOf(host) };
+  }
+
+  /**
+   * Asks whether `host` owns the current Stripe redirect return. Claims made in
+   * the same render pass are decided together, so sibling hosts are all visible.
+   */
+  claimReturn(host: StripeReturnHost, methods: readonly PaymentMethod[]): Promise<StripeReturnClaim> {
+    if (!this.browser.isBrowser) {
+      return Promise.resolve('not-owner');
+    }
+    return new Promise((resolve) => {
+      this.pendingClaims.push({ host, methods, resolve });
+      if (!this.claimScheduled) {
+        this.claimScheduled = true;
+        queueMicrotask(() => this.resolveClaims());
+      }
+    });
+  }
+
+  private ordinalOf(host: StripeReturnHost): number {
+    const productId = host.productId();
+    return this.hosts
+      .filter((h) => h.kind === host.kind && h.productId() === productId)
+      .indexOf(host);
+  }
+
+  private resolveClaims(): void {
+    this.claimScheduled = false;
+    const batch = this.pendingClaims;
+    this.pendingClaims = [];
+    const live = batch.filter((claim) => this.hosts.includes(claim.host));
+    const rejectAll = () => batch.forEach((claim) => claim.resolve('not-owner'));
+
+    if (this.returnOwner || this.returnClosed || !isStripeReturnAttempt()) {
+      rejectAll();
+      return;
+    }
+
+    const decision = decideStripeReturnOwner(
+      live.map((claim) => ({
+        host: claim.host,
+        kind: claim.host.kind,
+        productId: claim.host.productId(),
+        ordinal: this.ordinalOf(claim.host),
+        methods: claim.methods,
+      })),
+      readStripeReturnParams(),
+      readStripePendingReturn(),
+    );
+
+    if (decision.kind === 'owner') {
+      this.returnOwner = decision.owner;
+      batch.forEach((claim) => claim.resolve(claim.host === decision.owner ? 'owner' : 'not-owner'));
+      return;
+    }
+
+    if (decision.kind === 'wait') {
+      // The originating host is not mounted (yet). Leave the return in place for it.
+      if (!this.waitWarned) {
+        this.waitWarned = true;
+        warnReturnDiagnostic('STRIPE_RETURN_OWNER_NOT_MOUNTED');
+      }
+      rejectAll();
+      return;
+    }
+
+    this.returnClosed = true;
+    warnReturnDiagnostic(`STRIPE_RETURN_UNATTRIBUTED (${decision.reason})`);
+    if (decision.reason !== 'STALE_ATTEMPT') {
+      clearStripePendingReturn();
+    }
+    clearStripeReturnParamsFromUrl();
+    rejectAll();
   }
 
   /**
@@ -266,6 +451,16 @@ export class StripeRedirectRecoveryService {
 
     return this.loadPromise;
   }
+}
+
+function warnReturnDiagnostic(code: string): void {
+  if (!isDevMode()) {
+    return;
+  }
+  console.warn(
+    `[Easy Payments] Stripe redirect return was not recovered.\nCode: ${code}\n` +
+      'No success/cancel/error event was emitted. Confirm the payment status on your backend.',
+  );
 }
 
 function methodLabel(method: StripeRedirectMethod): string {

@@ -155,6 +155,23 @@ describe('PayPalPaymentComponent', () => {
     expect(host.cancels.length).toBe(1);
   });
 
+  it('reports its own order id on cancel, never another host order', async () => {
+    const options = adapter.renderButtons.calls.mostRecent().args[1];
+    adapter.createOrder.and.resolveTo('ORDER-OWN');
+    adapter.getActiveOrderId.and.returnValue('ORDER-OTHER-HOST');
+    await options.createOrder();
+
+    options.onCancel?.();
+    fixture.detectChanges();
+    expect(host.cancels.length).toBe(1);
+    expect((host.cancels[0] as { sessionId?: string }).sessionId).toBe('ORDER-OWN');
+    expect(adapter.createOrder).toHaveBeenCalledWith(
+      jasmine.anything(),
+      undefined,
+      jasmine.any(String),
+    );
+  });
+
   it('exposes the buttons host for official PayPal UI', () => {
     const component = fixture.debugElement.query(By.directive(PayPalPaymentComponent));
     expect(component).toBeTruthy();

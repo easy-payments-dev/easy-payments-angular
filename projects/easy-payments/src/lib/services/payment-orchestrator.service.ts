@@ -54,6 +54,10 @@ export class PaymentOrchestratorService {
   private readonly _availabilityPublished = signal(false);
   private readonly _loading = signal(false);
   private initialized = false;
+  /** In-flight adapter registration, shared by concurrent hosts so it runs once. */
+  private initPromise: Promise<void> | null = null;
+  /** Concurrent `processPayment` calls across hosts; `loading` is true while any is in flight. */
+  private inFlightPayments = 0;
 
   /**
    * Global last-refresh availability. UI hosts must not bind tiles to this signal
@@ -76,13 +80,31 @@ export class PaymentOrchestratorService {
     if (this.initialized) {
       return;
     }
-    await this.adapterFactory.initializeAdapters();
-    this.initialized = true;
+    // Registration destroys every adapter's mounts; never run it twice concurrently.
+    if (!this.initPromise) {
+      const pending: Promise<void> = this.adapterFactory.initializeAdapters().then(
+        () => {
+          if (this.initPromise === pending) {
+            this.initialized = true;
+            this.initPromise = null;
+          }
+        },
+        (error: unknown) => {
+          if (this.initPromise === pending) {
+            this.initPromise = null;
+          }
+          throw error;
+        },
+      );
+      this.initPromise = pending;
+    }
+    await this.initPromise;
   }
 
   /** Re-register adapters after runtime config changes (e.g. demo mock ↔ Stripe). */
   async reinitialize(): Promise<void> {
     this.initialized = false;
+    this.initPromise = null;
     this._availableMethods.set([]);
     this._availabilityPublished.set(false);
     await this.initialize();
@@ -171,9 +193,11 @@ export class PaymentOrchestratorService {
           'function'
             ? ((
                 adapter as unknown as {
-                  getAvailabilityStatus: () => AvailablePaymentMethod['status'];
+                  getAvailabilityStatus: (
+                    product?: PaymentProduct,
+                  ) => AvailablePaymentMethod['status'];
                 }
-              ).getAvailabilityStatus() ?? undefined)
+              ).getAvailabilityStatus(context.product) ?? undefined)
             : available
               ? ('available' as const)
               : ('unavailable' as const);
@@ -237,6 +261,7 @@ export class PaymentOrchestratorService {
       });
     }
 
+    this.inFlightPayments += 1;
     this._loading.set(true);
 
     try {
@@ -245,7 +270,8 @@ export class PaymentOrchestratorService {
     } catch (error) {
       throw normalizeError(error, { method, provider });
     } finally {
-      this._loading.set(false);
+      this.inFlightPayments -= 1;
+      this._loading.set(this.inFlightPayments > 0);
     }
   }
 }

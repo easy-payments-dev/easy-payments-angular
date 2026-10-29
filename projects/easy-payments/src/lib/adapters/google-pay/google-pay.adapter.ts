@@ -17,6 +17,7 @@ import { PaymentError } from '../../errors/payment-error';
 import { BackendService } from '../../services/backend.service';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { BaseMockAdapter, BaseProviderAdapter } from '../base.adapter';
+import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { mapGooglePayError } from './google-pay-error.mapper';
 import { GooglePaySdkLoader } from './google-pay-sdk.loader';
@@ -47,7 +48,9 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   private paymentsClient: GooglePayPaymentsClient | null = null;
   private stripe: Stripe | null = null;
   private configReady = false;
-  private processing = false;
+  private readonly gate = inject(StripeConfirmationGate);
+  /** Owners (button mounts) with a Google Pay flow in flight. */
+  private readonly processingOwners = new Set<string>();
   /**
    * Per-host official button mounts. Destroying one host must not clear another's DOM.
    * Keyed by opaque mount ids owned by GooglePayPaymentComponent instances.
@@ -237,19 +240,24 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     return `google-pay-button-${this.nextMountId}`;
   }
 
-  isProcessing(): boolean {
-    return this.processing;
+  /** True while `ownerId` (or, when omitted, any owner) has a Google Pay flow in flight. */
+  isProcessing(ownerId?: string): boolean {
+    return ownerId === undefined
+      ? this.processingOwners.size > 0
+      : this.processingOwners.has(ownerId);
   }
 
   /**
    * Full click flow: trusted PaymentIntent → Google sheet → Stripe confirm.
    * PaymentIntent is created only on user click (not on mount/theme).
+   * A concurrent attempt from another host is rejected before any PaymentIntent exists.
    */
   async payWithGooglePay(
     product: PaymentProduct,
     checkout?: CheckoutOptions,
+    ownerId: string = 'google-pay-legacy',
   ): Promise<PaymentResult> {
-    if (this.processing) {
+    if (this.processingOwners.has(ownerId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A Google Pay payment is already in progress.',
@@ -258,7 +266,8 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.processing = true;
+    const release = this.gate.acquire(`google-pay:${ownerId}`, 'google-pay', 'googlePay');
+    this.processingOwners.add(ownerId);
     try {
       const quantity = product.quantity ?? 1;
       const totalPrice = formatGooglePayTotalPrice(product.amount, quantity);
@@ -284,7 +293,8 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       // 3) Confirm via Stripe using the gateway token (no raw card data handled by Easy Payments).
       return await this.confirmWithStripeToken(paymentData, session.clientSecret, session.paymentIntentId);
     } finally {
-      this.processing = false;
+      this.processingOwners.delete(ownerId);
+      release();
     }
   }
 
@@ -452,7 +462,17 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     }
 
     const status = paymentIntent?.status;
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+    if (status === 'processing') {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message:
+          'Google Pay payment is still processing. Do not retry — check your order status for confirmation.',
+        method: 'google-pay',
+        provider: 'googlePay',
+        originalError: paymentIntent,
+      });
+    }
+    if (status === 'succeeded' || status === 'requires_capture') {
       return normalizePaymentResult({
         status: 'success',
         method: 'google-pay',
@@ -494,7 +514,7 @@ export class GooglePayAdapter extends BaseProviderAdapter {
    */
   async destroy(): Promise<void> {
     this.destroyButtonMount();
-    this.processing = false;
+    this.processingOwners.clear();
   }
 }
 

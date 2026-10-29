@@ -22,6 +22,7 @@ import { PaymentError } from '../../errors/payment-error';
 import { BackendService } from '../../services/backend.service';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { BaseMockAdapter, BaseProviderAdapter } from '../base.adapter';
+import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { mapApplePayError } from './apple-pay-error.mapper';
 import {
@@ -74,11 +75,13 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   private readonly browser = inject(BrowserGuard);
   private readonly stripeSdk = inject(StripeSdkLoader);
 
+  private readonly gate = inject(StripeConfirmationGate);
+
   private stripe: Stripe | null = null;
   private configReady = false;
   private readonly configReadySignal = signal(false);
-  /** Shared confirm guard — concurrent live Apple Pay confirms are not isolated. */
-  private processing = false;
+  /** Mounts with a wallet confirm in flight. Page-level exclusivity comes from the gate. */
+  private readonly processingMounts = new Set<string>();
 
   /**
    * Ownership-scoped ECE mounts.
@@ -89,11 +92,15 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   private nextMountSeq = 0;
   static readonly LEGACY_SINGLETON_MOUNT_ID = 'apple-pay-ece-legacy';
 
+  /** Most recent state change (any session) — legacy no-arg `getAvailabilityStatus()`. */
   private availabilityState: ApplePayAvailabilityState = 'idle';
   private availabilitySessionKey: string | null = null;
+  /** ECE-decided availability per checkout session (product render key). */
+  private readonly availabilityBySession = new Map<string, ApplePayAvailabilityState>();
   private readyFired = false;
   private lastAvailablePaymentMethods: unknown = null;
   private availabilityListener: ((state: ApplePayAvailabilityState) => void) | null = null;
+  private readonly availabilityListeners = new Set<(state: ApplePayAvailabilityState) => void>();
 
   private abortedMounts = 0;
 
@@ -104,16 +111,36 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   /** Reactive config readiness for Apple Pay bootstrap mounting. */
   readonly configured = this.configReadySignal.asReadonly();
 
-  getAvailabilityStatus(): ApplePayAvailabilityState {
-    return this.availabilityState;
+  /**
+   * Availability for `product`'s checkout session, or the most recent state
+   * change when omitted (legacy single-host behaviour).
+   */
+  getAvailabilityStatus(product?: PaymentProduct): ApplePayAvailabilityState {
+    if (!product) {
+      return this.availabilityState;
+    }
+    const scoped = this.availabilityBySession.get(buildApplePayRenderKey(product));
+    if (scoped) {
+      return scoped;
+    }
+    return this.availabilitySessionKey === null ? this.availabilityState : 'idle';
   }
 
   /**
    * Optional UI hook — fired when production availability state changes
    * (e.g. after ECE `ready`). Use to call orchestrator.refreshAvailability.
+   * Single legacy slot; prefer {@link addAvailabilityListener} for multi-host pages.
    */
   setAvailabilityListener(listener: ((state: ApplePayAvailabilityState) => void) | null): void {
     this.availabilityListener = listener;
+  }
+
+  /** Per-host availability listener. Returns a function that removes only this listener. */
+  addAvailabilityListener(listener: (state: ApplePayAvailabilityState) => void): () => void {
+    this.availabilityListeners.add(listener);
+    return () => {
+      this.availabilityListeners.delete(listener);
+    };
   }
 
   /**
@@ -178,40 +205,19 @@ export class ApplePayAdapter extends BaseProviderAdapter {
 
     const sessionKey = buildApplePayRenderKey(context.product);
 
-    // Stale-session guard: a preserved `available` from a previous product/ECE
-    // must not leak into a different checkout session.
-    if (
-      this.availabilityState === 'available' &&
-      this.availabilitySessionKey !== null &&
-      this.availabilitySessionKey !== sessionKey
-    ) {
-      this.setAvailabilityState('checking', sessionKey);
-      this.readyFired = false;
-      this.lastAvailablePaymentMethods = null;
+    // Availability is scoped per session key: an `available` decided for another
+    // product/host never leaks into this checkout session.
+    const current = this.availabilityBySession.get(sessionKey);
+    if (current === 'available') {
+      return true;
+    }
+    if (current === 'unavailable' || current === 'error') {
       return false;
     }
 
-    if (
-      this.availabilityState === 'available' &&
-      this.availabilitySessionKey === sessionKey
-    ) {
-      return true;
-    }
-
-    const decidedForSession =
-      this.availabilitySessionKey === sessionKey &&
-      (this.availabilityState === 'available' ||
-        this.availabilityState === 'unavailable' ||
-        this.availabilityState === 'error');
-
-    if (!decidedForSession) {
-      // Keep checking while waiting for the real ECE ready event (or remount).
-      this.setAvailabilityState('checking', sessionKey);
-    }
-
-    return (
-      this.availabilityState === 'available' && this.availabilitySessionKey === sessionKey
-    );
+    // Keep checking while waiting for the real ECE ready event (or remount).
+    this.setAvailabilityState('checking', sessionKey);
+    return false;
   }
 
   async createPayment(_request: PaymentRequest): Promise<PaymentResult> {
@@ -295,8 +301,7 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     this.teardownMount(mountId, 'remount');
 
     const sessionKey = buildApplePayRenderKey(options.product);
-    const keepAvailable =
-      this.availabilityState === 'available' && this.availabilitySessionKey === sessionKey;
+    const keepAvailable = this.availabilityBySession.get(sessionKey) === 'available';
     if (!keepAvailable) {
       this.setAvailabilityState('checking', sessionKey);
       this.readyFired = false;
@@ -385,7 +390,7 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       if (!this.mounts.has(mountId)) {
         return;
       }
-      this.processing = false;
+      this.processingMounts.delete(mountId);
       mount.cancelHandler?.();
     });
 
@@ -393,18 +398,28 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       if (!this.mounts.has(mountId)) {
         return;
       }
-      this.processing = false;
+      this.processingMounts.delete(mountId);
       this.setAvailabilityState('error', sessionKey);
       options.onAvailabilityChange?.('error');
       const mapped = mapApplePayError(event?.error, 'SDK_LOAD_FAILED', 'Failed to load Apple Pay.');
       mount.errorHandler?.(mapped);
     });
 
-    expressCheckout.on('confirm', async () => {
-      if (!this.mounts.has(mountId) || this.processing) {
+    expressCheckout.on('confirm', async (event) => {
+      if (!this.mounts.has(mountId) || this.processingMounts.has(mountId)) {
         return;
       }
-      this.processing = true;
+      let release: () => void;
+      try {
+        release = this.gate.acquire(`apple-pay:${mountId}`, 'apple-pay', 'applePay');
+      } catch (gateError) {
+        // Another host is confirming a Stripe payment: close this sheet and tell this host.
+        (event as { paymentFailed?: (options?: { reason?: 'fail' }) => void } | undefined)
+          ?.paymentFailed?.({ reason: 'fail' });
+        mount.errorHandler?.(gateError as PaymentError);
+        return;
+      }
+      this.processingMounts.add(mountId);
       options.onAttempt?.();
       try {
         const result = await this.confirmExpressCheckout(
@@ -427,7 +442,8 @@ export class ApplePayAdapter extends BaseProviderAdapter {
           mount.errorHandler?.(paymentError);
         }
       } finally {
-        this.processing = false;
+        this.processingMounts.delete(mountId);
+        release();
       }
     });
 
@@ -451,14 +467,27 @@ export class ApplePayAdapter extends BaseProviderAdapter {
    * Clears ECE-driven availability (e.g. merchant removed `apple-pay` from methods,
    * or a brand-new checkout session must not inherit a previous ready result).
    */
-  clearAvailability(): void {
+  clearAvailability(product?: PaymentProduct): void {
+    if (product) {
+      const sessionKey = buildApplePayRenderKey(product);
+      this.availabilityBySession.delete(sessionKey);
+      if (this.availabilitySessionKey === sessionKey) {
+        this.availabilityState = 'idle';
+        this.availabilitySessionKey = null;
+      }
+      return;
+    }
     this.readyFired = false;
     this.lastAvailablePaymentMethods = null;
+    this.availabilityBySession.clear();
     this.setAvailabilityState('idle', null);
   }
 
-  isProcessing(): boolean {
-    return this.processing;
+  /** True while `mountId` (or, when omitted, any mount) has a wallet confirm in flight. */
+  isProcessing(mountId?: string): boolean {
+    return mountId === undefined
+      ? this.processingMounts.size > 0
+      : this.processingMounts.has(mountId);
   }
 
   private teardownMount(
@@ -506,9 +535,7 @@ export class ApplePayAdapter extends BaseProviderAdapter {
         this.availabilityState = 'checking';
       }
     } else {
-      this.readyFired = false;
-      this.lastAvailablePaymentMethods = null;
-      this.setAvailabilityState('idle', null);
+      this.clearAvailability();
     }
   }
 
@@ -516,12 +543,22 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     state: ApplePayAvailabilityState,
     sessionKey: string | null,
   ): void {
+    // Per-session change detection: a sibling host re-checking its own product
+    // must not wake every listener (would ping-pong refreshes between hosts).
     const changed =
-      this.availabilityState !== state || this.availabilitySessionKey !== sessionKey;
+      sessionKey === null
+        ? this.availabilityState !== state || this.availabilitySessionKey !== null
+        : this.availabilityBySession.get(sessionKey) !== state;
+    if (sessionKey !== null) {
+      this.availabilityBySession.set(sessionKey, state);
+    }
     this.availabilityState = state;
     this.availabilitySessionKey = sessionKey;
     if (changed) {
       this.availabilityListener?.(state);
+      for (const listener of Array.from(this.availabilityListeners)) {
+        listener(state);
+      }
     }
   }
 
@@ -565,7 +602,18 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     }
 
     const status = paymentIntent?.status;
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+    if (status === 'processing') {
+      // Not a confirmed success; the wallet was charged-or-pending, so never prompt a retry.
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message:
+          'Apple Pay payment is still processing. Do not retry — check your order status for confirmation.',
+        method: 'apple-pay',
+        provider: 'applePay',
+        originalError: paymentIntent,
+      });
+    }
+    if (status === 'succeeded' || status === 'requires_capture') {
       return normalizePaymentResult({
         status: 'success',
         method: 'apple-pay',
@@ -647,8 +695,9 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     for (const id of Array.from(this.mounts.keys())) {
       this.teardownMount(id, 'destroy', false);
     }
-    this.processing = false;
+    this.processingMounts.clear();
     this.stripe = null;
+    // Per-host listeners (addAvailabilityListener) are owned by their hosts and survive re-init.
     this.availabilityListener = null;
     this.clearAvailability();
   }

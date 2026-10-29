@@ -22,6 +22,7 @@ import {
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import { buildStripeSessionKey } from '../../adapters/stripe/stripe-appearance';
 import { StripeCardUiState } from '../../adapters/stripe/stripe.types';
 import { formatMoney } from '../../utils/format-money';
@@ -191,6 +192,9 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
 export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
   private readonly stripeAdapter = inject(StripeCardAdapter);
   private readonly i18n = inject(EasyPaymentsI18nService, { optional: true });
+  /** This panel's Payment Element session on the shared StripeCardAdapter. */
+  private readonly ownerId = createPaymentOwnerId('card');
+  private destroyed = false;
 
   readonly msgs = computed(() => this.i18n?.messages() ?? EN_TRANSLATIONS);
 
@@ -275,15 +279,16 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.initGeneration += 1;
     this.sessionKey = null;
     this.lastClientSecret = null;
     this.lastMountedLocale = null;
-    void this.stripeAdapter.destroy();
+    void this.stripeAdapter.destroy(this.ownerId);
   }
 
   canPay(): boolean {
-    return this.uiState() === 'ready' && !this.stripeAdapter.isConfirming();
+    return this.uiState() === 'ready' && !this.stripeAdapter.isConfirming(this.ownerId);
   }
 
   async onPay(): Promise<void> {
@@ -297,7 +302,13 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
     this.busyChange.emit(true);
 
     try {
-      const result = await this.stripeAdapter.confirmPayment(this.checkout()?.successUrl);
+      const result = await this.stripeAdapter.confirmPayment(
+        this.checkout()?.successUrl,
+        this.ownerId,
+      );
+      if (this.destroyed) {
+        return;
+      }
 
       if (result.status === 'success') {
         this.uiState.set('success');
@@ -317,6 +328,9 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
         this.error.emit(paymentError);
       }
     } catch (err) {
+      if (this.destroyed) {
+        return;
+      }
       const paymentError = normalizeError(err, { method: 'card', provider: 'stripe' });
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.uiState.set('ready');
@@ -333,17 +347,19 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);
     } finally {
-      this.busyChange.emit(false);
+      if (!this.destroyed) {
+        this.busyChange.emit(false);
+      }
     }
   }
 
   private async applyTheme(theme: ResolvedPaymentTheme): Promise<void> {
-    if (this.lastAppliedTheme === theme && this.stripeAdapter.hasMountedElement()) {
+    if (this.lastAppliedTheme === theme && this.stripeAdapter.hasMountedElement(this.ownerId)) {
       return;
     }
     this.lastAppliedTheme = theme;
-    if (this.stripeAdapter.hasMountedElement()) {
-      await this.stripeAdapter.updateAppearance(theme);
+    if (this.stripeAdapter.hasMountedElement(this.ownerId)) {
+      await this.stripeAdapter.updateAppearance(theme, this.ownerId);
     }
   }
 
@@ -375,7 +391,7 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       if (
         this.lastMountedLocale !== elementsLocale &&
         this.lastClientSecret &&
-        this.stripeAdapter.hasMountedElement()
+        this.stripeAdapter.hasMountedElement(this.ownerId)
       ) {
         const host = this.host().nativeElement;
         const theme = untracked(() => this.resolvedTheme());
@@ -384,6 +400,7 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
           this.lastClientSecret,
           theme,
           elementsLocale,
+          this.ownerId,
         );
         this.lastMountedLocale = elementsLocale;
         this.lastAppliedTheme = theme;
@@ -403,7 +420,11 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       }
 
       this.uiState.set('loading-session');
-      const session = await this.stripeAdapter.createPaymentSession(product, checkout);
+      const session = await this.stripeAdapter.createPaymentSession(
+        product,
+        checkout,
+        this.ownerId,
+      );
       if (generation !== this.initGeneration) {
         return;
       }
@@ -416,6 +437,7 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
         session.clientSecret,
         theme,
         elementsLocale,
+        this.ownerId,
       );
       if (generation !== this.initGeneration) {
         return;
