@@ -37,25 +37,27 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-paypal" [attr.data-state]="uiState()">
-      <div class="ep-paypal__header">
-        <h3 class="ep-paypal__title">{{ msgs().payWithPayPal }}</h3>
-        <easy-checkout-security-message [message]="msgs().secureCheckoutPayPal" />
-      </div>
+    <div class="ep-paypal" [class.ep-paypal--compact]="compact()" [attr.data-state]="uiState()">
+      @if (!compact()) {
+        <div class="ep-paypal__header">
+          <h3 class="ep-paypal__title">{{ msgs().payWithPayPal }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutPayPal" />
+        </div>
+      }
 
       @if (uiState() === 'initializing') {
         <p class="ep-paypal__status" role="status">{{ msgs().preparingPayPal }}</p>
       }
 
-      @if (uiState() === 'creating-order') {
+      @if (uiState() === 'creating-order' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().creatingPayPalOrder }}</p>
       }
 
-      @if (uiState() === 'waiting-approval') {
+      @if (uiState() === 'waiting-approval' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().waitingPayPalApproval }}</p>
       }
 
-      @if (uiState() === 'capturing') {
+      @if (uiState() === 'capturing' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().capturingPayPal }}</p>
       }
 
@@ -75,11 +77,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-paypal__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      @if (uiState() === 'success' && !compact()) {
         <p class="ep-paypal__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
-      @if (uiState() === 'cancelled') {
+      @if (uiState() === 'cancelled' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().paypalCancelled }}</p>
       }
     </div>
@@ -96,6 +98,10 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         display: flex;
         flex-direction: column;
         gap: 14px;
+      }
+
+      .ep-paypal--compact {
+        gap: 8px;
       }
 
       .ep-paypal__header {
@@ -115,6 +121,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         margin: 0;
         font-size: 13px;
         color: var(--ep-text-secondary, #64748b);
+      }
+
+      .ep-paypal--compact .ep-paypal__status,
+      .ep-paypal--compact .ep-paypal__error {
+        font-size: 12px;
       }
 
       .ep-paypal__buttons {
@@ -152,6 +163,11 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   readonly checkout = input<CheckoutOptions>();
   /** Theme is accepted for API symmetry with Stripe; PayPal Buttons use official gold styling. */
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * Compact in-list / Payment Buttons Only mount: official PayPal Buttons without
+   * checkout panel chrome (title, security blurb, verbose status copy).
+   */
+  readonly compact = input(false);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -171,6 +187,8 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   private renderGeneration = 0;
   private attemptAnnounced = false;
   private captureEmitted = false;
+  /** Ownership token for this host's Buttons mount on the shared PayPalAdapter. */
+  private buttonsMountId: string | null = null;
 
   constructor() {
     // Product/checkout/locale identity may require re-rendering Buttons (createOrder closure).
@@ -203,7 +221,13 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
-    void this.paypalAdapter.destroy();
+    const mountId = this.buttonsMountId;
+    this.buttonsMountId = null;
+    // Ownership-scoped cleanup only — do not call adapter.destroy(), which would
+    // close sibling PayPal mounts and clear shared in-flight order flags.
+    if (mountId) {
+      void this.paypalAdapter.destroyButtons(mountId);
+    }
   }
 
   isBusyState(): boolean {
@@ -254,7 +278,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       const host = this.host().nativeElement;
       host.replaceChildren();
 
-      await this.paypalAdapter.renderButtons(
+      const mountId = await this.paypalAdapter.renderButtons(
         host,
         {
           createOrder: () => this.onCreateOrder(product, checkout, generation),
@@ -270,12 +294,18 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
           },
         },
         locale,
+        this.buttonsMountId ?? undefined,
       );
 
       if (generation !== this.renderGeneration) {
+        await this.paypalAdapter.destroyButtons(mountId);
+        if (this.buttonsMountId === mountId) {
+          this.buttonsMountId = null;
+        }
         return;
       }
 
+      this.buttonsMountId = mountId;
       this.uiState.set('ready');
     } catch (err) {
       if (generation !== this.renderGeneration) {

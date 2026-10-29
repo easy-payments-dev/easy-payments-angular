@@ -48,7 +48,12 @@ export class PayPalAdapter extends BaseProviderAdapter {
   private loadPromise: Promise<PayPalNamespace> | null = null;
   /** PayPal SDK locale last successfully loaded (underscore form, e.g. en_US). */
   private loadedSdkLocale: string | null = null;
-  private buttons: PayPalButtonsHandle | null = null;
+  /**
+   * Per-host official Buttons mounts. Destroying one host must not close another's.
+   * Keyed by opaque mount ids owned by PayPalPaymentComponent instances.
+   */
+  private readonly buttonMounts = new Map<string, PayPalButtonsHandle>();
+  private nextMountId = 0;
   private creatingOrder = false;
   private capturing = false;
   private activeOrderId: string | null = null;
@@ -233,12 +238,20 @@ export class PayPalAdapter extends BaseProviderAdapter {
     }
   }
 
+  /**
+   * Renders official PayPal Buttons into `container` under an ownership-scoped mount id.
+   * Re-rendering with the same `mountId` replaces only that mount; other hosts stay intact.
+   * @returns The mount id to pass to {@link destroyButtons} on host teardown.
+   */
   async renderButtons(
     container: HTMLElement,
     options: Omit<PayPalButtonsOptions, 'style'> & { style?: Record<string, string> },
     locale: EasyPaymentsResolvedLocale = 'en',
-  ): Promise<void> {
-    await this.destroyButtons();
+    mountId?: string,
+  ): Promise<string> {
+    const id = mountId ?? this.allocateMountId();
+    // Replace only this owner's previous Buttons instance.
+    await this.destroyButtons(id);
 
     const paypal = await this.ensureSdkLoaded(locale);
     const buttons = paypal.Buttons({
@@ -256,20 +269,38 @@ export class PayPalAdapter extends BaseProviderAdapter {
       onClick: options.onClick,
     });
 
-    this.buttons = buttons;
-    await buttons.render(container);
+    this.buttonMounts.set(id, buttons);
+    try {
+      await buttons.render(container);
+    } catch (error) {
+      this.buttonMounts.delete(id);
+      throw error;
+    }
+    return id;
   }
 
-  async destroyButtons(): Promise<void> {
-    const current = this.buttons;
-    this.buttons = null;
-    if (current?.close) {
-      try {
-        await current.close();
-      } catch {
-        // Ignore close failures during teardown.
-      }
+  /**
+   * Closes one Buttons mount (host teardown) or all mounts when `mountId` is omitted
+   * (adapter-wide destroy / orchestrator re-init).
+   */
+  async destroyButtons(mountId?: string): Promise<void> {
+    if (mountId !== undefined) {
+      const current = this.buttonMounts.get(mountId);
+      this.buttonMounts.delete(mountId);
+      await this.closeButtonsHandle(current);
+      return;
     }
+
+    const handles = Array.from(this.buttonMounts.values());
+    this.buttonMounts.clear();
+    for (const handle of handles) {
+      await this.closeButtonsHandle(handle);
+    }
+  }
+
+  /** Active ownership-scoped Buttons mounts (test / diagnostics). */
+  getActiveButtonMountCount(): number {
+    return this.buttonMounts.size;
   }
 
   isBusy(): boolean {
@@ -280,11 +311,31 @@ export class PayPalAdapter extends BaseProviderAdapter {
     return this.activeOrderId;
   }
 
+  /**
+   * Full adapter reset: closes every Buttons mount and clears in-flight order flags.
+   * Prefer {@link destroyButtons}(mountId) from individual payment hosts.
+   */
   async destroy(): Promise<void> {
     await this.destroyButtons();
     this.activeOrderId = null;
     this.creatingOrder = false;
     this.capturing = false;
+  }
+
+  private allocateMountId(): string {
+    this.nextMountId += 1;
+    return `paypal-buttons-${this.nextMountId}`;
+  }
+
+  private async closeButtonsHandle(handle: PayPalButtonsHandle | undefined): Promise<void> {
+    if (!handle?.close) {
+      return;
+    }
+    try {
+      await handle.close();
+    } catch {
+      // Ignore close failures during teardown.
+    }
   }
 }
 

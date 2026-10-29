@@ -7,6 +7,7 @@ import { EasyPaymentsComponent } from '../payments/easy-payments.component';
 import { EasyPaymentButtonsComponent } from './easy-payment-buttons.component';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
+import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentResult } from '../../models';
 
@@ -90,9 +91,26 @@ describe('EasyPaymentButtonsComponent', () => {
 
     const card = slotItem(fixture, 'card');
     expect(card?.getAttribute('data-interactive')).toBe('true');
+    expect(card?.getAttribute('data-kind')).toBe('card-selector');
     expect(card?.getAttribute('data-state')).toBe('available');
     expect(card?.querySelector('button.ep-payment-buttons__selector')).toBeTruthy();
     expect(fixture.nativeElement.getAttribute('data-card-ready')).toBe('true');
+  });
+
+  it('mounts mock PayPal in-slot when ready (no extra selector click)', async () => {
+    fixture.componentRef.setInput('methods', ['affirm', 'paypal', 'card']);
+    await render(fixture);
+
+    const paypal = slotItem(fixture, 'paypal');
+    expect(paypal?.getAttribute('data-kind')).toBe('paypal-mock');
+    expect(paypal?.getAttribute('data-state')).toBe('available');
+    expect(
+      paypal?.querySelector('[data-testid="easy-payment-buttons-paypal-mock"]'),
+    ).toBeTruthy();
+    expect(paypal?.querySelector('easy-mock-method-panel')).toBeTruthy();
+    expect(fixture.nativeElement.getAttribute('data-paypal-ready')).toBe('true');
+    // No fake selector that reveals PayPal after a second click.
+    expect(paypal?.querySelector('button.ep-payment-buttons__selector')).toBeNull();
   });
 
   it('omits Card when it is not in the methods allow-list', async () => {
@@ -102,6 +120,15 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(slotMethods(fixture)).toEqual(['paypal', 'klarna']);
     expect(slotItem(fixture, 'card')).toBeNull();
     expect(fixture.nativeElement.getAttribute('data-card-ready')).toBe('false');
+  });
+
+  it('omits PayPal when it is not in the methods allow-list', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'klarna']);
+    await render(fixture);
+
+    expect(slotMethods(fixture)).toEqual(['card', 'klarna']);
+    expect(slotItem(fixture, 'paypal')).toBeNull();
+    expect(fixture.nativeElement.getAttribute('data-paypal-ready')).toBe('false');
   });
 
   it('marks Card unavailable without revealing a payment panel', async () => {
@@ -116,11 +143,33 @@ describe('EasyPaymentButtonsComponent', () => {
 
     const card = slotItem(fixture, 'card');
     expect(card?.getAttribute('data-state')).toBe('unavailable');
-    expect(card?.getAttribute('data-interactive')).toBe('false');
+    expect(card?.getAttribute('data-kind')).toBe('placeholder');
     expect(
       fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-card-mock-panel"]'),
     ).toBeNull();
-    expect(fixture.nativeElement.querySelector('easy-stripe-card-payment')).toBeNull();
+    // PayPal remains usable when Card is unavailable.
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
+  });
+
+  it('marks PayPal unavailable without mounting PayPal controls', async () => {
+    fixture.componentRef.setInput('methods', ['paypal', 'card']);
+    await render(fixture);
+
+    applyInstanceAvailability(fixture, [
+      { method: 'paypal', isMock: true, available: false, status: 'unavailable' },
+      { method: 'card', isMock: true, available: true, status: 'available' },
+    ]);
+    fixture.detectChanges();
+
+    const paypal = slotItem(fixture, 'paypal');
+    expect(paypal?.getAttribute('data-state')).toBe('unavailable');
+    expect(paypal?.getAttribute('data-kind')).toBe('placeholder');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-paypal-mock"]'),
+    ).toBeNull();
+    expect(fixture.nativeElement.querySelector('easy-paypal-payment')).toBeNull();
+    // Card remains usable when PayPal is unavailable.
+    expect(slotItem(fixture, 'card')?.getAttribute('data-kind')).toBe('card-selector');
   });
 
   it('reveals the mock card panel only after Card is selected (no auto-pay)', async () => {
@@ -147,7 +196,6 @@ describe('EasyPaymentButtonsComponent', () => {
       fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-card-mock-panel"]'),
     ).toBeTruthy();
     expect(started.length).toBe(0);
-    expect(fixture.nativeElement.querySelector('button.ep-mock-panel__cta')).toBeTruthy();
   });
 
   it('emits methodChange on Card selection and lifecycle events on mock pay', async () => {
@@ -180,6 +228,59 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes[0].status).toBe('success');
   });
 
+  it('emits PayPal mock lifecycle events without premature success', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    const errors: PaymentError[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentInstance.error.subscribe((value) => errors.push(value));
+
+    TestBed.inject(MockPaymentController).setOutcome('success');
+    fixture.componentRef.setInput('methods', ['paypal']);
+    await render(fixture);
+
+    expect(started.length).toBe(0);
+    expect(successes.length).toBe(0);
+
+    const pay = slotItem(fixture, 'paypal')?.querySelector(
+      'button.ep-mock-panel__cta',
+    ) as HTMLButtonElement;
+    pay.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(methodChanges.length).toBe(1);
+    expect((methodChanges[0] as { method: string }).method).toBe('paypal');
+    expect(started.length).toBe(1);
+    expect((started[0] as { method: string }).method).toBe('paypal');
+    expect(successes.length).toBe(1);
+    expect(successes[0].status).toBe('success');
+    expect(errors.length).toBe(0);
+  });
+
+  it('emits error on mock PayPal failure without inventing success', async () => {
+    const successes: PaymentResult[] = [];
+    const errors: PaymentError[] = [];
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentInstance.error.subscribe((value) => errors.push(value));
+
+    TestBed.inject(MockPaymentController).setOutcome('failed');
+    fixture.componentRef.setInput('methods', ['paypal']);
+    await render(fixture);
+
+    slotItem(fixture, 'paypal')
+      ?.querySelector('button.ep-mock-panel__cta')
+      ?.dispatchEvent(new Event('click'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(successes.length).toBe(0);
+    expect(errors.length).toBe(1);
+  });
+
   it('emits error on mock card payment failure without inventing success', async () => {
     const successes: PaymentResult[] = [];
     const errors: PaymentError[] = [];
@@ -202,7 +303,7 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(errors.length).toBe(1);
   });
 
-  it('keeps non-card methods noninteractive placeholders', async () => {
+  it('keeps wallet and BNPL methods noninteractive placeholders', async () => {
     fixture.componentRef.setInput('methods', [
       'card',
       'paypal',
@@ -213,31 +314,34 @@ describe('EasyPaymentButtonsComponent', () => {
     ]);
     await render(fixture);
 
-    for (const method of ['paypal', 'apple-pay', 'google-pay', 'klarna', 'affirm']) {
+    for (const method of ['apple-pay', 'google-pay', 'klarna', 'affirm']) {
       const item = slotItem(fixture, method);
+      expect(item?.getAttribute('data-kind')).toBe('placeholder');
       expect(item?.getAttribute('data-interactive')).toBe('false');
       expect(item?.querySelector('.ep-payment-buttons__placeholder')).toBeTruthy();
       expect(item?.querySelector('button.ep-payment-buttons__selector')).toBeNull();
     }
   });
 
-  it('preserves horizontal/vertical layout and developer order', async () => {
-    fixture.componentRef.setInput('methods', ['klarna', 'card', 'paypal']);
+  it('preserves horizontal/vertical layout and developer order with PayPal in place', async () => {
+    fixture.componentRef.setInput('methods', ['klarna', 'paypal', 'card']);
     fixture.componentRef.setInput('layout', 'horizontal');
     await render(fixture);
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(slotMethods(fixture)).toEqual(['klarna', 'card', 'paypal']);
+    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'card']);
     expect(host.getAttribute('data-layout')).toBe('horizontal');
     expect(host.classList.contains('ep-payment-buttons-host--horizontal')).toBeTrue();
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
 
     fixture.componentRef.setInput('layout', 'vertical');
     await render(fixture);
     expect(host.getAttribute('data-layout')).toBe('vertical');
+    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'card']);
   });
 
   it('keeps a permanently transparent host without checkout shell chrome', async () => {
-    fixture.componentRef.setInput('methods', ['card']);
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
     fixture.componentRef.setInput('visualStyle', {
       backgroundColor: '#ff0000',
       surfaceColor: '#ffffff',
@@ -342,7 +446,6 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
   it('mounts easy-stripe-card-payment after Card selection without auto-confirm', async () => {
     await render(fixture);
 
-    // Wait for orchestrator availability; Card should be ready via spy isAvailable.
     expect(fixture.nativeElement.getAttribute('data-card-ready')).toBe('true');
     expect(fixture.nativeElement.querySelector('easy-stripe-card-payment')).toBeNull();
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
@@ -360,5 +463,176 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
     ).toBeTruthy();
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
     expect(adapter.createPaymentSession).toHaveBeenCalled();
+  });
+});
+
+describe('EasyPaymentButtonsComponent real PayPal express', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let paypal: jasmine.SpyObj<PayPalAdapter>;
+  let stripe: jasmine.SpyObj<StripeCardAdapter>;
+
+  beforeEach(async () => {
+    paypal = jasmine.createSpyObj<PayPalAdapter>(
+      'PayPalAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureSdkLoaded',
+        'renderButtons',
+        'destroyButtons',
+        'destroy',
+        'createOrder',
+        'captureOrder',
+        'isBusy',
+        'getActiveOrderId',
+      ],
+      {
+        provider: 'paypal',
+        isMock: false,
+      },
+    );
+    paypal.initialize.and.resolveTo();
+    paypal.isAvailable.and.resolveTo(true);
+    paypal.ensureSdkLoaded.and.resolveTo({} as never);
+    paypal.renderButtons.and.resolveTo('paypal-buttons-1');
+    paypal.destroyButtons.and.resolveTo();
+    paypal.destroy.and.resolveTo();
+    paypal.isBusy.and.returnValue(false);
+    paypal.getActiveOrderId.and.returnValue(null);
+
+    stripe = jasmine.createSpyObj<StripeCardAdapter>(
+      'StripeCardAdapter',
+      ['initialize', 'isAvailable', 'createPayment', 'destroy'],
+      { provider: 'stripe', isMock: false },
+    );
+    // Stripe unavailable — PayPal must still mount.
+    stripe.initialize.and.resolveTo();
+    stripe.isAvailable.and.resolveTo(false);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            paypal: { clientId: 'sb_test_buttons' },
+            stripe: { publishableKey: 'pk_test_unused' },
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            paypalCreateOrderUrl: '/api/paypal/create',
+            paypalCaptureOrderUrl: '/api/paypal/capture',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: PayPalAdapter, useValue: paypal },
+        { provide: StripeCardAdapter, useValue: stripe },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['affirm', 'paypal', 'card', 'google-pay']);
+  });
+
+  it('mounts official PayPal in the configured slot without auto-capture', async () => {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(slotMethods(fixture)).toEqual(['affirm', 'paypal', 'card', 'google-pay']);
+    expect(fixture.nativeElement.getAttribute('data-paypal-ready')).toBe('true');
+
+    const paypalSlot = slotItem(fixture, 'paypal');
+    expect(paypalSlot?.getAttribute('data-kind')).toBe('paypal-express');
+    expect(
+      paypalSlot?.querySelector('[data-testid="easy-payment-buttons-paypal-express"]'),
+    ).toBeTruthy();
+    expect(paypalSlot?.querySelector('easy-paypal-payment')).toBeTruthy();
+    expect(paypalSlot?.querySelector('.ep-paypal--compact')).toBeTruthy();
+    expect(paypal.renderButtons).toHaveBeenCalled();
+    expect(paypal.captureOrder).not.toHaveBeenCalled();
+    expect(paypal.createOrder).not.toHaveBeenCalled();
+
+    // Card stays a selector (unavailable here); wallets stay placeholders.
+    expect(slotItem(fixture, 'card')?.getAttribute('data-kind')).toBe('placeholder');
+    expect(slotItem(fixture, 'affirm')?.getAttribute('data-kind')).toBe('placeholder');
+    expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('placeholder');
+  });
+
+  it('emits methodChange + started on createOrder and success only after capture', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const options = paypal.renderButtons.calls.mostRecent().args[1];
+    paypal.createOrder.and.resolveTo('ORDER-BUTTONS-1');
+    await options.createOrder!();
+    fixture.detectChanges();
+
+    expect(methodChanges.length).toBe(1);
+    expect((methodChanges[0] as { method: string }).method).toBe('paypal');
+    expect(started.length).toBe(1);
+    expect(successes.length).toBe(0);
+
+    paypal.captureOrder.and.resolveTo({
+      status: 'success',
+      method: 'paypal',
+      provider: 'paypal',
+      transactionId: 'CAPTURE-BUTTONS-1',
+      sessionId: 'ORDER-BUTTONS-1',
+    });
+    await options.onApprove!({ orderID: 'ORDER-BUTTONS-1' });
+    await options.onApprove!({ orderID: 'ORDER-BUTTONS-1' });
+    fixture.detectChanges();
+
+    expect(paypal.captureOrder).toHaveBeenCalledTimes(1);
+    expect(successes.length).toBe(1);
+    expect(started.length).toBe(1);
+  });
+
+  it('emits cancel without success and cleans up PayPal mount on destroy', async () => {
+    const successes: PaymentResult[] = [];
+    const cancels: PaymentResult[] = [];
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentInstance.cancel.subscribe((value) => cancels.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const options = paypal.renderButtons.calls.mostRecent().args[1];
+    paypal.createOrder.and.resolveTo('ORDER-CANCEL');
+    await options.createOrder!();
+    options.onCancel?.();
+    fixture.detectChanges();
+
+    expect(cancels.length).toBe(1);
+    expect(successes.length).toBe(0);
+
+    fixture.destroy();
+    expect(paypal.destroyButtons).toHaveBeenCalledWith('paypal-buttons-1');
+    expect(paypal.destroy).not.toHaveBeenCalled();
+  });
+
+  it('does not call real PayPal create/capture APIs merely by mounting', async () => {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(paypal.createOrder).not.toHaveBeenCalled();
+    expect(paypal.captureOrder).not.toHaveBeenCalled();
   });
 });

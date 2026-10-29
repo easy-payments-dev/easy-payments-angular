@@ -181,6 +181,17 @@
   color: var(--ep-text-secondary, #64748b);
 }
 
+.ep-payment-buttons__express,
+.ep-payment-buttons__mock {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
 .ep-payment-buttons__panel {
   width: 100%;
   margin: 0;

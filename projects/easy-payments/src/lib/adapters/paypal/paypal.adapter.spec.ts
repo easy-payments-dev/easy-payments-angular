@@ -274,7 +274,7 @@ describe('PayPalAdapter', () => {
     });
 
     const host = document.createElement('div');
-    await adapter.renderButtons(host, {
+    const mountId = await adapter.renderButtons(host, {
       createOrder: async () => 'ORDER-1',
       onApprove: async () => undefined,
       onCancel: () => undefined,
@@ -283,9 +283,61 @@ describe('PayPalAdapter', () => {
 
     expect(paypalNs.Buttons).toHaveBeenCalled();
     expect(renderSpy).toHaveBeenCalledWith(host);
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    await adapter.destroyButtons(mountId);
+    expect(closeSpy).toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
+  });
+
+  it('keeps sibling Buttons mounts when one host is destroyed', async () => {
+    const closes: jasmine.Spy[] = [];
+    (paypalNs.Buttons as jasmine.Spy).and.callFake(() => {
+      const close = jasmine.createSpy('close').and.resolveTo();
+      closes.push(close);
+      return { render: renderSpy, close };
+    });
+
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    const mountA = await adapter.renderButtons(hostA, {
+      createOrder: async () => 'ORDER-A',
+      onApprove: async () => undefined,
+    });
+    const mountB = await adapter.renderButtons(hostB, {
+      createOrder: async () => 'ORDER-B',
+      onApprove: async () => undefined,
+    });
+
+    expect(mountA).not.toBe(mountB);
+    expect(adapter.getActiveButtonMountCount()).toBe(2);
+    expect(renderSpy).toHaveBeenCalledWith(hostA);
+    expect(renderSpy).toHaveBeenCalledWith(hostB);
+
+    await adapter.destroyButtons(mountA);
+    expect(closes[0]).toHaveBeenCalled();
+    expect(closes[1]).not.toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    // Survivor can still be re-rendered under its own mount id.
+    await adapter.renderButtons(
+      hostB,
+      {
+        createOrder: async () => 'ORDER-B2',
+        onApprove: async () => undefined,
+      },
+      'en',
+      mountB,
+    );
+    expect(closes[1]).toHaveBeenCalledTimes(1); // previous B closed on replace
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
 
     await adapter.destroy();
-    expect(closeSpy).toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
   });
 
   it('rejects direct createPayment for real PayPal', async () => {

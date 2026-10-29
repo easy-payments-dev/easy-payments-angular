@@ -6,7 +6,7 @@
 >
   <div
     class="ep-payment-buttons__list"
-    role="radiogroup"
+    role="group"
     [attr.aria-label]="regionAriaLabel()"
   >
     @for (slot of methodSlots(); track slot.method) {
@@ -14,10 +14,11 @@
         class="ep-payment-buttons__item"
         [attr.data-method]="slot.method"
         [attr.data-state]="slot.state"
+        [attr.data-kind]="slot.kind"
         [attr.data-interactive]="slot.interactive ? 'true' : 'false'"
         [attr.data-mock]="slot.isMock ? 'true' : null"
       >
-        @if (slot.interactive) {
+        @if (slot.kind === 'card-selector') {
           <button
             type="button"
             class="ep-payment-buttons__selector"
@@ -34,6 +35,39 @@
             </span>
             <span class="ep-payment-buttons__label">{{ slot.label }}</span>
           </button>
+        } @else if (slot.kind === 'paypal-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-paypal-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-paypal-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onPayPalStarted()"
+              (busyChange)="onPayPalBusy($event)"
+              (success)="onPayPalSuccess($event)"
+              (cancel)="onPayPalCancel($event)"
+              (error)="onPayPalError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'paypal-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-paypal-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="paypal"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'paypal'"
+              (pay)="onMockPayPalPay()"
+            />
+          </div>
         } @else {
           <div
             class="ep-payment-buttons__placeholder"

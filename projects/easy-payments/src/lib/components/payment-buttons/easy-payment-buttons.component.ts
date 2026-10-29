@@ -40,19 +40,34 @@ import {
 } from '../../i18n';
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
+import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 
 /** Slot readiness for the method list. */
 export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable';
+
+/**
+ * How a method slot is rendered.
+ * - `placeholder` — noninteractive (not yet integrated, loading, or unavailable)
+ * - `card-selector` — Card tile that reveals Stripe/mock panel below the list
+ * - `paypal-express` — official PayPal Buttons SDK mounted in-slot (no extra click)
+ * - `paypal-mock` — clearly labeled mock PayPal control in-slot (no real SDK)
+ */
+export type EasyPaymentButtonSlotKind =
+  | 'placeholder'
+  | 'card-selector'
+  | 'paypal-express'
+  | 'paypal-mock';
 
 export interface EasyPaymentButtonSlot {
   readonly method: PaymentMethod;
   readonly state: EasyPaymentButtonSlotState;
   readonly isMock: boolean;
   readonly label: string;
+  readonly kind: EasyPaymentButtonSlotKind;
   /**
-   * True when this slot is a live selector (Step 2A: Card only).
-   * Other methods stay noninteractive placeholders until later steps.
+   * True for Card selector tiles only (radiogroup).
+   * PayPal express mounts are interactive payments but not selectors.
    */
   readonly interactive: boolean;
 }
@@ -66,19 +81,22 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
   'affirm',
 ];
 
-/** Methods with a live payment panel in Payment Buttons Only (grows per Phase 4 step). */
-const INTERACTIVE_BUTTON_METHODS = new Set<PaymentMethod>(['card']);
-
 /**
- * Payment Buttons Only — transparent method list + inline provider panels.
+ * Payment Buttons Only — transparent method list + inline provider mounts.
  *
- * Step 2A: Card is interactive (Stripe Payment Element or mock panel).
+ * Step 2A: Card selector → Stripe Payment Element / mock panel below the list.
+ * Step 2B: Official PayPal Buttons render directly in the PayPal slot.
  * Other configured methods remain noninteractive placeholders.
  */
 @Component({
   selector: 'easy-payment-buttons',
   standalone: true,
-  imports: [PaymentMethodIconComponent, StripeCardPaymentComponent, MockMethodPanelComponent],
+  imports: [
+    PaymentMethodIconComponent,
+    StripeCardPaymentComponent,
+    PayPalPaymentComponent,
+    MockMethodPanelComponent,
+  ],
   templateUrl: './easy-payment-buttons.component.html',
   styleUrl: './easy-payment-buttons.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -93,6 +111,7 @@ const INTERACTIVE_BUTTON_METHODS = new Set<PaymentMethod>(['card']);
     '[attr.data-locale]': 'effectiveLocale()',
     '[attr.lang]': 'effectiveLocale()',
     '[attr.data-card-ready]': 'hasAvailableCard() ? "true" : "false"',
+    '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -176,20 +195,25 @@ export class EasyPaymentButtonsComponent {
       if (published) {
         state = entry?.available ? 'available' : 'unavailable';
       }
-      const interactive =
-        state === 'available' && INTERACTIVE_BUTTON_METHODS.has(method);
+      const isMock = entry?.isMock ?? false;
+      const kind = this.resolveSlotKind(method, state, isMock);
       return {
         method,
         state,
-        isMock: entry?.isMock ?? false,
+        isMock,
         label: getPaymentMethodPresentation(method, theme).label || PAYMENT_METHOD_LABELS[method],
-        interactive,
+        kind,
+        interactive: kind === 'card-selector',
       };
     });
   });
 
   readonly hasAvailableCard = computed(() =>
     this.methodSlots().some((slot) => slot.method === 'card' && slot.state === 'available'),
+  );
+
+  readonly hasAvailablePayPal = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'paypal' && slot.state === 'available'),
   );
 
   readonly selectedCardEntry = computed(() => {
@@ -211,10 +235,9 @@ export class EasyPaymentButtonsComponent {
 
   /**
    * True when at least one configured method is still a noninteractive placeholder.
-   * Card may already be live (Step 2A).
    */
   readonly foundationOnly = computed(() =>
-    this.methodSlots().some((slot) => !slot.interactive && slot.state !== 'unavailable'),
+    this.methodSlots().some((slot) => slot.kind === 'placeholder' && slot.state !== 'unavailable'),
   );
 
   constructor() {
@@ -266,6 +289,12 @@ export class EasyPaymentButtonsComponent {
     if (slot.state === 'unavailable') {
       return `${base}, unavailable`;
     }
+    if (slot.kind === 'paypal-express') {
+      return `${base}, official PayPal button`;
+    }
+    if (slot.kind === 'paypal-mock') {
+      return `${base}, mock payment`;
+    }
     if (!slot.interactive) {
       return `${base}, payment actions not available yet`;
     }
@@ -280,7 +309,7 @@ export class EasyPaymentButtonsComponent {
       return;
     }
     const slot = this.methodSlots().find((entry) => entry.method === method);
-    if (!slot?.interactive) {
+    if (slot?.kind !== 'card-selector') {
       return;
     }
     this.updateSelectedMethod(method);
@@ -306,11 +335,64 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  /**
+   * Official PayPal has no separate selector — engaging the SDK (order create)
+   * selects PayPal for methodChange, then emits started.
+   */
+  onPayPalStarted(): void {
+    this.updateSelectedMethod('paypal');
+    this.onPaymentStarted('paypal');
+  }
+
+  onPayPalBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onPayPalSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onPayPalCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onPayPalError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   async onMockCardPay(): Promise<void> {
+    await this.runMockPayment('card');
+  }
+
+  async onMockPayPalPay(): Promise<void> {
     if (this.methodsLocked() || this.destroyed) {
       return;
     }
-    const method: PaymentMethod = 'card';
+    this.updateSelectedMethod('paypal');
+    await this.runMockPayment('paypal');
+  }
+
+  private resolveSlotKind(
+    method: PaymentMethod,
+    state: EasyPaymentButtonSlotState,
+    isMock: boolean,
+  ): EasyPaymentButtonSlotKind {
+    if (state !== 'available') {
+      return 'placeholder';
+    }
+    if (method === 'card') {
+      return 'card-selector';
+    }
+    if (method === 'paypal') {
+      return isMock ? 'paypal-mock' : 'paypal-express';
+    }
+    return 'placeholder';
+  }
+
+  private async runMockPayment(method: PaymentMethod): Promise<void> {
+    if (this.methodsLocked() || this.destroyed) {
+      return;
+    }
     this.processingMethod.set(method);
     this.onPaymentStarted(method);
     try {
