@@ -9,7 +9,7 @@ import { PaymentError } from '../../errors/payment-error';
 import { PaymentMethodChangeEvent, PaymentResult, PaymentStartedEvent } from '../../models';
 import { EasyPaymentsDiagnosticsService } from '../../diagnostics/easy-payments-diagnostics.service';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
-import { PaymentOrchestratorService } from '../../services/payment-orchestrator.service';
+import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { resetProviderDiagnosticsForTests } from '../../diagnostics/provider-diagnostics';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { EasyPaymentsComponent } from './easy-payments.component';
@@ -18,6 +18,18 @@ async function render(fixture: ComponentFixture<EasyPaymentsComponent>): Promise
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
+}
+
+/** Apply a local readiness snapshot (tiles read the instance session, not root orchestrator). */
+function applyInstanceAvailability(
+  fixture: ComponentFixture<EasyPaymentsComponent>,
+  results: AvailablePaymentMethod[],
+): void {
+  (
+    fixture.componentInstance as unknown as {
+      availabilitySession: { apply: (value: readonly AvailablePaymentMethod[]) => void };
+    }
+  ).availabilitySession.apply(results);
 }
 
 function tileLabels(fixture: ComponentFixture<EasyPaymentsComponent>): string[] {
@@ -193,12 +205,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'apple-pay']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: false, status: 'checking' },
     ]);
@@ -220,12 +227,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'apple-pay', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -262,12 +264,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'apple-pay', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: false, status: 'unavailable' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -287,12 +284,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -309,12 +301,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['paypal', 'card', 'apple-pay', 'klarna']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'paypal', isMock: true, available: true, status: 'available' },
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
@@ -858,6 +845,106 @@ describe('EasyPaymentsComponent', () => {
     expect(fixtureB.componentInstance.resolvedTheme()).toBe('dark');
     expect(hostA.style.getPropertyValue('--ep-accent').trim()).toBe('#1111aa');
     expect(hostB.style.getPropertyValue('--ep-accent').trim()).toBe('#11aa11');
+  });
+
+  it('keeps independent method allow-lists for concurrent checkout instances', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna', 'affirm']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Card',
+      'PayPal',
+    ]);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Klarna',
+      'Affirm',
+    ]);
+    expect(fixture.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'card',
+      'paypal',
+    ]);
+    expect(fixtureB.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'klarna',
+      'affirm',
+    ]);
+  });
+
+  it('keeps independent method order for concurrent checkout instances', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['paypal', 'card']);
+    fixtureB.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'PayPal',
+      'Card',
+    ]);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Card',
+      'PayPal',
+    ]);
+  });
+
+  it('does not clobber a sibling checkout when one instance refreshes methods', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    fixture.componentRef.setInput('methods', ['paypal']);
+    await render(fixture);
+    fixtureB.detectChanges();
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual(['PayPal']);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual(['Klarna']);
+    expect(fixtureB.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'klarna',
+    ]);
+  });
+
+  it('isolates a mock provider failure to the affected checkout methods only', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    TestBed.inject(MockPaymentController).setUnavailableMethods(['paypal']);
+
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['paypal', 'klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual(['Card']);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual(['Klarna']);
+    expect(fixture.componentInstance.availableMethods().find((e) => e.method === 'paypal')?.available).toBeFalse();
+    expect(fixtureB.componentInstance.availableMethods().find((e) => e.method === 'paypal')?.available).toBeFalse();
+    expect(fixtureB.componentInstance.availableMethods().find((e) => e.method === 'klarna')?.available).toBeTrue();
+  });
+
+  it('keeps EasyPaymentsDiagnosticsService as a global last-refresh projection', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    const diagnostics = TestBed.inject(EasyPaymentsDiagnosticsService);
+
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    // Root diagnostics reflect the latest orchestrator refresh (fixtureB), not a merge of both.
+    expect(diagnostics.snapshot().published).toBeTrue();
+    expect(diagnostics.snapshot().methods.map((entry) => entry.method)).toEqual(['klarna']);
+    // Instance tiles remain independent of that global projection.
+    expect(fixture.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'card',
+      'paypal',
+    ]);
   });
 
   it('preserves transparent shell painting rules with optional background/surface overrides', async () => {

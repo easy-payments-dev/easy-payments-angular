@@ -478,6 +478,8 @@ Relative endpoints are resolved against `baseUrl` when it is set. Absolute `http
 
 `EasyPaymentsDiagnosticsService` is a read-only view of the readiness `PaymentOrchestratorService` already publishes. It does not start a second diagnostics engine, and it does not reconfigure providers on its own.
 
+**Multi-instance note:** diagnostics remain **global / last-refresh** (whichever checkout last called `refreshAvailability`). Each `<easy-payments>` host keeps an **instance-local** availability session for its own method tiles and order. Do not assume `diagnostics().methods` matches every mounted checkout’s visible tiles.
+
 Inject it anywhere `provideEasyPayments()` is available:
 
 ```ts

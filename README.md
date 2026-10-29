@@ -607,6 +607,8 @@ export class CheckoutStatusComponent {
 
 Snapshots omit secret keys, client secrets, PaymentIntent secrets, authorization headers, tokens, and raw provider errors. The service does not read `window`, `document`, `navigator`, or `localStorage`. Apple Pay and Google Pay are not `ready` during server rendering.
 
+With **multiple** `<easy-payments>` hosts, each instance keeps its own method-tile availability session. `EasyPaymentsDiagnosticsService` remains a **global last-refresh** projection (whichever host refreshed last) — it is not a per-instance merge.
+
 Full reference: **[docs/api.md](docs/api.md#diagnostics)** · Security notes: **[docs/security.md](docs/security.md)**
 
 ---

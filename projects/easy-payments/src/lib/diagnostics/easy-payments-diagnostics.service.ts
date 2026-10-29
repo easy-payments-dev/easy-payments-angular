@@ -57,6 +57,11 @@ export interface PaymentMethodDiagnostic {
  * `published` is false until `PaymentOrchestratorService.refreshAvailability`
  * completes, and false again after `reinitialize()` until the next refresh.
  * An empty method list before publication is not a ready checkout.
+ *
+ * This snapshot is **global / last-refresh**: it mirrors the root orchestrator,
+ * not a specific `<easy-payments>` instance. Concurrent checkouts keep
+ * independent tile visibility via per-instance availability sessions; inject
+ * diagnostics for app-wide developer readiness, not per-host UI state.
  */
 export interface EasyPaymentsDiagnosticsSnapshot {
   readonly published: boolean;
@@ -97,8 +102,11 @@ const MISCONFIGURED_MESSAGE = 'This payment method is misconfigured.';
 /**
  * Public, read-only view of payment-method readiness.
  *
- * Projects `PaymentOrchestratorService` availability. It does not calculate a
- * second readiness result, poll, or read browser globals.
+ * Projects the root `PaymentOrchestratorService` availability snapshot (the
+ * latest `refreshAvailability` call in the app). It does not calculate a
+ * second readiness result, poll, or read browser globals. Per-checkout tile
+ * visibility is owned by each component's local availability session and may
+ * differ from this global projection when multiple hosts are mounted.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsDiagnosticsService {

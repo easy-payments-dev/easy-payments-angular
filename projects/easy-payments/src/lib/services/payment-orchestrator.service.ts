@@ -55,11 +55,19 @@ export class PaymentOrchestratorService {
   private readonly _loading = signal(false);
   private initialized = false;
 
+  /**
+   * Global last-refresh availability. UI hosts must not bind tiles to this signal
+   * when multiple checkouts can mount — use the per-instance
+   * `CheckoutAvailabilitySession` applied from the return value of
+   * {@link refreshAvailability}. `EasyPaymentsDiagnosticsService` continues to
+   * project this global snapshot.
+   */
   readonly availableMethods = this._availableMethods.asReadonly();
   /**
-   * True after `refreshAvailability` publishes method readiness.
-   * `reinitialize()` clears it until the next successful refresh.
-   * Consuming apps should read `EasyPaymentsDiagnosticsService` instead of this flag.
+   * True after `refreshAvailability` publishes method readiness on the root
+   * orchestrator. `reinitialize()` clears it until the next successful refresh.
+   * Consuming apps should read `EasyPaymentsDiagnosticsService` for developer
+   * diagnostics (also global / last-refresh).
    */
   readonly availabilityPublished = this._availabilityPublished.asReadonly();
   readonly loading = this._loading.asReadonly();

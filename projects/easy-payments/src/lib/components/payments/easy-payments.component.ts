@@ -33,7 +33,11 @@ import {
   warnProviderDiagnostic,
 } from '../../diagnostics/provider-diagnostics';
 import { appendMetadataSessionPart } from '../../metadata/merchant-metadata';
-import { PaymentOrchestratorService } from '../../services/payment-orchestrator.service';
+import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
+import {
+  PaymentOrchestratorService,
+  type AvailablePaymentMethod,
+} from '../../services/payment-orchestrator.service';
 import { ThemeService } from '../../themes/theme.service';
 import { resolveVisualStyleCssVars } from '../../themes/resolve-visual-style';
 import {
@@ -113,7 +117,8 @@ import {
   /**
    * Per-checkout ThemeService so concurrent <easy-payments> instances can use
    * independent light/dark/system themes. PaymentOrchestratorService stays root
-   * and receives the resolved theme explicitly from refreshAvailability calls.
+   * (adapters / processPayment / global diagnostics). Each host owns a local
+   * {@link CheckoutAvailabilitySession} so readiness tiles do not clobber siblings.
    */
   providers: [EasyPaymentsI18nService, ThemeService],
 })
@@ -129,6 +134,12 @@ export class EasyPaymentsComponent {
   /** True while this component owns the availability ECE mount (Minimal-style host). */
   private applePayBootstrapOwned = false;
   private applePayBootstrapGeneration = 0;
+  /**
+   * Instance-local availability. Updated from orchestrator.refreshAvailability
+   * return values; stale async completions are ignored via generation counter.
+   */
+  private readonly availabilitySession = new CheckoutAvailabilitySession();
+  private availabilityGeneration = 0;
   /** Per-instance contrast warning dedupe (dev console only; never buyer-facing). */
   private readonly contrastWarnings = new VisualStyleContrastWarningTracker();
 
@@ -200,7 +211,8 @@ export class EasyPaymentsComponent {
   );
 
   readonly resolvedTheme = this.themeService.resolvedTheme;
-  readonly availableMethods = this.orchestrator.availableMethods;
+  /** Per-instance readiness — not the root orchestrator snapshot. */
+  readonly availableMethods = this.availabilitySession.availableMethods;
   readonly loading = this.orchestrator.loading;
 
   /** Clamped max-width applied to the host (and used by container queries). */
@@ -426,6 +438,8 @@ export class EasyPaymentsComponent {
     });
 
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
+    // Note: ApplePayAdapter still allows a single global listener — concurrent
+    // checkouts sharing Apple Pay ECE remain a known adapter-level limitation.
     this.applePayAdapter.setAvailabilityListener(() => {
       this.ngZone.run(() => {
         if (this.destroyed) {
@@ -434,11 +448,14 @@ export class EasyPaymentsComponent {
         const product = untracked(() => this.product());
         const methods = untracked(() => this.methods());
         const checkout = untracked(() => this.checkout());
-        void this.orchestrator
-          .refreshAvailability(methods, product, checkout, this.resolvedTheme())
-          .catch(() => {
-            // Availability refresh errors are non-fatal for checkout UI.
-          });
+        void this.refreshInstanceAvailability(
+          methods,
+          product,
+          checkout,
+          this.resolvedTheme(),
+        ).catch(() => {
+          // Availability refresh errors are non-fatal for checkout UI.
+        });
       });
     });
 
@@ -492,12 +509,12 @@ export class EasyPaymentsComponent {
 
       const theme = this.resolvedTheme();
       untracked(() => {
-        void this.orchestrator
-          .refreshAvailability(methods, product, checkout, theme)
-          .catch((err: unknown) => {
+        void this.refreshInstanceAvailability(methods, product, checkout, theme).catch(
+          (err: unknown) => {
             // Config/availability errors emit only — do not take over the checkout UI.
             this.error.emit(normalizeError(err));
-          });
+          },
+        );
       });
     });
 
@@ -589,6 +606,37 @@ export class EasyPaymentsComponent {
    */
   private applePayBootstrapSessionKey: string | null = null;
   private applePayBootstrapHostElement: HTMLElement | null = null;
+
+  /**
+   * Evaluate availability through the root orchestrator (adapters + global diagnostics
+   * projection), then store the returned snapshot on this instance only.
+   */
+  private async refreshInstanceAvailability(
+    methods: PaymentMethod[],
+    product: PaymentProduct,
+    checkout: CheckoutOptions | undefined,
+    theme: ResolvedPaymentTheme,
+  ): Promise<AvailablePaymentMethod[]> {
+    const generation = ++this.availabilityGeneration;
+    try {
+      const results = await this.orchestrator.refreshAvailability(
+        methods,
+        product,
+        checkout,
+        theme,
+      );
+      if (this.destroyed || generation !== this.availabilityGeneration) {
+        return results;
+      }
+      this.availabilitySession.apply(results);
+      return results;
+    } catch (error) {
+      if (!this.destroyed && generation === this.availabilityGeneration) {
+        // Keep prior tiles if any; do not clear on transient failures.
+      }
+      throw error;
+    }
+  }
 
   private async mountApplePayBootstrap(
     host: HTMLElement,
