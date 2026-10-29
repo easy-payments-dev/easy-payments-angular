@@ -10,6 +10,9 @@ import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
+import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
+import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentResult } from '../../models';
 
@@ -429,26 +432,141 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes.length).toBe(1);
   });
 
-  it('keeps Klarna / Affirm noninteractive placeholders', async () => {
+  it('shows interactive Klarna and Affirm selectors when ready (mock mode)', async () => {
     fixture.componentRef.setInput('methods', [
-      'card',
-      'paypal',
-      'apple-pay',
-      'google-pay',
       'klarna',
+      'paypal',
       'affirm',
+      'card',
     ]);
     await render(fixture);
 
-    for (const method of ['klarna', 'affirm']) {
-      const item = slotItem(fixture, method);
-      expect(item?.getAttribute('data-kind')).toBe('placeholder');
-      expect(item?.getAttribute('data-interactive')).toBe('false');
-      expect(item?.querySelector('.ep-payment-buttons__placeholder')).toBeTruthy();
-      expect(item?.querySelector('button.ep-payment-buttons__selector')).toBeNull();
-    }
-    expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('google-pay-mock');
-    expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-mock');
+    const klarna = slotItem(fixture, 'klarna');
+    expect(klarna?.getAttribute('data-kind')).toBe('klarna-selector');
+    expect(klarna?.getAttribute('data-interactive')).toBe('true');
+    expect(klarna?.querySelector('button.ep-payment-buttons__selector')).toBeTruthy();
+    expect(fixture.nativeElement.getAttribute('data-klarna-ready')).toBe('true');
+
+    const affirm = slotItem(fixture, 'affirm');
+    expect(affirm?.getAttribute('data-kind')).toBe('affirm-selector');
+    expect(affirm?.getAttribute('data-interactive')).toBe('true');
+    expect(affirm?.querySelector('button.ep-payment-buttons__selector')).toBeTruthy();
+    expect(fixture.nativeElement.getAttribute('data-affirm-ready')).toBe('true');
+
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
+    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'affirm', 'card']);
+  });
+
+  it('reveals Klarna mock panel only after selection (no auto-pay)', async () => {
+    const started: unknown[] = [];
+    const methodChanges: unknown[] = [];
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+
+    fixture.componentRef.setInput('methods', ['klarna', 'affirm', 'card']);
+    await render(fixture);
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-klarna-mock-panel"]'),
+    ).toBeNull();
+
+    slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedMethod()).toBe('klarna');
+    expect(methodChanges.length).toBe(1);
+    expect((methodChanges[0] as { method: string }).method).toBe('klarna');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-klarna-mock-panel"]'),
+    ).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(started.length).toBe(0);
+    // Affirm panel stays closed until selected.
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-affirm-mock-panel"]'),
+    ).toBeNull();
+  });
+
+  it('emits methodChange on Affirm selection and lifecycle events on mock pay', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+
+    TestBed.inject(MockPaymentController).setOutcome('success');
+    fixture.componentRef.setInput('methods', ['affirm', 'klarna']);
+    await render(fixture);
+
+    slotItem(fixture, 'affirm')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    expect(methodChanges.length).toBe(1);
+    expect(started.length).toBe(0);
+
+    fixture.nativeElement
+      .querySelector('[data-testid="easy-payment-buttons-affirm-mock-panel"] button.ep-mock-panel__cta')
+      ?.dispatchEvent(new Event('click'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(started.length).toBe(1);
+    expect((started[0] as { method: string }).method).toBe('affirm');
+    expect(successes.length).toBe(1);
+    expect(successes[0].method).toBe('affirm');
+  });
+
+  it('keeps Klarna unavailable noninteractive without a panel', async () => {
+    fixture.componentRef.setInput('methods', ['klarna', 'paypal']);
+    await render(fixture);
+
+    applyInstanceAvailability(fixture, [
+      { method: 'klarna', isMock: true, available: false, status: 'unavailable' },
+      { method: 'paypal', isMock: true, available: true, status: 'available' },
+    ]);
+    fixture.detectChanges();
+
+    const klarna = slotItem(fixture, 'klarna');
+    expect(klarna?.getAttribute('data-state')).toBe('unavailable');
+    expect(klarna?.getAttribute('data-kind')).toBe('placeholder');
+    expect(klarna?.getAttribute('data-interactive')).toBe('false');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-klarna-mock-panel"]'),
+    ).toBeNull();
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
+  });
+
+  it('omits Klarna and Affirm when not in the methods allow-list', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+
+    expect(slotItem(fixture, 'klarna')).toBeNull();
+    expect(slotItem(fixture, 'affirm')).toBeNull();
+    expect(fixture.nativeElement.getAttribute('data-klarna-ready')).toBe('false');
+    expect(fixture.nativeElement.getAttribute('data-affirm-ready')).toBe('false');
+  });
+
+  it('isolates Klarna/Affirm selection across concurrent button hosts', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['klarna', 'card']);
+    fixtureB.componentRef.setInput('methods', ['affirm', 'klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedMethod()).toBe('klarna');
+    expect(fixtureB.componentInstance.selectedMethod()).toBeNull();
+    expect(slotMethods(fixtureB)).toEqual(['affirm', 'klarna']);
+
+    slotItem(fixtureB, 'affirm')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixtureB.detectChanges();
+    expect(fixtureB.componentInstance.selectedMethod()).toBe('affirm');
+    expect(fixture.componentInstance.selectedMethod()).toBe('klarna');
+    fixtureB.destroy();
   });
 
   it('preserves horizontal/vertical layout and developer order with wallets in place', async () => {
@@ -472,6 +590,7 @@ describe('EasyPaymentButtonsComponent', () => {
     ]);
     expect(host.getAttribute('data-layout')).toBe('horizontal');
     expect(host.classList.contains('ep-payment-buttons-host--horizontal')).toBeTrue();
+    expect(slotItem(fixture, 'klarna')?.getAttribute('data-kind')).toBe('klarna-selector');
     expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
     expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-mock');
     expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('google-pay-mock');
@@ -704,7 +823,7 @@ describe('EasyPaymentButtonsComponent real PayPal express', () => {
     expect(paypal.captureOrder).not.toHaveBeenCalled();
     expect(paypal.createOrder).not.toHaveBeenCalled();
 
-    // Card stays a selector (unavailable here); wallets stay placeholders.
+    // Unconfigured Stripe-backed methods stay unavailable placeholders.
     expect(slotItem(fixture, 'card')?.getAttribute('data-kind')).toBe('placeholder');
     expect(slotItem(fixture, 'affirm')?.getAttribute('data-kind')).toBe('placeholder');
     expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('placeholder');
@@ -1364,5 +1483,432 @@ describe('EasyPaymentButtonsComponent Apple Pay dual-host cleanup', () => {
 
     fixtureB.destroy();
     expect(liveMounts.size).toBe(0);
+  });
+});
+
+describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let klarna: jasmine.SpyObj<KlarnaAdapter>;
+  let affirm: jasmine.SpyObj<AffirmAdapter>;
+  let paypal: jasmine.SpyObj<PayPalAdapter>;
+
+  beforeEach(async () => {
+    klarna = jasmine.createSpyObj<KlarnaAdapter>(
+      'KlarnaAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'isConfirming',
+        'hasMountedElement',
+        'wasReturnConsumed',
+        'consumeStripeReturn',
+      ],
+      { provider: 'klarna', isMock: false },
+    );
+    affirm = jasmine.createSpyObj<AffirmAdapter>(
+      'AffirmAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'isConfirming',
+        'hasMountedElement',
+        'wasReturnConsumed',
+        'consumeStripeReturn',
+      ],
+      { provider: 'affirm', isMock: false },
+    );
+    paypal = jasmine.createSpyObj<PayPalAdapter>(
+      'PayPalAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureSdkLoaded',
+        'renderButtons',
+        'destroyButtons',
+        'destroy',
+        'createOrder',
+        'captureOrder',
+        'isBusy',
+        'getActiveOrderId',
+      ],
+      { provider: 'paypal', isMock: false },
+    );
+
+    klarna.initialize.and.resolveTo();
+    klarna.isAvailable.and.resolveTo(true);
+    klarna.ensureStripeLoaded.and.resolveTo({} as never);
+    klarna.createPaymentSession.and.resolveTo({ clientSecret: 'pi_klarna_buttons' });
+    klarna.mountPaymentElement.and.resolveTo();
+    klarna.updateAppearance.and.resolveTo();
+    klarna.destroy.and.resolveTo();
+    klarna.isConfirming.and.returnValue(false);
+    klarna.hasMountedElement.and.returnValue(true);
+    klarna.wasReturnConsumed.and.returnValue(false);
+
+    affirm.initialize.and.resolveTo();
+    affirm.isAvailable.and.resolveTo(true);
+    affirm.ensureStripeLoaded.and.resolveTo({} as never);
+    affirm.createPaymentSession.and.resolveTo({ clientSecret: 'pi_affirm_buttons' });
+    affirm.mountPaymentElement.and.resolveTo();
+    affirm.updateAppearance.and.resolveTo();
+    affirm.destroy.and.resolveTo();
+    affirm.isConfirming.and.returnValue(false);
+    affirm.hasMountedElement.and.returnValue(true);
+    affirm.wasReturnConsumed.and.returnValue(false);
+
+    paypal.initialize.and.resolveTo();
+    paypal.isAvailable.and.resolveTo(true);
+    paypal.renderButtons.and.resolveTo('paypal-mount-bnpl');
+    paypal.destroyButtons.and.resolveTo();
+    paypal.destroy.and.resolveTo();
+    paypal.isBusy.and.returnValue(false);
+    paypal.getActiveOrderId.and.returnValue(null);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_bnpl_buttons' },
+            klarna: {},
+            affirm: {},
+            paypal: { clientId: 'sb_bnpl' },
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            klarnaCreatePaymentUrl: '/api/klarna/create',
+            affirmCreatePaymentUrl: '/api/affirm/create',
+            paypalCreateOrderUrl: '/api/paypal/create',
+            paypalCaptureOrderUrl: '/api/paypal/capture',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: KlarnaAdapter, useValue: klarna },
+        { provide: AffirmAdapter, useValue: affirm },
+        { provide: PayPalAdapter, useValue: paypal },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['klarna', 'paypal', 'affirm', 'card']);
+  });
+
+  it('mounts easy-klarna-payment after Klarna selection without auto-confirm', async () => {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'affirm', 'card']);
+    expect(fixture.nativeElement.getAttribute('data-klarna-ready')).toBe('true');
+    expect(slotItem(fixture, 'klarna')?.getAttribute('data-kind')).toBe('klarna-selector');
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(klarna.confirmPayment).not.toHaveBeenCalled();
+
+    slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-klarna-panel"]'),
+    ).toBeTruthy();
+    expect(klarna.createPaymentSession).toHaveBeenCalled();
+    expect(klarna.confirmPayment).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('easy-affirm-payment')).toBeNull();
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
+  });
+
+  it('mounts easy-affirm-payment after Affirm selection without auto-confirm', async () => {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.getAttribute('data-affirm-ready')).toBe('true');
+    expect(slotItem(fixture, 'affirm')?.getAttribute('data-kind')).toBe('affirm-selector');
+
+    slotItem(fixture, 'affirm')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('easy-affirm-payment')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="easy-payment-buttons-affirm-panel"]'),
+    ).toBeTruthy();
+    expect(affirm.createPaymentSession).toHaveBeenCalled();
+    expect(affirm.confirmPayment).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+  });
+
+  it('marks Affirm unavailable without mounting Affirm UI when ineligible', async () => {
+    affirm.isAvailable.and.resolveTo(false);
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const affirmSlot = slotItem(fixture, 'affirm');
+    expect(affirmSlot?.getAttribute('data-state')).toBe('unavailable');
+    expect(affirmSlot?.getAttribute('data-kind')).toBe('placeholder');
+    expect(fixture.nativeElement.querySelector('easy-affirm-payment')).toBeNull();
+    expect(slotItem(fixture, 'klarna')?.getAttribute('data-kind')).toBe('klarna-selector');
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
+  });
+
+  it('emits started only after Klarna confirm and success only after confirmed payment', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+
+    klarna.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_klarna_ok',
+    });
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(methodChanges.length).toBe(1);
+    expect(started.length).toBe(0);
+
+    const payBtn = fixture.nativeElement.querySelector(
+      'easy-klarna-payment button',
+    ) as HTMLButtonElement | null;
+    expect(payBtn).toBeTruthy();
+    payBtn!.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(klarna.confirmPayment).toHaveBeenCalled();
+    expect(started.length).toBe(1);
+    expect((started[0] as { method: string }).method).toBe('klarna');
+    expect(successes.length).toBe(1);
+    expect(successes[0].transactionId).toBe('pi_klarna_ok');
+  });
+});
+
+describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
+  afterEach(() => {
+    history.replaceState({}, '', '/');
+  });
+
+  it('recovers Klarna return as success without emitting started', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_buttons_klarna&payment_intent_client_secret=sec_bk&ep_method=klarna',
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_return_klarna' },
+            klarna: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            klarnaCreatePaymentUrl: '/api/klarna/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'consumeReturn').and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_buttons_klarna_txn',
+    });
+
+    const successes: PaymentResult[] = [];
+    const started: unknown[] = [];
+    const errors: PaymentError[] = [];
+    const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['klarna', 'card']);
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+
+    expect(fixture.componentInstance.selectedMethod()).toBe('klarna');
+    expect(fixture.componentInstance.providerBusy()).toBeTrue();
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(recovery.consumeReturn).toHaveBeenCalled();
+    expect(started.length).toBe(0);
+    expect(successes.length).toBe(1);
+    expect(successes[0].method).toBe('klarna');
+    expect(successes[0].transactionId).toBe('pi_buttons_klarna_txn');
+    expect(errors.length).toBe(0);
+
+    fixture.destroy();
+  });
+
+  it('recovers Affirm return and maps retrieve failure to error once', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_buttons_aff&payment_intent_client_secret=bad&ep_method=affirm',
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_return_affirm' },
+            affirm: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            affirmCreatePaymentUrl: '/api/affirm/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'consumeReturn').and.rejectWith(
+      new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'Stripe retrieve failed',
+        method: 'affirm',
+        provider: 'affirm',
+      }),
+    );
+
+    const errors: PaymentError[] = [];
+    const successes: PaymentResult[] = [];
+    const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['affirm']);
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+
+    expect(fixture.componentInstance.selectedMethod()).toBe('affirm');
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(errors.length).toBe(1);
+    expect(errors[0].method).toBe('affirm');
+    expect(successes.length).toBe(0);
+
+    await (
+      fixture.componentInstance as unknown as {
+        recoverStripeReturn: (method: 'affirm') => Promise<void>;
+      }
+    ).recoverStripeReturn('affirm');
+    expect(errors.length).toBe(1);
+
+    fixture.destroy();
+  });
+
+  it('does not treat processing return as success', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_proc&payment_intent_client_secret=sec_proc&ep_method=klarna',
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_return_proc' },
+            klarna: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            klarnaCreatePaymentUrl: '/api/klarna/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'consumeReturn').and.resolveTo({
+      status: 'failed',
+      method: 'klarna',
+      provider: 'klarna',
+      message: 'Payment is still processing.',
+    });
+
+    const successes: PaymentResult[] = [];
+    const errors: PaymentError[] = [];
+    const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['klarna']);
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(successes.length).toBe(0);
+    expect(errors.length).toBe(1);
+    expect(errors[0].message).toContain('processing');
+
+    fixture.destroy();
   });
 });

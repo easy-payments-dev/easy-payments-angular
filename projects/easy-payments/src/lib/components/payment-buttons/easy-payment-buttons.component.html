@@ -18,7 +18,11 @@
         [attr.data-interactive]="slot.interactive ? 'true' : 'false'"
         [attr.data-mock]="slot.isMock ? 'true' : null"
       >
-        @if (slot.kind === 'card-selector') {
+        @if (
+          slot.kind === 'card-selector' ||
+          slot.kind === 'klarna-selector' ||
+          slot.kind === 'affirm-selector'
+        ) {
           <button
             type="button"
             class="ep-payment-buttons__selector"
@@ -153,7 +157,7 @@
               } @else if (slot.state === 'unavailable') {
                 Unavailable
               } @else {
-                Coming soon
+                Unavailable
               }
             </span>
           </div>
@@ -194,6 +198,78 @@
         [isMock]="true"
         [loading]="processingMethod() === 'card'"
         (pay)="onMockCardPay()"
+      />
+    </section>
+  }
+
+  @if (showKlarnaPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-klarna-panel"
+      aria-label="Klarna payment"
+    >
+      <easy-klarna-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        (started)="onKlarnaStarted()"
+        (busyChange)="onKlarnaBusy($event)"
+        (success)="onKlarnaSuccess($event)"
+        (cancel)="onKlarnaCancel($event)"
+        (error)="onKlarnaError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockKlarnaPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-klarna-mock-panel"
+      aria-label="Klarna payment"
+    >
+      <easy-mock-method-panel
+        method="klarna"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'klarna'"
+        (pay)="onMockKlarnaPay()"
+      />
+    </section>
+  }
+
+  @if (showAffirmPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-affirm-panel"
+      aria-label="Affirm payment"
+    >
+      <easy-affirm-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        (started)="onAffirmStarted()"
+        (busyChange)="onAffirmBusy($event)"
+        (success)="onAffirmSuccess($event)"
+        (cancel)="onAffirmCancel($event)"
+        (error)="onAffirmError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockAffirmPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-affirm-mock-panel"
+      aria-label="Affirm payment"
+    >
+      <easy-mock-method-panel
+        method="affirm"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'affirm'"
+        (pay)="onMockAffirmPay()"
       />
     </section>
   }

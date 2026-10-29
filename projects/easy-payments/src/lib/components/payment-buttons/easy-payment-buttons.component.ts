@@ -40,11 +40,19 @@ import {
   type EasyPaymentsTranslationOverrides,
 } from '../../i18n';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
+import {
+  detectStripeReturnMethod,
+  isStripeReturnAttempt,
+  type StripeRedirectMethod,
+} from '../../adapters/stripe/stripe-redirect-return';
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
 import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
 import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment.component';
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
+import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
+import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 
 /** Slot readiness for the method list. */
@@ -52,20 +60,28 @@ export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable'
 
 /**
  * How a method slot is rendered.
- * - `placeholder` — noninteractive (not yet integrated, loading, or unavailable)
- * - `card-selector` — Card tile that reveals Stripe/mock panel below the list
+ * - `placeholder` — noninteractive (loading or unavailable)
+ * - `*-selector` — tile that reveals Stripe/mock panel below the list
  * - `*-express` — official provider buttons in-slot
- * - `*-mock` — clearly labeled mock controls in-slot
+ * - `*-mock` — clearly labeled mock wallet controls in-slot
  */
 export type EasyPaymentButtonSlotKind =
   | 'placeholder'
   | 'card-selector'
+  | 'klarna-selector'
+  | 'affirm-selector'
   | 'paypal-express'
   | 'paypal-mock'
   | 'google-pay-express'
   | 'google-pay-mock'
   | 'apple-pay-express'
   | 'apple-pay-mock';
+
+const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
+  'card-selector',
+  'klarna-selector',
+  'affirm-selector',
+]);
 
 export interface EasyPaymentButtonSlot {
   readonly method: PaymentMethod;
@@ -74,7 +90,7 @@ export interface EasyPaymentButtonSlot {
   readonly label: string;
   readonly kind: EasyPaymentButtonSlotKind;
   /**
-   * True for Card selector tiles only.
+   * True for Card / Klarna / Affirm selector tiles.
    * Express mounts are interactive payments but not selectors.
    */
   readonly interactive: boolean;
@@ -96,7 +112,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
  * Step 2B: Official PayPal Buttons render directly in the PayPal slot.
  * Step 2C: Official Google Pay button renders directly in the google-pay slot.
  * Step 2D: Official Apple Pay ECE button renders directly in the apple-pay slot.
- * Klarna / Affirm remain noninteractive placeholders.
+ * Step 2E: Klarna / Affirm selectors → Stripe Payment Element / mock panels below.
  */
 @Component({
   selector: 'easy-payment-buttons',
@@ -107,6 +123,8 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     PayPalPaymentComponent,
     GooglePayPaymentComponent,
     ApplePayPaymentComponent,
+    KlarnaPaymentComponent,
+    AffirmPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -126,6 +144,8 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
     '[attr.data-google-pay-ready]': 'hasAvailableGooglePay() ? "true" : "false"',
     '[attr.data-apple-pay-ready]': 'hasAvailableApplePay() ? "true" : "false"',
+    '[attr.data-klarna-ready]': 'hasAvailableKlarna() ? "true" : "false"',
+    '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -145,6 +165,7 @@ export class EasyPaymentButtonsComponent {
   private readonly themeService = inject(ThemeService);
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly applePayAdapter = inject(ApplePayAdapter);
+  private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
   private readonly ngZone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
   private destroyed = false;
@@ -153,6 +174,10 @@ export class EasyPaymentButtonsComponent {
   private availabilityGeneration = 0;
   /** One in-flight attempt. Prevents duplicate terminal emits. */
   private paymentAttempt: 'idle' | 'active' | 'settled' = 'idle';
+  /** Idempotent Klarna/Affirm redirect recovery per host instance. */
+  private stripeReturnRecoveryStarted = false;
+  /** True while a Stripe BNPL return is being recovered (blocks selection clears). */
+  private stripeReturnRecovering = false;
 
   readonly product = input.required<PaymentProduct>();
   readonly methods = input<PaymentMethod[]>(DEFAULT_BUTTON_METHODS);
@@ -219,7 +244,7 @@ export class EasyPaymentButtonsComponent {
         isMock,
         label: getPaymentMethodPresentation(method, theme).label || PAYMENT_METHOD_LABELS[method],
         kind,
-        interactive: kind === 'card-selector',
+        interactive: SELECTOR_SLOT_KINDS.has(kind),
       };
     });
   });
@@ -240,6 +265,14 @@ export class EasyPaymentButtonsComponent {
     this.methodSlots().some((slot) => slot.method === 'apple-pay' && slot.state === 'available'),
   );
 
+  readonly hasAvailableKlarna = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'klarna' && slot.state === 'available'),
+  );
+
+  readonly hasAvailableAffirm = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'affirm' && slot.state === 'available'),
+  );
+
   readonly selectedCardEntry = computed(() => {
     if (this.selectedMethod() !== 'card') {
       return null;
@@ -257,8 +290,46 @@ export class EasyPaymentButtonsComponent {
     return !!entry && entry.isMock;
   });
 
+  readonly selectedKlarnaEntry = computed(() => {
+    if (this.selectedMethod() !== 'klarna') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'klarna' && entry.available) ?? null
+    );
+  });
+
+  readonly showKlarnaPanel = computed(() => {
+    const entry = this.selectedKlarnaEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockKlarnaPanel = computed(() => {
+    const entry = this.selectedKlarnaEntry();
+    return !!entry && entry.isMock;
+  });
+
+  readonly selectedAffirmEntry = computed(() => {
+    if (this.selectedMethod() !== 'affirm') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'affirm' && entry.available) ?? null
+    );
+  });
+
+  readonly showAffirmPanel = computed(() => {
+    const entry = this.selectedAffirmEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockAffirmPanel = computed(() => {
+    const entry = this.selectedAffirmEntry();
+    return !!entry && entry.isMock;
+  });
+
   /**
-   * True when at least one configured method is still a noninteractive placeholder.
+   * True when at least one configured method is still loading (placeholder, not unavailable).
    */
   readonly foundationOnly = computed(() =>
     this.methodSlots().some((slot) => slot.kind === 'placeholder' && slot.state !== 'unavailable'),
@@ -292,6 +363,18 @@ export class EasyPaymentButtonsComponent {
       });
     });
 
+    // Parent-owned Klarna/Affirm redirect recovery (same contract as Ready-to-Use Checkout).
+    // Shared StripeRedirectRecoveryService is once-per-page-load — prefer one recovering host.
+    if (typeof window !== 'undefined' && isStripeReturnAttempt()) {
+      const method = detectStripeReturnMethod() ?? 'klarna';
+      this.stripeReturnRecovering = true;
+      this.updateSelectedMethod(method);
+      this.providerBusy.set(true);
+      queueMicrotask(() => {
+        void this.recoverStripeReturn(method);
+      });
+    }
+
     effect(() => {
       this.themeService.setTheme(this.theme());
     });
@@ -315,14 +398,25 @@ export class EasyPaymentButtonsComponent {
       });
     });
 
-    // Clear Card selection if Card leaves the allow-list or becomes unavailable.
+    // Clear selector methods if they leave the allow-list or become unavailable.
+    // Skip while busy / BNPL redirect recovery so availability publish cannot steal selection.
     effect(() => {
       const selected = this.selectedMethod();
-      if (selected !== 'card') {
+      if (selected !== 'card' && selected !== 'klarna' && selected !== 'affirm') {
         return;
       }
-      const cardSlot = this.methodSlots().find((slot) => slot.method === 'card');
-      if (!cardSlot || cardSlot.state !== 'available') {
+      if (
+        untracked(
+          () =>
+            this.stripeReturnRecovering ||
+            this.providerBusy() ||
+            this.processingMethod() !== null,
+        )
+      ) {
+        return;
+      }
+      const slot = this.methodSlots().find((entry) => entry.method === selected);
+      if (!slot || slot.state !== 'available') {
         untracked(() => this.updateSelectedMethod(null));
       }
     });
@@ -366,7 +460,7 @@ export class EasyPaymentButtonsComponent {
       return;
     }
     const slot = this.methodSlots().find((entry) => entry.method === method);
-    if (slot?.kind !== 'card-selector') {
+    if (!slot || !SELECTOR_SLOT_KINDS.has(slot.kind)) {
       return;
     }
     this.updateSelectedMethod(method);
@@ -389,6 +483,46 @@ export class EasyPaymentButtonsComponent {
   }
 
   onCardError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  onKlarnaStarted(): void {
+    this.onPaymentStarted('klarna');
+  }
+
+  onKlarnaBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onKlarnaSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onKlarnaCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onKlarnaError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  onAffirmStarted(): void {
+    this.onPaymentStarted('affirm');
+  }
+
+  onAffirmBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onAffirmSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onAffirmCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAffirmError(error: PaymentError): void {
     this.handlePaymentError(error);
   }
 
@@ -471,6 +605,14 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('card');
   }
 
+  async onMockKlarnaPay(): Promise<void> {
+    await this.runMockPayment('klarna');
+  }
+
+  async onMockAffirmPay(): Promise<void> {
+    await this.runMockPayment('affirm');
+  }
+
   async onMockPayPalPay(): Promise<void> {
     if (this.methodsLocked() || this.destroyed) {
       return;
@@ -518,6 +660,12 @@ export class EasyPaymentButtonsComponent {
     if (method === 'card') {
       return 'card-selector';
     }
+    if (method === 'klarna') {
+      return 'klarna-selector';
+    }
+    if (method === 'affirm') {
+      return 'affirm-selector';
+    }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';
     }
@@ -525,6 +673,76 @@ export class EasyPaymentButtonsComponent {
       return isMock ? 'google-pay-mock' : 'google-pay-express';
     }
     return 'placeholder';
+  }
+
+  /**
+   * Library-owned Stripe BNPL redirect recovery (Klarna / Affirm).
+   * Always leaves busy for a terminal success / cancel / error. Idempotent per host.
+   * Does not emit `started` — confirmation already happened before redirect.
+   */
+  private async recoverStripeReturn(method: StripeRedirectMethod): Promise<void> {
+    if (this.stripeReturnRecoveryStarted) {
+      return;
+    }
+    this.stripeReturnRecoveryStarted = true;
+
+    this.updateSelectedMethod(method);
+    this.providerBusy.set(true);
+
+    const label = method === 'affirm' ? 'Affirm' : 'Klarna';
+
+    try {
+      const result = await this.stripeRedirectRecovery.consumeReturn();
+      if (this.destroyed) {
+        return;
+      }
+      if (!result) {
+        this.handlePaymentError(
+          new PaymentError({
+            code: 'PAYMENT_FAILED',
+            message: `${label} return could not be verified.`,
+            method,
+            provider: method,
+          }),
+        );
+        return;
+      }
+
+      if (result.status === 'success') {
+        this.handleSuccess(result);
+      } else if (result.status === 'cancelled') {
+        this.handleCancelled(result);
+      } else {
+        this.handlePaymentError(
+          new PaymentError({
+            code: 'PAYMENT_FAILED',
+            message: result.message ?? `${label} payment failed.`,
+            method,
+            provider: method,
+          }),
+        );
+      }
+    } catch (err) {
+      if (this.destroyed) {
+        return;
+      }
+      const paymentError = normalizeError(err, { method, provider: method });
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.handleCancelled({
+          status: 'cancelled',
+          method,
+          provider: method,
+          message: paymentError.message,
+        });
+      } else {
+        this.handlePaymentError(paymentError);
+      }
+    } finally {
+      this.stripeReturnRecovering = false;
+      if (!this.destroyed) {
+        this.providerBusy.set(false);
+      }
+    }
   }
 
   private async runMockPayment(method: PaymentMethod): Promise<void> {

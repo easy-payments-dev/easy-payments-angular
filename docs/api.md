@@ -154,7 +154,7 @@ Lightweight alternative to `<easy-payments>`: no product summary, checkout title
 
 Configure providers with existing `provideEasyPayments(...)` — there is no competing `[config]` input.
 
-### Live methods (Phase 4 Step 2D)
+### Live methods (Phase 4 Step 2E — all six)
 
 | Method | Behavior |
 |--------|----------|
@@ -162,9 +162,10 @@ Configure providers with existing `provideEasyPayments(...)` — there is no com
 | `paypal` | When PayPal is ready, the **official PayPal Buttons SDK** mounts **directly in the PayPal method slot** (compact `easy-paypal-payment`). No EP selector tile and no extra click before the official button is usable. |
 | `google-pay` | When Google Pay is ready, the **official Google Pay button** mounts **directly in the google-pay slot** (compact `easy-google-pay-payment`). No EP selector tile and no extra click. |
 | `apple-pay` | When Apple Pay is configured, the **Stripe Express Checkout Element** mounts **directly in the apple-pay slot** (compact `easy-apple-pay-payment`, Apple Pay only). No EP selector tile and no extra click. Eligibility comes from ECE `ready` / `availablePaymentMethods.applePay` — not from UA sniffing. |
-| `klarna`, `affirm` | Still **noninteractive placeholders** in configured order until later Phase 4 steps. No fake BNPL buttons. |
+| `klarna` | Interactive when Klarna is ready. Selecting Klarna reveals the existing Stripe Payment Element BNPL UI (`easy-klarna-payment`) **inline below** the list. Selection alone does **not** start payment; the buyer must confirm. |
+| `affirm` | Interactive when Affirm is ready. Selecting Affirm reveals the existing Stripe Payment Element BNPL UI (`easy-affirm-payment`) **inline below** the list. Selection alone does **not** start payment; the buyer must confirm. |
 
-Unavailable methods stay noninteractive (or Apple Pay ECE shows its unavailable state without a fake CTA). Card / Apple Pay / Google Pay share Stripe publishable-key + create-payment dependencies; PayPal does not.
+Unavailable methods stay noninteractive (or Apple Pay ECE shows its unavailable state without a fake CTA). Card / Apple Pay / Google Pay / Klarna / Affirm share Stripe publishable-key + create-payment dependencies; PayPal does not.
 
 #### PayPal readiness
 
@@ -178,9 +179,17 @@ Live Google Pay requires `providers.googlePay` (TEST or PRODUCTION), a Stripe **
 
 Live Apple Pay requires `providers.applePay`, a Stripe **publishable** key, and backend `createPaymentUrl`. The merchant domain must be registered/verified with Apple Pay via Stripe (same production requirement as Ready-to-Use Checkout). The ECE is created with `paymentMethods.applePay: 'always'` and other wallets set to `never`, so Google Pay / Link / etc. are not shown in the Apple Pay slot. Wallet eligibility is decided by Stripe’s ECE `ready` event — mounting alone is not “available.” `success` fires only after Stripe PaymentIntent confirmation, never on ECE render or wallet authorization alone.
 
+#### Klarna / Affirm readiness
+
+Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backend `klarnaCreatePaymentUrl`. Supported presentment currencies include USD, EUR, GBP, CAD, AUD, SEK, NOK, and DKK (same adapter rules as Ready-to-Use Checkout). Live Affirm requires `providers.affirm`, a Stripe **publishable** key, backend `affirmCreatePaymentUrl`, USD or CAD, and a minimum about **$35** total (`amount * quantity`). Enabling the provider in config does **not** guarantee financing for every buyer or cart — Stripe/provider eligibility still applies. Do not treat PaymentIntent creation, a redirect URL, or a browser return as success.
+
+#### Klarna / Affirm redirects
+
+Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` (no secret keys). A light `sessionStorage` marker records method + product id only. After return, `<easy-payment-buttons>` owns recovery via the shared `StripeRedirectRecoveryService` (same path as `<easy-payments>`): it retrieves the PaymentIntent and emits `success` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Recovery is once-per-page-load on the shared service — prefer a single recovering host if both checkout modes are on the page. Duplicate terminal events after reload are suppressed.
+
 #### Mock mode
 
-When `enableMockMode` is true, PayPal / Google Pay / Apple Pay do **not** load live SDKs. Clearly labeled **mock** panels mount in those slots (`paypal-mock` / `google-pay-mock` / `apple-pay-mock`). They are never presented as live wallet buttons.
+When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDKs are **not** loaded for those methods. Clearly labeled **mock** controls appear (in-slot for wallets; below-list panels for Card / Klarna / Affirm after selection). They are never presented as live provider UI and do not call payment endpoints.
 
 ### Inputs
 
@@ -188,12 +197,12 @@ When `enableMockMode` is true, PayPal / Google Pay / Apple Pay do **not** load l
 |----------|------|---------|----------|-------------|
 | `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / payment context). |
 | `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order (each method stays in its configured index). |
-| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (Card / PayPal / Google Pay / Apple Pay session context). |
+| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (including BNPL return URL context). |
 | `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
 | `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Same as `<easy-payments>`. |
-| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe / PayPal / Google Pay / Apple Pay surfaces may still apply. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe / PayPal / Google Pay / Apple Pay / Klarna / Affirm surfaces may still apply. |
 
 ### Outputs
 
@@ -201,15 +210,15 @@ Same payload types as `<easy-payments>`:
 
 | Output | When it fires |
 |--------|----------------|
-| `methodChange` | **Card:** buyer selects or clears Card (selection ≠ payment). **PayPal / Google Pay / Apple Pay:** buyer engages the official button (or mock pay) — there is no separate selector. Not fired on SDK/ECE mount alone. |
-| `started` | **Card:** buyer confirms pay in Stripe/mock Card UI. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). |
-| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Google Pay / Apple Pay `success` only after Stripe **confirm** — never on token/wallet authorization alone. |
+| `methodChange` | **Card / Klarna / Affirm:** buyer selects or clears the method (selection ≠ payment). **PayPal / Google Pay / Apple Pay:** buyer engages the official button (or mock pay) — there is no separate selector. Not fired on SDK/ECE/Payment Element mount alone. |
+| `started` | **Card / Klarna / Affirm:** buyer confirms pay in the Stripe/mock UI. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). Not fired for redirect return recovery. |
+| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Card / Google Pay / Apple Pay / Klarna / Affirm `success` only after Stripe **confirm** (or verified retrieve after redirect) — never on token/wallet authorization, PaymentIntent create, redirect URL, or pending/processing alone. |
 
-Placeholder methods do not emit lifecycle events from interaction. Duplicate terminal events for one attempt are suppressed. Destroyed hosts do not emit success from stale ECE callbacks.
+Duplicate terminal events for one attempt are suppressed. Destroyed hosts do not emit success from stale provider callbacks.
 
 ### Shared orchestrator note
 
-`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and provider adapters. **PayPal**, **Google Pay**, and **Apple Pay** mounts are **ownership-scoped**: destroying one host tears down only that host’s mount id and must not clear a sibling. Concurrent live create/capture/confirm across hosts is still **not** guaranteed safe (shared processing flags). Apple Pay also uses a **single global ECE availability listener** — prefer one active Apple Pay host when combining Ready-to-Use Checkout and Payment Buttons on the same page. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
+`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and provider adapters. **PayPal**, **Google Pay**, and **Apple Pay** mounts are **ownership-scoped**: destroying one host tears down only that host’s mount id and must not clear a sibling. Klarna and Affirm adapters are **root singletons** (Payment Element + confirm flags) — concurrent live BNPL mounts across hosts are **not** safe; destroy unmounts the shared element. Stripe BNPL redirect recovery is also shared once-per-page-load. Concurrent live create/capture/confirm across hosts remains **not** guaranteed safe. Apple Pay also uses a **single global ECE availability listener**. Prefer one active BNPL / Apple Pay host when combining Ready-to-Use Checkout and Payment Buttons on the same page. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
 
 ### Example
 
