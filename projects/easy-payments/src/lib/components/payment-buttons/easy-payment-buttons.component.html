@@ -4,42 +4,97 @@
   [class.ep-payment-buttons--vertical]="layout() === 'vertical'"
   data-testid="easy-payment-buttons-root"
 >
-  <!--
-    Foundation-only: structural slots in developer [methods] order.
-    No product summary, checkout shell, or live payment actions.
-  -->
-  <ul class="ep-payment-buttons__list" role="list">
+  <div
+    class="ep-payment-buttons__list"
+    role="radiogroup"
+    [attr.aria-label]="regionAriaLabel()"
+  >
     @for (slot of methodSlots(); track slot.method) {
-      <li
+      <div
         class="ep-payment-buttons__item"
         [attr.data-method]="slot.method"
         [attr.data-state]="slot.state"
+        [attr.data-interactive]="slot.interactive ? 'true' : 'false'"
         [attr.data-mock]="slot.isMock ? 'true' : null"
-        role="listitem"
       >
-        <div
-          class="ep-payment-buttons__placeholder"
-          [class.ep-payment-buttons__placeholder--loading]="slot.state === 'loading'"
-          [class.ep-payment-buttons__placeholder--unavailable]="slot.state === 'unavailable'"
-          [class.ep-payment-buttons__placeholder--mock]="slot.isMock"
-          aria-disabled="true"
-          [attr.aria-label]="slotAriaLabel(slot)"
-        >
-          <span class="ep-payment-buttons__icon">
-            <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
-          </span>
-          <span class="ep-payment-buttons__label">{{ slot.label }}</span>
-          <span class="ep-payment-buttons__status" aria-hidden="true">
-            @if (slot.state === 'loading') {
-              Loading
-            } @else if (slot.state === 'unavailable') {
-              Unavailable
-            } @else {
-              Coming soon
-            }
-          </span>
-        </div>
-      </li>
+        @if (slot.interactive) {
+          <button
+            type="button"
+            class="ep-payment-buttons__selector"
+            role="radio"
+            [class.ep-payment-buttons__selector--selected]="selectedMethod() === slot.method"
+            [class.ep-payment-buttons__selector--mock]="slot.isMock"
+            [attr.aria-checked]="selectedMethod() === slot.method"
+            [attr.aria-label]="slotAriaLabel(slot)"
+            [disabled]="methodsLocked()"
+            (click)="selectMethod(slot.method)"
+          >
+            <span class="ep-payment-buttons__icon">
+              <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+            </span>
+            <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+          </button>
+        } @else {
+          <div
+            class="ep-payment-buttons__placeholder"
+            [class.ep-payment-buttons__placeholder--loading]="slot.state === 'loading'"
+            [class.ep-payment-buttons__placeholder--unavailable]="slot.state === 'unavailable'"
+            [class.ep-payment-buttons__placeholder--mock]="slot.isMock"
+            aria-disabled="true"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <span class="ep-payment-buttons__icon">
+              <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+            </span>
+            <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+            <span class="ep-payment-buttons__status" aria-hidden="true">
+              @if (slot.state === 'loading') {
+                Loading
+              } @else if (slot.state === 'unavailable') {
+                Unavailable
+              } @else {
+                Coming soon
+              }
+            </span>
+          </div>
+        }
+      </div>
     }
-  </ul>
+  </div>
+
+  @if (showStripeCardPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-card-panel"
+      aria-label="Card payment"
+    >
+      <easy-stripe-card-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        (started)="onCardStarted()"
+        (busyChange)="onCardBusy($event)"
+        (success)="onCardSuccess($event)"
+        (cancel)="onCardCancel($event)"
+        (error)="onCardError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockCardPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-card-mock-panel"
+      aria-label="Card payment"
+    >
+      <easy-mock-method-panel
+        method="card"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'card'"
+        (pay)="onMockCardPay()"
+      />
+    </section>
+  }
 </div>

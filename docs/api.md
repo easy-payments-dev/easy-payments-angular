@@ -154,26 +154,43 @@ Lightweight alternative to `<easy-payments>`: no product summary, checkout title
 
 Configure providers with existing `provideEasyPayments(...)` — there is no competing `[config]` input.
 
-### Foundation status (Phase 4 Step 1)
+### Live methods (Phase 4 Step 2A)
 
-Slots are **structural placeholders** only. Provider SDKs are not mounted yet; payment actions are disabled (`pointer-events: none`, `aria-disabled`). Lifecycle outputs are declared for API stability but are **not** emitted from placeholder interaction. Live mounting belongs to later Phase 4 steps.
+| Method | Behavior |
+|--------|----------|
+| `card` | Interactive when Stripe (or mock mode) is available. Selecting Card reveals the secure Stripe Payment Element (or mock panel) **inline below** the button group. Selection alone does **not** charge; the buyer must confirm with the Stripe/mock pay control. |
+| `paypal`, `apple-pay`, `google-pay`, `klarna`, `affirm` | Still **noninteractive placeholders** in configured order until later Phase 4 steps. No fake wallet buttons. |
+
+Unavailable Card (misconfigured Stripe, missing backend create URL, etc.) stays noninteractive and does not mount a payment panel. Card failures do not remove or disable other configured placeholders.
 
 ### Inputs
 
 | Property | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / future payment context). |
+| `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / Card payment context). |
 | `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order. |
-| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints for future provider flows. |
+| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (passed through to Card session creation). |
 | `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
 | `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Same as `<easy-payments>`. |
-| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned placeholder tokens. Host fill stays transparent even if `backgroundColor` is set. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe Element appearance may still apply. |
 
 ### Outputs
 
-`started`, `methodChange`, `success`, `cancel`, `error` — same payload types as `<easy-payments>`. Not fired by foundation placeholders.
+Same payload types as `<easy-payments>`:
+
+| Output | When it fires |
+|--------|----------------|
+| `methodChange` | Buyer selects or clears Card (selection ≠ payment). |
+| `started` | Buyer confirms pay in the Stripe/mock Card UI (not on selector click). |
+| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. Never invented before confirmation. |
+
+Placeholder methods do not emit lifecycle events from interaction.
+
+### Shared orchestrator note
+
+`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and Stripe adapter instance. Concurrent live Card payments across multiple hosts on the same page are **not** guaranteed safe in Step 2A — prefer one active Card confirmation at a time. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
 
 ### Example
 
