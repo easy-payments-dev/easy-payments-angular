@@ -1,0 +1,45 @@
+<div
+  class="ep-payment-buttons"
+  [class.ep-payment-buttons--horizontal]="layout() === 'horizontal'"
+  [class.ep-payment-buttons--vertical]="layout() === 'vertical'"
+  data-testid="easy-payment-buttons-root"
+>
+  <!--
+    Foundation-only: structural slots in developer [methods] order.
+    No product summary, checkout shell, or live payment actions.
+  -->
+  <ul class="ep-payment-buttons__list" role="list">
+    @for (slot of methodSlots(); track slot.method) {
+      <li
+        class="ep-payment-buttons__item"
+        [attr.data-method]="slot.method"
+        [attr.data-state]="slot.state"
+        [attr.data-mock]="slot.isMock ? 'true' : null"
+        role="listitem"
+      >
+        <div
+          class="ep-payment-buttons__placeholder"
+          [class.ep-payment-buttons__placeholder--loading]="slot.state === 'loading'"
+          [class.ep-payment-buttons__placeholder--unavailable]="slot.state === 'unavailable'"
+          [class.ep-payment-buttons__placeholder--mock]="slot.isMock"
+          aria-disabled="true"
+          [attr.aria-label]="slotAriaLabel(slot)"
+        >
+          <span class="ep-payment-buttons__icon">
+            <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+          </span>
+          <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+          <span class="ep-payment-buttons__status" aria-hidden="true">
+            @if (slot.state === 'loading') {
+              Loading
+            } @else if (slot.state === 'unavailable') {
+              Unavailable
+            } @else {
+              Coming soon
+            }
+          </span>
+        </div>
+      </li>
+    }
+  </ul>
+</div>

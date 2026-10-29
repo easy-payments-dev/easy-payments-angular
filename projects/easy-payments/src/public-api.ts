@@ -3,6 +3,12 @@
  */
 
 export { EasyPaymentsComponent } from './lib/components/payments/easy-payments.component';
+export { EasyPaymentButtonsComponent } from './lib/components/payment-buttons/easy-payment-buttons.component';
+export type {
+  EasyPaymentButtonSlot,
+  EasyPaymentButtonSlotState,
+} from './lib/components/payment-buttons/easy-payment-buttons.component';
+export type { EasyPaymentButtonsLayout } from './lib/models/easy-payment-buttons-layout.model';
 
 export { provideEasyPayments } from './lib/config/provide-easy-payments';
 export { EasyPaymentsConfigService } from './lib/config/easy-payments-config.service';

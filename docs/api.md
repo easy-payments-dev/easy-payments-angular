@@ -1,6 +1,6 @@
 # Easy Payments API Reference (v1.1.0)
 
-Complete public API for the Angular `<easy-payments>` component and related exports.
+Complete public API for the Angular `<easy-payments>` and `<easy-payment-buttons>` components and related exports.
 
 Package: `@easy-payments/angular`  
 Peers: `@angular/core` / `@angular/common` `>=20.3.0 <23.0.0`, `@stripe/stripe-js` `^8.0.0`
@@ -143,6 +143,54 @@ Diagnostics stay separate. A payment failure does not change `EasyPaymentsDiagno
 These payloads omit PaymentIntent client secrets, secret keys, PayPal client secrets, access tokens, authorization headers, raw SDK bodies, and card data. `PaymentResult.metadata` remains whatever the existing provider result already included. Do not log `PaymentError.message` if a backend or SDK may have put sensitive text there; log `code` instead.
 
 > There is **no** public `busyChange` output on `<easy-payments>` in v1.0.0. Processing locks the checkout UI internally; use the visible processing screen and the events above. See [payment-flow.md](./payment-flow.md).
+
+---
+
+## Component: `<easy-payment-buttons>`
+
+Standalone **Payment Buttons Only** host. Selector: `easy-payment-buttons`.
+
+Lightweight alternative to `<easy-payments>`: no product summary, checkout title, or checkout card shell. The host background is **always transparent**. Method order is exactly the developer `[methods]` array (one to six of the same IDs: `card`, `paypal`, `apple-pay`, `google-pay`, `klarna`, `affirm`).
+
+Configure providers with existing `provideEasyPayments(...)` — there is no competing `[config]` input.
+
+### Foundation status (Phase 4 Step 1)
+
+Slots are **structural placeholders** only. Provider SDKs are not mounted yet; payment actions are disabled (`pointer-events: none`, `aria-disabled`). Lifecycle outputs are declared for API stability but are **not** emitted from placeholder interaction. Live mounting belongs to later Phase 4 steps.
+
+### Inputs
+
+| Property | Type | Default | Required | Description |
+|----------|------|---------|----------|-------------|
+| `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / future payment context). |
+| `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order. |
+| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints for future provider flows. |
+| `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
+| `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
+| `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
+| `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Same as `<easy-payments>`. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned placeholder tokens. Host fill stays transparent even if `backgroundColor` is set. |
+
+### Outputs
+
+`started`, `methodChange`, `success`, `cancel`, `error` — same payload types as `<easy-payments>`. Not fired by foundation placeholders.
+
+### Example
+
+```html
+<easy-payment-buttons
+  [product]="product"
+  [methods]="['affirm', 'paypal', 'card', 'klarna', 'google-pay', 'apple-pay']"
+  layout="horizontal"
+  (started)="onStarted($event)"
+  (methodChange)="onMethodChange($event)"
+  (success)="onSuccess($event)"
+  (cancel)="onCancel($event)"
+  (error)="onError($event)"
+/>
+```
+
+Each instance uses a local `CheckoutAvailabilitySession` (same pattern as Step 0). `EasyPaymentsDiagnosticsService` remains global / last-refresh.
 
 ---
 
@@ -588,6 +636,7 @@ Snapshots and diagnostic messages are safe to log. They do not include Stripe se
 From `@easy-payments/angular` (see `public-api.ts`):
 
 - `EasyPaymentsComponent`
+- `EasyPaymentButtonsComponent`, `EasyPaymentButtonsLayout`, `EasyPaymentButtonSlot`, `EasyPaymentButtonSlotState`
 - `provideEasyPayments`, `EasyPaymentsConfigService`
 - Models / types above (including `EasyPaymentsAppearance`, `EasyPaymentsVisualStyle`)
 - `PaymentError`, `normalizeError`
