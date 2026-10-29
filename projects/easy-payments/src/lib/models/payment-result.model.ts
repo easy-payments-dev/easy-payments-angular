@@ -1,6 +1,11 @@
 import { PaymentMethod, PaymentProviderName } from './payment-method.model';
 
-export type PaymentStatus = 'success' | 'cancelled' | 'failed';
+/**
+ * `processing` — PaymentIntent (or equivalent) is still settling. Not success and
+ * not a definitive failure. Merchants must confirm the final outcome via backend
+ * webhooks / retrieve; the UI must not invite a retry that could double-charge.
+ */
+export type PaymentStatus = 'success' | 'cancelled' | 'failed' | 'processing';
 
 export interface PaymentResult {
   status: PaymentStatus;

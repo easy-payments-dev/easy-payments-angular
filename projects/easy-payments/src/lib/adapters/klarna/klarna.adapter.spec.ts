@@ -306,19 +306,15 @@ describe('KlarnaAdapter', () => {
     }
   });
 
-  it('exhausts processing polls without infinite spinner', async () => {
+  it('exhausts processing polls as a non-success processing result (never success)', async () => {
     retrievePaymentIntent.and.resolveTo({
       paymentIntent: { id: 'pi_klarna_proc', status: 'processing' },
     });
 
-    try {
-      await adapter.retrieveReturningPayment('sec');
-      fail('expected non-success');
-    } catch (error) {
-      expect(error).toBeInstanceOf(PaymentError);
-      expect((error as PaymentError).message.toLowerCase()).toContain('processing');
-      expect(retrievePaymentIntent.calls.count()).toBeGreaterThan(1);
-    }
+    const result = await adapter.retrieveReturningPayment('sec');
+    expect(result.status).toBe('processing');
+    expect(result.message?.toLowerCase()).toContain('processing');
+    expect(retrievePaymentIntent.calls.count()).toBeGreaterThan(1);
   });
 
   it('stamps ep_method=klarna on confirmPayment return_url', async () => {

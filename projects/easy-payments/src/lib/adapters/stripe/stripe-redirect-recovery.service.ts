@@ -26,6 +26,8 @@ import {
 export interface StripeReturnHost {
   readonly kind: StripeReturnHostKind;
   productId(): string | null;
+  /** Stable id for this host (merchant `[checkoutInstanceId]` or auto-generated). */
+  instanceId(): string;
 }
 
 export type StripeReturnClaim = 'owner' | 'not-owner';
@@ -44,14 +46,20 @@ export interface StripeReturnCandidate<T> {
   host: T;
   kind: StripeReturnHostKind;
   productId: string | null;
+  instanceId: string;
+  /** Legacy render-order index; used only when the marker has no checkoutInstanceId. */
   ordinal: number;
   methods: readonly PaymentMethod[];
 }
 
 /**
- * Pure ownership rule for a Stripe redirect return. Never guesses: a return is
- * attributed only to the host recorded in the pending marker, or — for legacy
- * returns without an attempt marker — to the single eligible host on the page.
+ * Pure ownership rule for a Stripe redirect return. Never guesses.
+ *
+ * Preference order when `ep_attempt` matches the pending marker:
+ * 1. `checkoutInstanceId` (stable across reorder / remount; merchant ids across reload)
+ * 2. Legacy kind + productId + hostOrdinal (markers from before stable ids)
+ * 3. Single eligible host for the marker product (or any eligible when no marker product)
+ * 4. Otherwise wait (owner not mounted) or AMBIGUOUS_HOSTS
  */
 export function decideStripeReturnOwner<T>(
   candidates: readonly StripeReturnCandidate<T>[],
@@ -68,11 +76,19 @@ export function decideStripeReturnOwner<T>(
     return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
   }
 
+  const attemptMatches =
+    !!params.attemptId && !!marker?.attemptId && params.attemptId === marker.attemptId;
+
+  if (attemptMatches && marker.checkoutInstanceId) {
+    const match = eligible.find((c) => c.instanceId === marker.checkoutInstanceId);
+    return match ? { kind: 'owner', owner: match.host } : { kind: 'wait' };
+  }
+
   if (
-    params.attemptId &&
-    marker?.attemptId === params.attemptId &&
+    attemptMatches &&
     marker.hostKind &&
-    typeof marker.hostOrdinal === 'number'
+    typeof marker.hostOrdinal === 'number' &&
+    !marker.checkoutInstanceId
   ) {
     const match = eligible.find(
       (c) =>
@@ -157,7 +173,12 @@ export class StripeRedirectRecoveryService {
 
   /** Non-secret origin stamp stored before a redirect so only this host recovers it. */
   describeReturnOrigin(host: StripeReturnHost, attemptId: string): StripeReturnOrigin {
-    return { attemptId, hostKind: host.kind, hostOrdinal: this.ordinalOf(host) };
+    return {
+      attemptId,
+      hostKind: host.kind,
+      checkoutInstanceId: host.instanceId(),
+      hostOrdinal: this.ordinalOf(host),
+    };
   }
 
   /**
@@ -201,6 +222,7 @@ export class StripeRedirectRecoveryService {
         host: claim.host,
         kind: claim.host.kind,
         productId: claim.host.productId(),
+        instanceId: claim.host.instanceId(),
         ordinal: this.ordinalOf(claim.host),
         methods: claim.methods,
       })),
@@ -332,13 +354,7 @@ export class StripeRedirectRecoveryService {
           await delay(STRIPE_PROCESSING_DELAY_MS);
           continue;
         }
-        throw new PaymentError({
-          code: 'PAYMENT_FAILED',
-          message: `${methodLabel(method)} payment is still processing. Please refresh or check your email for confirmation.`,
-          method,
-          provider: method,
-          originalError: paymentIntent,
-        });
+        return this.normalizeIntent(method, paymentIntent);
       }
 
       return this.normalizeIntent(method, paymentIntent);
@@ -399,12 +415,13 @@ export class StripeRedirectRecoveryService {
     }
 
     if (status === 'processing') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message: `${methodLabel(method)} payment is still processing. Please refresh or check your email for confirmation.`,
+      return normalizePaymentResult({
+        status: 'processing',
         method,
         provider: method,
-        originalError: paymentIntent,
+        transactionId: paymentIntent?.id,
+        message: `${methodLabel(method)} payment is still processing. Do not retry — confirm the final status on your backend.`,
+        metadata: { stripeStatus: status, gateway: 'stripe' },
       });
     }
 

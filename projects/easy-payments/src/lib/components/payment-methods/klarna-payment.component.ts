@@ -494,6 +494,13 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    if (result.status === 'processing') {
+      // Host maps this to the optional `pending` output; panel stays locked.
+      this.uiState.set('processing');
+      this.success.emit(result);
+      return;
+    }
+
     if (result.status === 'cancelled') {
       this.uiState.set('ready');
       this.cancel.emit(result);

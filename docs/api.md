@@ -18,6 +18,7 @@ Standalone component. Selector: `easy-payments`.
 | `product` | `PaymentProduct` | — | **Yes** | see [PaymentProduct](#paymentproduct) | Product/checkout line shown to the customer and sent to your backend. |
 | `methods` | `PaymentMethod[]` | `['apple-pay','google-pay','paypal','card']` | No | `apple-pay`, `google-pay`, `paypal`, `klarna`, `affirm`, `card` | Allowed methods **and** preferred visual order. Unavailable methods are omitted; relative order of available methods is preserved. No separate `order` input. |
 | `checkout` | `CheckoutOptions` | `undefined` | No | see below | Optional checkout hints (`successUrl`, `cancelUrl`, `successBehavior`, customer, shipping). |
+| `checkoutInstanceId` | `string \| null` | `null` | No | 1–64 chars `[a-zA-Z0-9_.:-]` | Optional stable id for multi-host redirect ownership. Omit on single-host pages. See [Klarna / Affirm redirects](#klarna--affirm-redirects). |
 | `theme` | `PaymentTheme` | `'system'` | No | `light`, `dark`, `system` | Color theme. `system` follows `prefers-color-scheme` and updates when the preference changes. |
 | `appearance` | `EasyPaymentsAppearance` | `'default'` | No | `default`, `transparent` | Outer shell. Independent of `theme`. `transparent` removes built-in card chrome. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | see [Visual style](#visual-style) | Optional EP-owned font / color / token overrides. Invalid fields ignored. Does not restyle provider SDK chrome. |
@@ -60,12 +61,13 @@ Standalone component. Selector: `easy-payments`.
 |-------|---------|---------------|-------------|
 | `started` | `PaymentStartedEvent` | A payment attempt begins | Disable a second submit, analytics |
 | `success` | `PaymentResult` | Payment completed successfully | Persist order, navigate, analytics |
+| `pending` | `PaymentResult` (`status: 'processing'`) | PaymentIntent still settling — not success, not failure | Show “confirming…” UX; await webhook |
 | `cancel` | `PaymentResult` | Customer cancelled on a path the provider reports as cancellation | Restore cart UX, messaging |
 | `error` | `PaymentError` | Payment failed, or an existing configuration/availability error | Show merchant error UI |
 | `methodChange` | `PaymentMethodChangeEvent` | The selected method changes | Update the surrounding page |
 | `successContinue` | `PaymentResult` | Customer clicks **Continue** on the built-in success screen | Only when `successBehavior` is `confirmation` |
 
-`success`, `cancel`, `error`, and `successContinue` keep their existing names and payload fields. `started` and `methodChange` are additive.
+`success`, `cancel`, `error`, and `successContinue` keep their existing names and payload fields. `started`, `methodChange`, and optional `pending` are additive.
 
 ```html
 <easy-payments
@@ -130,7 +132,18 @@ Selecting a method tile does not fire `started`. A repeated click or a second SD
 
 `success` still fires only after the existing provider flow confirms success. PayPal `success` fires after capture, not when the order is created. Stripe card, Google Pay, and Apple Pay `success` fires for PaymentIntent statuses `succeeded` and `requires_capture`.
 
-> **Behavior change (Phase 4):** a PaymentIntent that is still `processing` after confirm is no longer reported as `success` for Card, Google Pay, or Apple Pay. It emits `error` with code `PAYMENT_FAILED` and a "still processing — do not retry" message. Klarna and Affirm already behaved this way. Confirm the final status on your backend (for example with a webhook) before fulfilling.
+#### Pending / processing payments
+
+A PaymentIntent that is still `processing` after confirm (Card, Google Pay, Apple Pay, Klarna, Affirm) is **not** `success` and is **not** treated as a definitive failure.
+
+| Channel | Behavior |
+|---------|----------|
+| Optional `pending` output | Emits a `PaymentResult` with `status: 'processing'`. |
+| `success` / `error` / `cancel` | Not emitted for this outcome. |
+| UI | Full checkout keeps the processing screen (no Try again). Buttons Only locks further payment attempts on that host. |
+| Retry | Blocked for that attempt so the buyer cannot double-submit. |
+
+**Merchant responsibility:** listen for `pending` if you show in-app status, and always confirm the final outcome on your backend (Stripe webhooks such as `payment_intent.succeeded` / `payment_intent.payment_failed`, plus your own order state). Easy Payments never auto-retries a payment that may already have been submitted.
 
 `error` still uses `PaymentError` and its stable `code`. A declined card uses `CARD_DECLINED` or `PAYMENT_FAILED`, depending on the existing mapper. Configuration failures such as `SDK_LOAD_FAILED` still use `error` and do not emit `cancel` or `started`. An availability refresh error still uses the existing `error` output and is not a payment attempt.
 
@@ -138,7 +151,7 @@ Selecting a method tile does not fire `started`. A repeated click or a second SD
 
 `methodChange` fires when the selected method actually changes, including the first selection and when the current method is removed or becomes unavailable. Choosing the method that is already selected does not fire it again. `provider` is null when `method` is null.
 
-Duplicate terminal callbacks for the same attempt are ignored after the first `success`, `cancel`, or `error` that belongs to that attempt. Callbacks after the component is destroyed are ignored.
+Duplicate terminal callbacks for the same attempt are ignored after the first `success`, `cancel`, `error`, or `pending` that belongs to that attempt. Callbacks after the component is destroyed are ignored.
 
 Diagnostics stay separate. A payment failure does not change `EasyPaymentsDiagnosticsService` readiness, and a readiness update does not emit `started` or `cancel`.
 
@@ -187,19 +200,22 @@ Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backe
 
 #### Klarna / Affirm redirects
 
-Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records the method, product id, attempt token, host kind (`checkout` or `buttons`), and the host's position among same-kind hosts for that product. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed.
+Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records method, product id, attempt token, host kind (`checkout` or `buttons`), and a **stable `checkoutInstanceId`**. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `pending` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed.
 
-**Return ownership on pages with several hosts.** Only the host that started the redirect recovers it. Other hosts revert silently to their normal idle state and emit nothing. Easy Payments never guesses an owner:
+**Stable identity (recommended on multi-host pages).** Set optional `[checkoutInstanceId]` to a merchant-stable string that is the same before redirect and after return (for example your cart or checkout session id). Ownership then survives host reorder, conditional render, and `@defer` / delayed mount. Auto-generated ids work within a single SPA lifetime but do **not** survive a full-page Stripe redirect reload — use a merchant id when more than one host can show the same product.
+
+**Return ownership.** Only the host that started the redirect recovers it. Other hosts revert silently and emit nothing. Easy Payments never guesses an owner:
 
 | Situation | Behavior |
 |-----------|----------|
-| `ep_attempt` matches the marker and the originating host is mounted | That host recovers. |
-| The originating host is not mounted yet (or was destroyed before recovery started) | The return waits. A host that mounts later at the same position recovers it. Dev-mode warning `STRIPE_RETURN_OWNER_NOT_MOUNTED`. |
-| `ep_attempt` does not match the marker (stale or replayed URL) | Not recovered. Return params are removed from the URL; the newer marker is kept. Dev-mode warning `STRIPE_RETURN_UNATTRIBUTED (STALE_ATTEMPT)`. |
+| `ep_attempt` matches and marker `checkoutInstanceId` matches a live host | That host recovers (preferred; order-independent). |
+| Marker has `checkoutInstanceId` but that host is not mounted yet | Waits. A later mount with the same id recovers it. Dev-mode warning `STRIPE_RETURN_OWNER_NOT_MOUNTED`. |
+| Legacy marker with kind + ordinal only (no instance id) | Matches that kind/product/ordinal if still present; otherwise waits. |
+| `ep_attempt` does not match the marker (stale or replayed URL) | Not recovered. URL params cleared; newer marker kept. `STRIPE_RETURN_UNATTRIBUTED (STALE_ATTEMPT)`. |
 | Legacy return without `ep_attempt` and exactly one eligible host | That host recovers (1.1 behavior). |
-| Legacy return without `ep_attempt` and several eligible hosts | Not recovered (no events). Params and marker are cleared. Dev-mode warning `STRIPE_RETURN_UNATTRIBUTED (AMBIGUOUS_HOSTS)`. |
+| Legacy return without `ep_attempt` and several eligible hosts | Not recovered (no events). `STRIPE_RETURN_UNATTRIBUTED (AMBIGUOUS_HOSTS)`. |
 
-When a return is not recovered, no `success` / `cancel` / `error` is emitted. Confirm the payment status on your backend. Host positions follow render order, so keep the same host layout on the return page.
+When a return is not recovered, no payment events are emitted. Confirm status on your backend.
 
 #### Mock mode
 
@@ -212,6 +228,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / payment context). |
 | `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order (each method stays in its configured index). |
 | `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (including BNPL return URL context). |
+| `checkoutInstanceId` | `string \| null` | `null` | No | Optional stable id for multi-host redirect ownership (same rules as `<easy-payments>`). |
 | `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
 | `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
@@ -227,8 +244,9 @@ Same payload types as `<easy-payments>`:
 | `methodChange` | **Card / Klarna / Affirm:** buyer selects or clears the method (selection ≠ payment). **PayPal / Google Pay / Apple Pay:** buyer engages the official button (or mock pay) — there is no separate selector. Not fired on SDK/ECE/Payment Element mount alone. |
 | `started` | **Card / Klarna / Affirm:** buyer confirms pay in the Stripe/mock UI. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). Not fired for redirect return recovery. |
 | `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Card / Google Pay / Apple Pay / Klarna / Affirm `success` only after Stripe **confirm** (or verified retrieve after redirect) — never on token/wallet authorization, PaymentIntent create, redirect URL, or pending/processing alone. |
+| `pending` | PaymentIntent still `processing` after confirm or return retrieve. Not success and not a definitive failure. Host locks retry; await backend/webhook. |
 
-Duplicate terminal events for one attempt are suppressed. Destroyed hosts emit nothing from stale provider callbacks. After an `error` or `cancel`, the buyer can retry from the same host.
+Duplicate terminal events for one attempt are suppressed. Destroyed hosts emit nothing from stale provider callbacks. After an `error` or `cancel`, the buyer can retry from the same host. After `pending`, retry stays locked.
 
 ### Shared orchestrator note
 
@@ -715,6 +733,42 @@ From `@easy-payments/angular` (see `public-api.ts`):
 - `MockPaymentController` (demo/testing)
 - Klarna/Stripe return helpers (`isKlarnaReturnAttempt`, `detectStripeReturnMethod`, …)
 - Layout helpers: `resolveCheckoutMaxWidth`, width constants
+
+---
+
+## Multi-instance limitations
+
+- Prefer one intentional checkout experience per product page when possible. Many hosts are supported, but wallets and BNPL still share one buyer attention and one Stripe confirmation gate per page.
+- For Klarna/Affirm redirects on multi-host pages, set `[checkoutInstanceId]` to a merchant-stable value that is identical before and after return.
+- Auto-generated host ids do not survive a full-page Stripe redirect reload.
+- Card 3DS returns without `ep_method` are not recovered by the BNPL return path (existing behavior).
+- Final asynchronous settlement is always your backend’s job (webhooks / retrieve), especially after a `pending` event.
+
+---
+
+## Demo multi-instance QA harness
+
+Development-only page in the Angular demo app (not exported from `@easy-payments/angular`).
+
+1. Run the demo (`npx ng serve demo` or your usual demo command) with **Demo Mode**.
+2. Open `http://localhost:4200/?ep_qa=multi` (port may vary).
+3. Use the left panel to switch scenarios (1 host, 10 hosts, 5+5, layouts/themes, destroy/recreate, unavailable methods).
+4. Mock pay controls exercise success / fail / cancel without live credentials.
+5. Exit with the link back to `/` (or remove `ep_qa=multi`).
+
+---
+
+## Manual live-provider validation checklist
+
+Unit tests use mocks and do not prove live provider behavior. Before production:
+
+- [ ] Stripe TEST Card confirm + optional 3DS
+- [ ] Klarna TEST redirect round-trip with one host and with two hosts using distinct `checkoutInstanceId` values
+- [ ] Affirm TEST redirect round-trip (same)
+- [ ] Google Pay TEST sheet on a supported browser/device
+- [ ] Apple Pay on Safari with a Stripe-verified domain
+- [ ] PayPal Sandbox create + capture on two concurrent hosts
+- [ ] Confirm webhooks update order state when the UI emitted `pending`
 
 ---
 

@@ -39,6 +39,7 @@ function createHost(
   kind: StripeReturnHostKind,
   productId: string = SAMPLE_PRODUCT.id,
   methods: PaymentMethod[] = METHODS,
+  checkoutInstanceId?: string,
 ): HostHandle {
   const fixture =
     kind === 'buttons'
@@ -46,6 +47,9 @@ function createHost(
       : TestBed.createComponent(EasyPaymentsComponent);
   fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: productId });
   fixture.componentRef.setInput('methods', methods);
+  if (checkoutInstanceId) {
+    fixture.componentRef.setInput('checkoutInstanceId', checkoutInstanceId);
+  }
   const handle: HostHandle = {
     kind,
     fixture,
@@ -97,8 +101,18 @@ function returnUrl(extra: Record<string, string> = {}): Record<string, string> {
   };
 }
 
-function markOrigin(hostKind: StripeReturnHostKind, hostOrdinal: number, productId: string = SAMPLE_PRODUCT.id) {
-  markStripePendingReturn('klarna', productId, undefined, { attemptId: ATTEMPT, hostKind, hostOrdinal });
+function markOrigin(
+  hostKind: StripeReturnHostKind,
+  hostOrdinal: number,
+  productId: string = SAMPLE_PRODUCT.id,
+  checkoutInstanceId?: string,
+) {
+  markStripePendingReturn('klarna', productId, undefined, {
+    attemptId: ATTEMPT,
+    hostKind,
+    hostOrdinal,
+    ...(checkoutInstanceId ? { checkoutInstanceId } : {}),
+  });
 }
 
 function successResult(): PaymentResult {
@@ -113,7 +127,8 @@ describe('Stripe redirect return ownership', () => {
       ordinal: number,
       productId = 'p',
       methods: PaymentMethod[] = ['klarna'],
-    ): StripeReturnCandidate<string> => ({ host, kind, productId, ordinal, methods });
+      instanceId = host,
+    ): StripeReturnCandidate<string> => ({ host, kind, productId, ordinal, methods, instanceId });
     const params = (attemptId: string | null, method: 'klarna' | null = 'klarna') => ({
       paymentIntentId: 'pi',
       clientSecret: 'cs',
@@ -140,7 +155,39 @@ describe('Stripe redirect return ownership', () => {
       ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
     });
 
-    it('attributes to the exact host kind, product and ordinal', () => {
+    it('attributes by stable checkoutInstanceId even when ordinals differ', () => {
+      const candidates = [
+        candidate('first', 'buttons', 0, 'p', ['klarna'], 'slot-b'),
+        candidate('second', 'buttons', 1, 'p', ['klarna'], 'slot-a'),
+      ];
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        hostOrdinal: 0,
+        checkoutInstanceId: 'slot-a',
+      });
+      expect(decideStripeReturnOwner(candidates, params(ATTEMPT), m)).toEqual({
+        kind: 'owner',
+        owner: 'second',
+      });
+    });
+
+    it('waits when the stable checkoutInstanceId is not mounted yet', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'slot-late',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('early', 'buttons', 0, 'p', ['klarna'], 'slot-other')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('attributes to the exact host kind, product and ordinal (legacy markers)', () => {
       const candidates = [
         candidate('b0', 'buttons', 0),
         candidate('c0', 'checkout', 0),
@@ -150,7 +197,7 @@ describe('Stripe redirect return ownership', () => {
       expect(decideStripeReturnOwner(candidates, params(ATTEMPT), m)).toEqual({ kind: 'owner', owner: 'b1' });
     });
 
-    it('waits when the originating host is not mounted', () => {
+    it('waits when the originating host is not mounted (legacy ordinal)', () => {
       const m = marker({ attemptId: ATTEMPT, hostKind: 'checkout', hostOrdinal: 3 });
       expect(decideStripeReturnOwner([candidate('c0', 'checkout', 0)], params(ATTEMPT), m)).toEqual({
         kind: 'wait',
@@ -196,14 +243,26 @@ describe('Stripe redirect return ownership', () => {
         ],
       });
       setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
-      markOrigin('buttons', 0);
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
       const service = TestBed.inject(StripeRedirectRecoveryService);
-      const hostA: StripeReturnHost = { kind: 'buttons', productId: () => SAMPLE_PRODUCT.id };
+      const hostA: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
       service.registerHost(hostA);
       expect(await service.claimReturn(hostA, ['klarna'])).toBe('owner');
 
       service.unregisterHost(hostA);
-      const hostB: StripeReturnHost = { kind: 'buttons', productId: () => SAMPLE_PRODUCT.id };
+      const hostB: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
       service.registerHost(hostB);
       expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
     });
@@ -416,22 +475,26 @@ describe('Stripe redirect return ownership', () => {
       expect(totalEvents(hosts[1])).toBe(0);
     });
 
-    it('still-processing return is an error, never success', async () => {
-      retrieve.and.rejectWith(
-        new PaymentError({
-          code: 'PAYMENT_FAILED',
-          message: 'Klarna payment is still processing.',
-          method: 'klarna',
-          provider: 'klarna',
-        }),
-      );
+    it('still-processing return emits pending (never success or failed error)', async () => {
+      retrieve.and.resolveTo({
+        status: 'processing',
+        method: 'klarna',
+        provider: 'klarna',
+        message: 'Klarna payment is still processing.',
+      });
       setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
       markOrigin('buttons', 0);
       const hosts = [createHost('buttons'), createHost('checkout')];
+      const pending: PaymentResult[] = [];
+      (hosts[0].fixture.componentInstance as EasyPaymentButtonsComponent).pending.subscribe((r) =>
+        pending.push(r),
+      );
       await settle(hosts);
 
-      expect(hosts[0].errors.length).toBe(1);
+      expect(pending.length).toBe(1);
+      expect(pending[0].status).toBe('processing');
       expect(hosts[0].successes.length).toBe(0);
+      expect(hosts[0].errors.length).toBe(0);
       expect(totalEvents(hosts[1])).toBe(0);
     });
 
@@ -467,6 +530,63 @@ describe('Stripe redirect return ownership', () => {
       resolveRetrieve(successResult());
       await new Promise((r) => setTimeout(r, 0));
       expect(totalEvents(host)).toBe(0);
+    });
+
+    it('reordered hosts: stable checkoutInstanceId still owns the return', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markOrigin('buttons', 0, SAMPLE_PRODUCT.id, 'plan-slot-b');
+      // Render order flipped vs the ordinal stored in the marker.
+      const hosts = [
+        createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'plan-slot-a'),
+        createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'plan-slot-b'),
+      ];
+      await settle(hosts);
+
+      expect(hosts[0].successes.length).toBe(0);
+      expect(hosts[1].successes.length).toBe(1);
+      expect(retrieve).toHaveBeenCalledTimes(1);
+    });
+
+    it('conditional / delayed mount: waits, then recovers when the stable id appears', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markOrigin('buttons', 0, SAMPLE_PRODUCT.id, 'deferred-host');
+      const early = createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'other-host');
+      await settle([early]);
+      expect(totalEvents(early)).toBe(0);
+      expect(retrieve).not.toHaveBeenCalled();
+      expect(warned('STRIPE_RETURN_OWNER_NOT_MOUNTED')).toBeTrue();
+
+      const late = createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'deferred-host');
+      await settle([late]);
+      expect(late.successes.length).toBe(1);
+      expect(totalEvents(early)).toBe(0);
+    });
+
+    it('reload with the same merchant checkoutInstanceId recovers once', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markOrigin('checkout', 0, SAMPLE_PRODUCT.id, 'merchant-checkout-1');
+      const first = createHost('checkout', SAMPLE_PRODUCT.id, METHODS, 'merchant-checkout-1');
+      await settle([first]);
+      expect(first.successes.length).toBe(1);
+
+      destroyHost(first);
+      // Simulate a fresh page load: URL/marker already cleared by consumeReturn.
+      const remount = createHost('checkout', SAMPLE_PRODUCT.id, METHODS, 'merchant-checkout-1');
+      await settle([remount]);
+      expect(totalEvents(remount)).toBe(0);
+      expect(retrieve).toHaveBeenCalledTimes(1);
+    });
+
+    it('ambiguous legacy return with several same-product hosts fails closed', async () => {
+      setReturnUrl(returnUrl());
+      const hosts = [
+        createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'a'),
+        createHost('buttons', SAMPLE_PRODUCT.id, METHODS, 'b'),
+      ];
+      await settle(hosts);
+      hosts.forEach((h) => expect(totalEvents(h)).toBe(0));
+      expect(retrieve).not.toHaveBeenCalled();
+      expect(warned('AMBIGUOUS_HOSTS')).toBeTrue();
     });
   });
 });

@@ -30,6 +30,14 @@ import {
   type PersistedDemoMode,
 } from './demo-mode-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
+import { MultiInstanceQaPage } from './multi-instance-qa/multi-instance-qa.page';
+
+function isMultiInstanceQaQuery(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(window.location.search).get('ep_qa') === 'multi';
+}
 
 interface MethodRow {
   method: PaymentMethod;
@@ -182,12 +190,18 @@ const VISUAL_STYLE_FIELDS: readonly {
 
 @Component({
   selector: 'app-root',
-  imports: [EasyPaymentsComponent],
+  imports: [EasyPaymentsComponent, MultiInstanceQaPage],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
 })
 export class App {
+  /**
+   * Dev-only multi-instance harness. Open `/?ep_qa=multi`.
+   * Not part of the published library API; does not change the default playground.
+   */
+  readonly multiInstanceQa = isMultiInstanceQaQuery();
+
   private readonly mockController = inject(MockPaymentController);
   private readonly configValidator = inject(EasyPaymentsConfigValidator);
   private readonly configService = inject(EasyPaymentsConfigService);

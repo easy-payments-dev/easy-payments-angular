@@ -153,6 +153,12 @@ export class EasyPaymentsComponent {
   readonly product = input.required<PaymentProduct>();
   readonly methods = input<PaymentMethod[]>(['apple-pay', 'google-pay', 'paypal', 'card']);
   readonly checkout = input<CheckoutOptions>();
+  /**
+   * Optional stable id for this checkout host on pages with several instances.
+   * Used to attribute Stripe Klarna/Affirm redirect returns after reload or reorder.
+   * Omit on single-host pages. Values: 1–64 chars `[a-zA-Z0-9_.:-]`.
+   */
+  readonly checkoutInstanceId = input<string | null>(null);
   readonly theme = input<PaymentTheme>('system');
   /**
    * Outer shell style. `default` draws the built-in card chrome;
@@ -193,6 +199,11 @@ export class EasyPaymentsComponent {
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
   readonly error = output<PaymentError>();
+  /**
+   * Fired when a PaymentIntent is still `processing` (not yet succeeded or failed).
+   * Not a success and not a definitive failure. Do not retry; await backend/webhook.
+   */
+  readonly pending = output<PaymentResult>();
   /** Fired when the customer clicks Continue on the built-in success screen. */
   readonly successContinue = output<PaymentResult>();
   /**
@@ -482,7 +493,9 @@ export class EasyPaymentsComponent {
     effect(() => {
       const product = this.product();
       const methods = this.methods();
+      const checkoutInstanceId = this.checkoutInstanceId();
       untracked(() => {
+        this.hostContext.setCheckoutInstanceId(checkoutInstanceId);
         this.hostContext.setProductId(product.id);
         this.claimStripeReturnOnce(methods);
       });
@@ -761,7 +774,7 @@ export class EasyPaymentsComponent {
         return;
       }
 
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
         this.handleCancelled(result);
@@ -794,8 +807,13 @@ export class EasyPaymentsComponent {
       this.stripeReturnMethod = null;
       if (!this.destroyed) {
         this.providerBusy.set(false);
-        // After a non-success return the panel may create a fresh PaymentIntent for retry.
-        if (this.viewState() !== 'success' && !this.terminalSuccessEmitted) {
+        // After cancel/error the panel may create a fresh PaymentIntent for retry.
+        // Keep ownership while success or still-processing so panels do not recreate.
+        if (
+          this.viewState() !== 'success' &&
+          this.viewState() !== 'processing' &&
+          !this.terminalSuccessEmitted
+        ) {
           this.hostContext.setReturnPhase('none');
         }
       }
@@ -942,7 +960,7 @@ export class EasyPaymentsComponent {
     try {
       const result = await this.orchestrator.processPayment(method, this.product(), this.checkout());
 
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
         this.handleCancelled(result);
@@ -1052,6 +1070,10 @@ export class EasyPaymentsComponent {
     if (this.destroyed) {
       return;
     }
+    if (result.status === 'processing') {
+      this.handlePending(result);
+      return;
+    }
     if (
       this.terminalSuccessEmitted &&
       (result.method === 'klarna' || result.method === 'affirm')
@@ -1075,6 +1097,25 @@ export class EasyPaymentsComponent {
     } else {
       this.viewState.set('checkout');
     }
+  }
+
+  /**
+   * Asynchronous pending PaymentIntent: not success, not failure.
+   * Locks retry (settles the attempt) and keeps the processing screen.
+   */
+  private handlePending(result: PaymentResult): void {
+    if (this.destroyed) {
+      return;
+    }
+    if (!this.acceptTerminalEvent()) {
+      return;
+    }
+    this.pending.emit(result);
+    this.lastResult.set(result);
+    this.lastError.set(null);
+    this.providerBusy.set(false);
+    this.processingMethod.set(result.method);
+    this.viewState.set('processing');
   }
 
   private handleCancelled(result: PaymentResult): void {

@@ -191,6 +191,12 @@ export class EasyPaymentButtonsComponent {
   readonly product = input.required<PaymentProduct>();
   readonly methods = input<PaymentMethod[]>(DEFAULT_BUTTON_METHODS);
   readonly checkout = input<CheckoutOptions>();
+  /**
+   * Optional stable id for this buttons host on pages with several instances.
+   * Used to attribute Stripe Klarna/Affirm redirect returns after reload or reorder.
+   * Omit on single-host pages. Values: 1–64 chars `[a-zA-Z0-9_.:-]`.
+   */
+  readonly checkoutInstanceId = input<string | null>(null);
   /** Method row orientation. Order always follows `[methods]`. */
   readonly layout = input<EasyPaymentButtonsLayout>('vertical');
   readonly theme = input<PaymentTheme>('system');
@@ -207,6 +213,11 @@ export class EasyPaymentButtonsComponent {
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
   readonly error = output<PaymentError>();
+  /**
+   * Fired when a PaymentIntent is still `processing` (not yet succeeded or failed).
+   * Not a success and not a definitive failure. Do not retry; await backend/webhook.
+   */
+  readonly pending = output<PaymentResult>();
 
   readonly resolvedTheme = this.themeService.resolvedTheme;
   readonly effectiveLocale = this.i18n.effectiveLocale;
@@ -387,7 +398,9 @@ export class EasyPaymentButtonsComponent {
     effect(() => {
       const product = this.product();
       const methods = this.methods();
+      const checkoutInstanceId = this.checkoutInstanceId();
       untracked(() => {
+        this.hostContext.setCheckoutInstanceId(checkoutInstanceId);
         this.hostContext.setProductId(product.id);
         this.claimStripeReturnOnce(methods);
       });
@@ -759,7 +772,7 @@ export class EasyPaymentButtonsComponent {
         return;
       }
 
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.successAfterReturn = true;
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
@@ -814,7 +827,7 @@ export class EasyPaymentButtonsComponent {
         this.product(),
         this.checkout(),
       );
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
         this.handleCancelled(result);
@@ -894,6 +907,10 @@ export class EasyPaymentButtonsComponent {
   }
 
   private handleSuccess(result: PaymentResult): void {
+    if (result.status === 'processing') {
+      this.handlePending(result);
+      return;
+    }
     if (!this.acceptTerminalEvent()) {
       return;
     }
@@ -901,6 +918,17 @@ export class EasyPaymentButtonsComponent {
     this.processingMethod.set(null);
     this.success.emit(result);
     this.paymentAttempt = 'idle';
+  }
+
+  /** Asynchronous pending PaymentIntent — lock retry; do not emit success or error. */
+  private handlePending(result: PaymentResult): void {
+    if (!this.acceptTerminalEvent()) {
+      return;
+    }
+    this.providerBusy.set(false);
+    // Keep processingMethod set so methodsLocked stays true (no retry / double charge).
+    this.processingMethod.set(result.method);
+    this.pending.emit(result);
   }
 
   private handleCancelled(result: PaymentResult): void {

@@ -386,15 +386,16 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     const status = paymentIntent?.status;
 
     if (status === 'processing') {
-      // Not a confirmed success. The payment may still settle, so the customer
-      // must not be prompted to pay again; the backend/webhook is authoritative.
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message:
-          'Card payment is still processing. Do not retry — check your order status for confirmation.',
+      // Not success and not a definitive failure. Do not retry; backend/webhook is authoritative.
+      return normalizePaymentResult({
+        status: 'processing',
         method: 'card',
         provider: 'stripe',
-        originalError: paymentIntent,
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message:
+          'Card payment is still processing. Do not retry — confirm the final status on your backend.',
+        metadata: { stripeStatus: status },
       });
     }
 

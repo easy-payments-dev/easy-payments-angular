@@ -207,7 +207,7 @@ describe('Multi-instance wallet concurrency', () => {
       expect(backend.createStripePayment).not.toHaveBeenCalled();
     });
 
-    it('never reports a processing wallet PaymentIntent as success', async () => {
+    it('reports a processing wallet PaymentIntent as processing (never success)', async () => {
       stripeMock.confirmPayment.and.resolveTo({
         error: undefined,
         paymentIntent: { id: 'pi_apple', status: 'processing' },
@@ -215,9 +215,9 @@ describe('Multi-instance wallet concurrency', () => {
       const options = mountOptions(PRODUCT_A);
       await adapter.mountExpressCheckout(document.createElement('div'), options, 'm-a');
       await eces[0].handlers.get('confirm')!({});
-      expect(options.onSuccess).not.toHaveBeenCalled();
-      expect(options.onError).toHaveBeenCalledWith(
-        jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+      expect(options.onError).not.toHaveBeenCalled();
+      expect(options.onSuccess).toHaveBeenCalledWith(
+        jasmine.objectContaining({ status: 'processing', method: 'apple-pay' }),
       );
     });
   });
@@ -289,8 +289,8 @@ describe('Multi-instance wallet concurrency', () => {
       expect(backend.createStripePayment).toHaveBeenCalledTimes(1);
 
       resolveCreate({ provider: 'stripe', clientSecret: 'pi_g_secret', paymentIntentId: 'pi_g' });
-      // `processing` is not a confirmed success.
-      await expectAsync(first).toBeRejectedWith(jasmine.objectContaining({ code: 'PAYMENT_FAILED' }));
+      const result = await first;
+      expect(result.status).toBe('processing');
       expect(adapter.isProcessing()).toBeFalse();
       expect(TestBed.inject(StripeConfirmationGate).isHeld()).toBeFalse();
     });

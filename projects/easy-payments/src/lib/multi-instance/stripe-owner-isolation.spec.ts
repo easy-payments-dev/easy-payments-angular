@@ -286,12 +286,12 @@ describe('Multi-instance Stripe Payment Element isolation', () => {
         expect(fake.stripe.confirmPayment).toHaveBeenCalledTimes(1);
       });
 
-      it('never reports a processing PaymentIntent as success', async () => {
+      it('reports a processing PaymentIntent as processing (never success)', async () => {
         await mountOwner(adapter, testCase.createSession, 'host-a');
         fake.state.status = 'processing';
-        await expectAsync(adapter.confirmPayment(undefined, 'host-a')).toBeRejectedWith(
-          jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
-        );
+        const result = await adapter.confirmPayment(undefined, 'host-a');
+        expect(result.status).toBe('processing');
+        expect(result.message?.toLowerCase()).toContain('processing');
         expect(TestBed.inject(StripeConfirmationGate).isHeld()).toBeFalse();
       });
 

@@ -412,7 +412,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
     this.emittedSuccess = true;
-    this.uiState.set('success');
+    this.uiState.set(result.status === 'processing' ? 'processing' : 'success');
     this.success.emit(result);
   }
 

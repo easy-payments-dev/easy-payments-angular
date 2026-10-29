@@ -1862,7 +1862,7 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     fixture.destroy();
   });
 
-  it('does not treat processing return as success', async () => {
+  it('emits pending for a processing return (never success or error)', async () => {
     history.replaceState(
       {},
       '',
@@ -1889,18 +1889,20 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
 
     const recovery = TestBed.inject(StripeRedirectRecoveryService);
     spyOn(recovery, 'consumeReturn').and.resolveTo({
-      status: 'failed',
+      status: 'processing',
       method: 'klarna',
       provider: 'klarna',
       message: 'Payment is still processing.',
     });
 
     const successes: PaymentResult[] = [];
+    const pending: PaymentResult[] = [];
     const errors: PaymentError[] = [];
     const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
     fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
     fixture.componentRef.setInput('methods', ['klarna']);
     fixture.componentInstance.success.subscribe((result) => successes.push(result));
+    fixture.componentInstance.pending.subscribe((result) => pending.push(result));
     fixture.componentInstance.error.subscribe((error) => errors.push(error));
 
     fixture.detectChanges();
@@ -1910,8 +1912,10 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     fixture.detectChanges();
 
     expect(successes.length).toBe(0);
-    expect(errors.length).toBe(1);
-    expect(errors[0].message).toContain('processing');
+    expect(errors.length).toBe(0);
+    expect(pending.length).toBe(1);
+    expect(pending[0].status).toBe('processing');
+    expect(fixture.componentInstance.methodsLocked()).toBeTrue();
 
     fixture.destroy();
   });

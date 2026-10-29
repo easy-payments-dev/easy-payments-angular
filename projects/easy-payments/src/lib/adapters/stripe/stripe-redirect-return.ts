@@ -19,18 +19,34 @@ export const STRIPE_PROCESSING_DELAY_MS = 750;
 
 export type StripeReturnHostKind = 'checkout' | 'buttons';
 
-/** Which host on the page started a redirect (no secrets — ids and ordinals only). */
+/**
+ * Which host on the page started a redirect (no secrets).
+ * Prefer `checkoutInstanceId` for ownership across reorder / remount.
+ * `hostOrdinal` is retained only for markers written before stable ids.
+ */
 export interface StripeReturnOrigin {
   attemptId: string;
   hostKind: StripeReturnHostKind;
-  /** Index among live hosts of the same kind and productId, in render order. */
-  hostOrdinal: number;
+  /**
+   * Stable host identity: optional merchant `[checkoutInstanceId]`, or an
+   * auto-generated per-mount id. Survives reorder; merchant ids survive reload.
+   */
+  checkoutInstanceId: string;
+  /** @deprecated Prefer checkoutInstanceId. Index among same kind+productId. */
+  hostOrdinal?: number;
 }
 
 export interface StripePendingReturn extends Partial<StripeReturnOrigin> {
   method: StripeRedirectMethod;
   productId: string;
   at: number;
+}
+
+/** Merchant or auto host ids: non-secret, URL/storage safe. */
+export const CHECKOUT_INSTANCE_ID_PATTERN = /^[a-zA-Z0-9_.:-]{1,64}$/;
+
+export function isValidCheckoutInstanceId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && CHECKOUT_INSTANCE_ID_PATTERN.test(value);
 }
 
 export interface StripeReturnParams {

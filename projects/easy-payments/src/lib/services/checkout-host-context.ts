@@ -3,11 +3,13 @@ import {
   StripeRedirectRecoveryService,
   type StripeReturnHost,
 } from '../adapters/stripe/stripe-redirect-recovery.service';
-import type {
-  StripeRedirectMethod,
-  StripeReturnHostKind,
-  StripeReturnOrigin,
+import {
+  isValidCheckoutInstanceId,
+  type StripeRedirectMethod,
+  type StripeReturnHostKind,
+  type StripeReturnOrigin,
 } from '../adapters/stripe/stripe-redirect-return';
+import { createPaymentOwnerId } from '../utils/payment-owner-id';
 
 /**
  * Stripe redirect return state for one host:
@@ -26,6 +28,8 @@ export type StripeReturnPhase = 'none' | 'pending' | 'owner';
 export class CheckoutHostContext implements StripeReturnHost, OnDestroy {
   private readonly recovery = inject(StripeRedirectRecoveryService);
   private currentProductId: string | null = null;
+  /** Auto id until the host optionally applies a merchant `[checkoutInstanceId]`. */
+  private currentInstanceId = createPaymentOwnerId('host');
 
   kind: StripeReturnHostKind = 'checkout';
   private readonly phase = signal<StripeReturnPhase>('none');
@@ -56,6 +60,20 @@ export class CheckoutHostContext implements StripeReturnHost, OnDestroy {
 
   setProductId(productId: string): void {
     this.currentProductId = productId;
+  }
+
+  instanceId(): string {
+    return this.currentInstanceId;
+  }
+
+  /**
+   * Applies an optional merchant-stable id. Invalid values are ignored so a typo
+   * cannot wipe the auto-generated id mid-session.
+   */
+  setCheckoutInstanceId(checkoutInstanceId: string | null | undefined): void {
+    if (isValidCheckoutInstanceId(checkoutInstanceId)) {
+      this.currentInstanceId = checkoutInstanceId;
+    }
   }
 
   describeReturnOrigin(attemptId: string): StripeReturnOrigin {

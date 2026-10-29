@@ -603,14 +603,15 @@ export class ApplePayAdapter extends BaseProviderAdapter {
 
     const status = paymentIntent?.status;
     if (status === 'processing') {
-      // Not a confirmed success; the wallet was charged-or-pending, so never prompt a retry.
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message:
-          'Apple Pay payment is still processing. Do not retry — check your order status for confirmation.',
+      return normalizePaymentResult({
+        status: 'processing',
         method: 'apple-pay',
         provider: 'applePay',
-        originalError: paymentIntent,
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: paymentIntent?.id ?? session.paymentIntentId,
+        message:
+          'Apple Pay payment is still processing. Do not retry — confirm the final status on your backend.',
+        metadata: { processor: 'stripe', stripeStatus: status },
       });
     }
     if (status === 'succeeded' || status === 'requires_capture') {

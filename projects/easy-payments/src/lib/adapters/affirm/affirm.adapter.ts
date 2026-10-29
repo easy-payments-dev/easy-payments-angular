@@ -470,13 +470,15 @@ export class AffirmAdapter extends BaseProviderAdapter {
     }
 
     if (status === 'processing') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message:
-          'Affirm payment is still processing. Please refresh or check your email for confirmation.',
+      return normalizePaymentResult({
+        status: 'processing',
         method: 'affirm',
         provider: 'affirm',
-        originalError: paymentIntent,
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message:
+          'Affirm payment is still processing. Do not retry — confirm the final status on your backend.',
+        metadata: { stripeStatus: status, gateway: 'stripe' },
       });
     }
 

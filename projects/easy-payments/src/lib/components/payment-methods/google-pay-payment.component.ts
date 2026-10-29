@@ -394,6 +394,12 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
         return;
       }
 
+      if (result.status === 'processing') {
+        this.uiState.set('processing');
+        this.success.emit(result);
+        return;
+      }
+
       if (result.status === 'cancelled') {
         this.uiState.set('ready');
         this.cancel.emit(result);

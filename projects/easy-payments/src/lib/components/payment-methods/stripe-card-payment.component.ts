@@ -313,6 +313,9 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       if (result.status === 'success') {
         this.uiState.set('success');
         this.success.emit(result);
+      } else if (result.status === 'processing') {
+        this.uiState.set('processing');
+        this.success.emit(result);
       } else if (result.status === 'cancelled') {
         this.uiState.set('ready');
         this.cancel.emit(result);
