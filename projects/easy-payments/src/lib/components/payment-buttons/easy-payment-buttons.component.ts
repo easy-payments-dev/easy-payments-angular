@@ -41,6 +41,7 @@ import {
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
 import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
+import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 
 /** Slot readiness for the method list. */
@@ -50,14 +51,16 @@ export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable'
  * How a method slot is rendered.
  * - `placeholder` — noninteractive (not yet integrated, loading, or unavailable)
  * - `card-selector` — Card tile that reveals Stripe/mock panel below the list
- * - `paypal-express` — official PayPal Buttons SDK mounted in-slot (no extra click)
- * - `paypal-mock` — clearly labeled mock PayPal control in-slot (no real SDK)
+ * - `paypal-express` / `google-pay-express` — official provider buttons in-slot
+ * - `paypal-mock` / `google-pay-mock` — clearly labeled mock controls in-slot
  */
 export type EasyPaymentButtonSlotKind =
   | 'placeholder'
   | 'card-selector'
   | 'paypal-express'
-  | 'paypal-mock';
+  | 'paypal-mock'
+  | 'google-pay-express'
+  | 'google-pay-mock';
 
 export interface EasyPaymentButtonSlot {
   readonly method: PaymentMethod;
@@ -66,8 +69,8 @@ export interface EasyPaymentButtonSlot {
   readonly label: string;
   readonly kind: EasyPaymentButtonSlotKind;
   /**
-   * True for Card selector tiles only (radiogroup).
-   * PayPal express mounts are interactive payments but not selectors.
+   * True for Card selector tiles only.
+   * Express mounts (PayPal / Google Pay) are interactive payments but not selectors.
    */
   readonly interactive: boolean;
 }
@@ -86,6 +89,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
  *
  * Step 2A: Card selector → Stripe Payment Element / mock panel below the list.
  * Step 2B: Official PayPal Buttons render directly in the PayPal slot.
+ * Step 2C: Official Google Pay button renders directly in the google-pay slot.
  * Other configured methods remain noninteractive placeholders.
  */
 @Component({
@@ -95,6 +99,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     PaymentMethodIconComponent,
     StripeCardPaymentComponent,
     PayPalPaymentComponent,
+    GooglePayPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -112,6 +117,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.lang]': 'effectiveLocale()',
     '[attr.data-card-ready]': 'hasAvailableCard() ? "true" : "false"',
     '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
+    '[attr.data-google-pay-ready]': 'hasAvailableGooglePay() ? "true" : "false"',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -216,6 +222,10 @@ export class EasyPaymentButtonsComponent {
     this.methodSlots().some((slot) => slot.method === 'paypal' && slot.state === 'available'),
   );
 
+  readonly hasAvailableGooglePay = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'google-pay' && slot.state === 'available'),
+  );
+
   readonly selectedCardEntry = computed(() => {
     if (this.selectedMethod() !== 'card') {
       return null;
@@ -292,7 +302,10 @@ export class EasyPaymentButtonsComponent {
     if (slot.kind === 'paypal-express') {
       return `${base}, official PayPal button`;
     }
-    if (slot.kind === 'paypal-mock') {
+    if (slot.kind === 'google-pay-express') {
+      return `${base}, official Google Pay button`;
+    }
+    if (slot.kind === 'paypal-mock' || slot.kind === 'google-pay-mock') {
       return `${base}, mock payment`;
     }
     if (!slot.interactive) {
@@ -360,6 +373,31 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  /**
+   * Official Google Pay has no separate selector — buyer click selects the method
+   * for methodChange, then emits started.
+   */
+  onGooglePayStarted(): void {
+    this.updateSelectedMethod('google-pay');
+    this.onPaymentStarted('google-pay');
+  }
+
+  onGooglePayBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onGooglePaySuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onGooglePayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onGooglePayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   async onMockCardPay(): Promise<void> {
     await this.runMockPayment('card');
   }
@@ -370,6 +408,14 @@ export class EasyPaymentButtonsComponent {
     }
     this.updateSelectedMethod('paypal');
     await this.runMockPayment('paypal');
+  }
+
+  async onMockGooglePayPay(): Promise<void> {
+    if (this.methodsLocked() || this.destroyed) {
+      return;
+    }
+    this.updateSelectedMethod('google-pay');
+    await this.runMockPayment('google-pay');
   }
 
   private resolveSlotKind(
@@ -385,6 +431,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';
+    }
+    if (method === 'google-pay') {
+      return isMock ? 'google-pay-mock' : 'google-pay-express';
     }
     return 'placeholder';
   }

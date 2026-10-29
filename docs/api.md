@@ -154,36 +154,41 @@ Lightweight alternative to `<easy-payments>`: no product summary, checkout title
 
 Configure providers with existing `provideEasyPayments(...)` — there is no competing `[config]` input.
 
-### Live methods (Phase 4 Step 2B)
+### Live methods (Phase 4 Step 2C)
 
 | Method | Behavior |
 |--------|----------|
 | `card` | Interactive when Stripe (or mock mode) is available. Selecting Card reveals the secure Stripe Payment Element (or mock panel) **inline below** the button group. Selection alone does **not** charge; the buyer must confirm with the Stripe/mock pay control. |
-| `paypal` | When PayPal is ready, the **official PayPal Buttons SDK** mounts **directly in the PayPal method slot** (compact `easy-paypal-payment`). No EP selector tile and no extra click before the official button is usable. Branding/styling follows PayPal SDK requirements. |
-| `apple-pay`, `google-pay`, `klarna`, `affirm` | Still **noninteractive placeholders** in configured order until later Phase 4 steps. No fake wallet buttons. |
+| `paypal` | When PayPal is ready, the **official PayPal Buttons SDK** mounts **directly in the PayPal method slot** (compact `easy-paypal-payment`). No EP selector tile and no extra click before the official button is usable. |
+| `google-pay` | When Google Pay is ready, the **official Google Pay button** mounts **directly in the google-pay slot** (compact `easy-google-pay-payment`). No EP selector tile and no extra click. Branding follows Google Pay SDK rules. Processing uses the existing Stripe gateway PaymentIntent + confirm flow. |
+| `apple-pay`, `klarna`, `affirm` | Still **noninteractive placeholders** in configured order until later Phase 4 steps. No fake wallet buttons. |
 
-Unavailable Card or PayPal (misconfigured provider, missing backend URLs, etc.) stays a noninteractive placeholder and does not mount a payment control. Card failures do not disable PayPal; PayPal failures do not disable Card.
+Unavailable Card, PayPal, or Google Pay stays a noninteractive placeholder and does not mount a payment control. Card/PayPal/Google Pay failures do not disable each other beyond real shared dependencies (Google Pay requires Stripe publishable key + create-payment URL; PayPal does not).
 
 #### PayPal readiness
 
 Live PayPal requires `providers.paypal.clientId` plus backend `paypalCreateOrderUrl` and `paypalCaptureOrderUrl` (same contracts as `<easy-payments>`). Amounts remain server-authoritative on create/capture.
 
+#### Google Pay readiness
+
+Live Google Pay requires `providers.googlePay` (TEST or PRODUCTION), a Stripe **publishable** key (`pk_…`), and backend `createPaymentUrl`. `isReadyToPay` must succeed in the buyer browser. PRODUCTION also requires a real Google `merchantId`. A Google Pay TEST token is **not** proof of a completed charge — `success` fires only after Stripe confirmation of the PaymentIntent (same semantics as Ready-to-Use Checkout).
+
 #### Mock mode
 
-When `enableMockMode` is true, PayPal does **not** load the PayPal SDK. A clearly labeled **mock** panel mounts in the PayPal slot (`data-kind="paypal-mock"`). It is never presented as a live PayPal button.
+When `enableMockMode` is true, PayPal and Google Pay do **not** load live SDKs. Clearly labeled **mock** panels mount in those slots (`paypal-mock` / `google-pay-mock`). They are never presented as live wallet buttons.
 
 ### Inputs
 
 | Property | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
 | `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / payment context). |
-| `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order (PayPal stays in its configured index). |
-| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (passed through to Card session / PayPal order create). |
+| `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order (each method stays in its configured index). |
+| `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (Card session / PayPal create / Google Pay session). |
 | `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
 | `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Same as `<easy-payments>`. |
-| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe Element / PayPal button appearance may still apply. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe Element / PayPal / Google Pay button appearance may still apply. |
 
 ### Outputs
 
@@ -191,15 +196,15 @@ Same payload types as `<easy-payments>`:
 
 | Output | When it fires |
 |--------|----------------|
-| `methodChange` | **Card:** buyer selects or clears Card (selection ≠ payment). **PayPal:** buyer engages PayPal (order create / mock pay start) — there is no separate PayPal selector. |
-| `started` | **Card:** buyer confirms pay in Stripe/mock Card UI. **PayPal:** order creation begins (not on SDK mount alone). |
-| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture** is confirmed — never on approval open or order create alone. |
+| `methodChange` | **Card:** buyer selects or clears Card (selection ≠ payment). **PayPal / Google Pay:** buyer engages the official button (or mock pay) — there is no separate selector. |
+| `started` | **Card:** buyer confirms pay in Stripe/mock Card UI. **PayPal:** order creation begins. **Google Pay:** official button click (not on SDK mount alone). |
+| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Google Pay `success` only after Stripe **confirm** — never on token receipt alone. |
 
 Placeholder methods do not emit lifecycle events from interaction. Duplicate terminal events for one attempt are suppressed.
 
 ### Shared orchestrator note
 
-`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService`, Stripe adapter, and PayPal adapter. PayPal **Buttons mounts are ownership-scoped**: destroying one host calls `PayPalAdapter.destroyButtons(mountId)` for that host only and must not close a sibling mount. Concurrent live create/capture across hosts is still **not** guaranteed safe (shared `creatingOrder` / `capturing` / `activeOrderId`) — prefer one active PayPal confirmation at a time. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
+`<easy-payment-buttons>` and `<easy-payments>` share the root `PaymentOrchestratorService` and provider adapters. **PayPal** and **Google Pay** button mounts are **ownership-scoped**: destroying one host calls `destroyButtons(mountId)` / `destroyButtonMount(mountId)` for that host only and must not clear a sibling mount. Concurrent live create/capture/confirm across hosts is still **not** guaranteed safe (shared processing flags) — prefer one active wallet confirmation at a time. Visible method lists and ordering remain instance-local via `CheckoutAvailabilitySession`.
 
 ### Example
 

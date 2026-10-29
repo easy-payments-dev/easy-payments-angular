@@ -48,7 +48,12 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   private stripe: Stripe | null = null;
   private configReady = false;
   private processing = false;
-  private buttonHost: HTMLElement | null = null;
+  /**
+   * Per-host official button mounts. Destroying one host must not clear another's DOM.
+   * Keyed by opaque mount ids owned by GooglePayPaymentComponent instances.
+   */
+  private readonly buttonMounts = new Map<string, HTMLElement>();
+  private nextMountId = 0;
 
   /**
    * Validates Google Pay + Stripe gateway prerequisites.
@@ -161,8 +166,10 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   }
 
   /**
-   * Renders Google's official createButton into the host.
+   * Renders Google's official createButton into the host under an ownership-scoped mount id.
    * Theme only affects official buttonColor — does not start payments.
+   * Re-rendering with the same `mountId` replaces only that mount; sibling hosts stay intact.
+   * @returns The mount id to pass to {@link destroyButtonMount} on host teardown.
    */
   async renderOfficialButton(
     host: HTMLElement,
@@ -172,7 +179,12 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       /** ISO 639-1 button locale (en / es / pt). Affects button text only. */
       buttonLocale?: string;
     },
-  ): Promise<void> {
+    mountId?: string,
+  ): Promise<string> {
+    const id = mountId ?? this.allocateMountId();
+    // Replace only this owner's previous button instance.
+    this.destroyButtonMount(id);
+
     const client = await this.ensurePaymentsClient();
     host.replaceChildren();
 
@@ -189,14 +201,40 @@ export class GooglePayAdapter extends BaseProviderAdapter {
 
     const button = client.createButton(buttonOptions);
     host.appendChild(button);
-    this.buttonHost = host;
+    this.buttonMounts.set(id, host);
+    return id;
   }
 
-  clearButtonHost(): void {
-    if (this.buttonHost) {
-      this.buttonHost.replaceChildren();
-      this.buttonHost = null;
+  /**
+   * Clears one official button mount (host teardown) or all mounts when `mountId` is omitted.
+   */
+  destroyButtonMount(mountId?: string): void {
+    if (mountId !== undefined) {
+      const host = this.buttonMounts.get(mountId);
+      this.buttonMounts.delete(mountId);
+      host?.replaceChildren();
+      return;
     }
+
+    for (const host of this.buttonMounts.values()) {
+      host.replaceChildren();
+    }
+    this.buttonMounts.clear();
+  }
+
+  /** @deprecated Prefer {@link destroyButtonMount}; kept for callers that clear “the” host. */
+  clearButtonHost(): void {
+    this.destroyButtonMount();
+  }
+
+  /** Active ownership-scoped button mounts (test / diagnostics). */
+  getActiveButtonMountCount(): number {
+    return this.buttonMounts.size;
+  }
+
+  private allocateMountId(): string {
+    this.nextMountId += 1;
+    return `google-pay-button-${this.nextMountId}`;
   }
 
   isProcessing(): boolean {
@@ -450,8 +488,12 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     });
   }
 
+  /**
+   * Full adapter reset: clears every button mount and in-flight processing flag.
+   * Prefer {@link destroyButtonMount}(mountId) from individual payment hosts.
+   */
   async destroy(): Promise<void> {
-    this.clearButtonHost();
+    this.destroyButtonMount();
     this.processing = false;
   }
 }

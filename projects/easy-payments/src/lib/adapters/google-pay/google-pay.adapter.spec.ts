@@ -129,7 +129,7 @@ describe('GooglePayAdapter', () => {
 
   it('renders the official Google Pay button once', async () => {
     const host = document.createElement('div');
-    await adapter.renderOfficialButton(host, {
+    const mountId = await adapter.renderOfficialButton(host, {
       theme: 'light',
       onClick: () => undefined,
       buttonLocale: 'es',
@@ -142,6 +142,46 @@ describe('GooglePayAdapter', () => {
       }),
     );
     expect(host.querySelector('button')).toBeTruthy();
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    adapter.destroyButtonMount(mountId);
+    expect(host.querySelector('button')).toBeNull();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
+  });
+
+  it('keeps sibling Google Pay button mounts when one host is destroyed', async () => {
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    const mountA = await adapter.renderOfficialButton(hostA, {
+      theme: 'light',
+      onClick: () => undefined,
+    });
+    const mountB = await adapter.renderOfficialButton(hostB, {
+      theme: 'light',
+      onClick: () => undefined,
+    });
+
+    expect(mountA).not.toBe(mountB);
+    expect(adapter.getActiveButtonMountCount()).toBe(2);
+    expect(hostA.querySelector('button')).toBeTruthy();
+    expect(hostB.querySelector('button')).toBeTruthy();
+
+    adapter.destroyButtonMount(mountA);
+    expect(hostA.querySelector('button')).toBeNull();
+    expect(hostB.querySelector('button')).toBeTruthy();
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    await adapter.renderOfficialButton(
+      hostB,
+      { theme: 'dark', onClick: () => undefined },
+      mountB,
+    );
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+    expect(hostB.querySelector('button')).toBeTruthy();
+
+    await adapter.destroy();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
+    expect(hostB.querySelector('button')).toBeNull();
   });
 
   it('creates a PaymentIntent only when paying, then confirms with the Google token', async () => {

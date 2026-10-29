@@ -68,6 +68,39 @@
               (pay)="onMockPayPalPay()"
             />
           </div>
+        } @else if (slot.kind === 'google-pay-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-google-pay-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-google-pay-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onGooglePayStarted()"
+              (busyChange)="onGooglePayBusy($event)"
+              (success)="onGooglePaySuccess($event)"
+              (cancel)="onGooglePayCancel($event)"
+              (error)="onGooglePayError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'google-pay-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-google-pay-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="google-pay"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'google-pay'"
+              (pay)="onMockGooglePayPay()"
+            />
+          </div>
         } @else {
           <div
             class="ep-payment-buttons__placeholder"
