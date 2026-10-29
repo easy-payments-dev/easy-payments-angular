@@ -221,6 +221,8 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
   private lastLocale: string | null = null;
   private renderGeneration = 0;
   private emittedSuccess = false;
+  /** Ownership token for this host's ECE mount on the shared ApplePayAdapter. */
+  private eceMountId: string | null = null;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -268,9 +270,16 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
-    // Keep the availability decided by `ready`: a full destroy resets it to `idle`
-    // and the Apple Pay tile would vanish from the list on method switch.
-    this.applePayAdapter.unmountExpressCheckout({ preserveAvailability: true });
+    const mountId = this.eceMountId;
+    this.eceMountId = null;
+    // Ownership-scoped unmount — do not tear down sibling ECE mounts.
+    // Keep the availability decided by `ready` so checkout tiles survive method switches.
+    if (mountId) {
+      this.applePayAdapter.unmountExpressCheckout({
+        preserveAvailability: true,
+        mountId,
+      });
+    }
   }
 
   isBusy(): boolean {
@@ -331,34 +340,50 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       }
 
       const host = this.host().nativeElement;
-      await this.applePayAdapter.mountExpressCheckout(host, {
-        product,
-        checkout,
-        theme,
-        locale: elementsLocale,
-        onSuccess: (result) => this.onPaymentSuccess(result, generation),
-        onCancel: () => this.onPaymentCancel(generation),
-        onError: (err) => this.onPaymentError(err, generation),
-        onAttempt: () => {
-          if (generation === this.renderGeneration) {
-            this.started.emit();
-          }
+      if (!this.eceMountId) {
+        this.eceMountId = this.applePayAdapter.createMountId();
+      }
+      const mountId = await this.applePayAdapter.mountExpressCheckout(
+        host,
+        {
+          product,
+          checkout,
+          theme,
+          locale: elementsLocale,
+          onSuccess: (result) => this.onPaymentSuccess(result, generation),
+          onCancel: () => this.onPaymentCancel(generation),
+          onError: (err) => this.onPaymentError(err, generation),
+          onAttempt: () => {
+            if (generation === this.renderGeneration) {
+              this.started.emit();
+            }
+          },
+          onReady: () => {
+            if (generation === this.renderGeneration) {
+              this.uiState.set('ready');
+            }
+          },
+          onUnavailable: () => {
+            if (generation === this.renderGeneration) {
+              this.uiState.set('unavailable');
+            }
+          },
         },
-        onReady: () => {
-          if (generation === this.renderGeneration) {
-            this.uiState.set('ready');
-          }
-        },
-        onUnavailable: () => {
-          if (generation === this.renderGeneration) {
-            this.uiState.set('unavailable');
-          }
-        },
-      });
+        this.eceMountId,
+      );
 
       if (generation !== this.renderGeneration) {
+        this.applePayAdapter.unmountExpressCheckout({
+          preserveAvailability: true,
+          mountId,
+        });
+        if (this.eceMountId === mountId) {
+          this.eceMountId = null;
+        }
         return;
       }
+
+      this.eceMountId = mountId;
 
       // Stay initializing until ready fires (or unavailable/error).
       if (this.applePayAdapter.getAvailabilityStatus() === 'available') {

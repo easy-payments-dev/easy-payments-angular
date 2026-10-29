@@ -9,6 +9,7 @@ import type { AvailablePaymentMethod } from '../../services/payment-orchestrator
 import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
+import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentResult } from '../../models';
 
@@ -380,7 +381,55 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes[0].status).toBe('success');
   });
 
-  it('keeps Apple Pay / Klarna / Affirm noninteractive placeholders', async () => {
+  it('mounts mock Apple Pay in-slot when ready (no extra selector click)', async () => {
+    fixture.componentRef.setInput('methods', ['paypal', 'apple-pay', 'card', 'google-pay']);
+    await render(fixture);
+
+    const apple = slotItem(fixture, 'apple-pay');
+    expect(apple?.getAttribute('data-kind')).toBe('apple-pay-mock');
+    expect(apple?.getAttribute('data-state')).toBe('available');
+    expect(
+      apple?.querySelector('[data-testid="easy-payment-buttons-apple-pay-mock"]'),
+    ).toBeTruthy();
+    expect(apple?.querySelector('button.ep-payment-buttons__selector')).toBeNull();
+    expect(slotMethods(fixture)).toEqual(['paypal', 'apple-pay', 'card', 'google-pay']);
+  });
+
+  it('omits Apple Pay when it is not in the methods allow-list', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+    expect(slotItem(fixture, 'apple-pay')).toBeNull();
+    expect(fixture.nativeElement.getAttribute('data-apple-pay-ready')).toBe('false');
+  });
+
+  it('emits Apple Pay mock lifecycle events without premature success', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+
+    TestBed.inject(MockPaymentController).setOutcome('success');
+    fixture.componentRef.setInput('methods', ['apple-pay']);
+    await render(fixture);
+
+    expect(started.length).toBe(0);
+    expect(successes.length).toBe(0);
+
+    slotItem(fixture, 'apple-pay')
+      ?.querySelector('button.ep-mock-panel__cta')
+      ?.dispatchEvent(new Event('click'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(methodChanges.length).toBe(1);
+    expect((methodChanges[0] as { method: string }).method).toBe('apple-pay');
+    expect(started.length).toBe(1);
+    expect(successes.length).toBe(1);
+  });
+
+  it('keeps Klarna / Affirm noninteractive placeholders', async () => {
     fixture.componentRef.setInput('methods', [
       'card',
       'paypal',
@@ -391,7 +440,7 @@ describe('EasyPaymentButtonsComponent', () => {
     ]);
     await render(fixture);
 
-    for (const method of ['apple-pay', 'klarna', 'affirm']) {
+    for (const method of ['klarna', 'affirm']) {
       const item = slotItem(fixture, method);
       expect(item?.getAttribute('data-kind')).toBe('placeholder');
       expect(item?.getAttribute('data-interactive')).toBe('false');
@@ -399,24 +448,44 @@ describe('EasyPaymentButtonsComponent', () => {
       expect(item?.querySelector('button.ep-payment-buttons__selector')).toBeNull();
     }
     expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('google-pay-mock');
+    expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-mock');
   });
 
   it('preserves horizontal/vertical layout and developer order with wallets in place', async () => {
-    fixture.componentRef.setInput('methods', ['klarna', 'paypal', 'google-pay', 'card']);
+    fixture.componentRef.setInput('methods', [
+      'klarna',
+      'paypal',
+      'apple-pay',
+      'google-pay',
+      'card',
+    ]);
     fixture.componentRef.setInput('layout', 'horizontal');
     await render(fixture);
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'google-pay', 'card']);
+    expect(slotMethods(fixture)).toEqual([
+      'klarna',
+      'paypal',
+      'apple-pay',
+      'google-pay',
+      'card',
+    ]);
     expect(host.getAttribute('data-layout')).toBe('horizontal');
     expect(host.classList.contains('ep-payment-buttons-host--horizontal')).toBeTrue();
     expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-mock');
+    expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-mock');
     expect(slotItem(fixture, 'google-pay')?.getAttribute('data-kind')).toBe('google-pay-mock');
 
     fixture.componentRef.setInput('layout', 'vertical');
     await render(fixture);
     expect(host.getAttribute('data-layout')).toBe('vertical');
-    expect(slotMethods(fixture)).toEqual(['klarna', 'paypal', 'google-pay', 'card']);
+    expect(slotMethods(fixture)).toEqual([
+      'klarna',
+      'paypal',
+      'apple-pay',
+      'google-pay',
+      'card',
+    ]);
   });
 
   it('keeps a permanently transparent host without checkout shell chrome', async () => {
@@ -1005,6 +1074,293 @@ describe('EasyPaymentButtonsComponent Google Pay dual-host cleanup', () => {
       fixtureB.nativeElement.querySelector('[data-testid="easy-payment-buttons-google-pay-express"]'),
     ).toBeTruthy();
     expect(googlePay.destroy).not.toHaveBeenCalled();
+
+    fixtureB.destroy();
+    expect(liveMounts.size).toBe(0);
+  });
+});
+
+describe('EasyPaymentButtonsComponent real Apple Pay express', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let applePay: jasmine.SpyObj<ApplePayAdapter>;
+  let paypal: jasmine.SpyObj<PayPalAdapter>;
+
+  beforeEach(async () => {
+    applePay = jasmine.createSpyObj<ApplePayAdapter>(
+      'ApplePayAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'isConfigured',
+        'createMountId',
+        'mountExpressCheckout',
+        'unmountExpressCheckout',
+        'destroy',
+        'isProcessing',
+        'getAvailabilityStatus',
+        'setAvailabilityListener',
+        'createPayment',
+      ],
+      { provider: 'applePay', isMock: false },
+    );
+    applePay.initialize.and.resolveTo();
+    applePay.isConfigured.and.returnValue(true);
+    applePay.createMountId.and.returnValue('apple-pay-ece-buttons-1');
+    applePay.getAvailabilityStatus.and.returnValue('available');
+    applePay.isAvailable.and.resolveTo(true);
+    applePay.isProcessing.and.returnValue(false);
+    applePay.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      options.onReady?.();
+      return mountId ?? 'apple-pay-ece-buttons-1';
+    });
+
+    paypal = jasmine.createSpyObj<PayPalAdapter>(
+      'PayPalAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureSdkLoaded',
+        'renderButtons',
+        'destroyButtons',
+        'destroy',
+        'isBusy',
+        'getActiveOrderId',
+      ],
+      { provider: 'paypal', isMock: false },
+    );
+    paypal.initialize.and.resolveTo();
+    paypal.isAvailable.and.resolveTo(true);
+    paypal.ensureSdkLoaded.and.resolveTo({} as never);
+    paypal.renderButtons.and.resolveTo('paypal-buttons-apay');
+    paypal.destroyButtons.and.resolveTo();
+    paypal.isBusy.and.returnValue(false);
+    paypal.getActiveOrderId.and.returnValue(null);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_apay_buttons' },
+            applePay: { merchantName: 'Demo' },
+            paypal: { clientId: 'sb_apay_buttons' },
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            paypalCreateOrderUrl: '/api/paypal/create',
+            paypalCaptureOrderUrl: '/api/paypal/capture',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: ApplePayAdapter, useValue: applePay },
+        { provide: PayPalAdapter, useValue: paypal },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['paypal', 'apple-pay', 'card', 'affirm']);
+  });
+
+  it('mounts compact Apple Pay ECE in the configured slot without auto-confirm', async () => {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(slotMethods(fixture)).toEqual(['paypal', 'apple-pay', 'card', 'affirm']);
+    const appleSlot = slotItem(fixture, 'apple-pay');
+    expect(appleSlot?.getAttribute('data-kind')).toBe('apple-pay-express');
+    expect(
+      appleSlot?.querySelector('[data-testid="easy-payment-buttons-apple-pay-express"]'),
+    ).toBeTruthy();
+    expect(appleSlot?.querySelector('easy-apple-pay-payment')).toBeTruthy();
+    expect(appleSlot?.querySelector('.ep-apay--compact')).toBeTruthy();
+    expect(applePay.mountExpressCheckout).toHaveBeenCalled();
+    expect(applePay.mountExpressCheckout.calls.mostRecent().args[2]).toBe(
+      'apple-pay-ece-buttons-1',
+    );
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
+    expect(slotItem(fixture, 'affirm')?.getAttribute('data-kind')).toBe('placeholder');
+  });
+
+  it('emits methodChange + started on confirm attempt and success only after Stripe confirm', async () => {
+    const methodChanges: unknown[] = [];
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.methodChange.subscribe((value) => methodChanges.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const options = applePay.mountExpressCheckout.calls.mostRecent().args[1];
+    expect(started.length).toBe(0);
+    expect(successes.length).toBe(0);
+
+    options.onAttempt?.();
+    fixture.detectChanges();
+    expect(methodChanges.length).toBe(1);
+    expect((methodChanges[0] as { method: string }).method).toBe('apple-pay');
+    expect(started.length).toBe(1);
+    expect(successes.length).toBe(0);
+
+    options.onSuccess({
+      status: 'success',
+      method: 'apple-pay',
+      provider: 'applePay',
+      transactionId: 'pi_apay_buttons',
+    });
+    options.onSuccess({
+      status: 'success',
+      method: 'apple-pay',
+      provider: 'applePay',
+      transactionId: 'pi_apay_buttons',
+    });
+    fixture.detectChanges();
+    expect(successes.length).toBe(1);
+  });
+
+  it('emits cancel without success and cleans up owned ECE mount on destroy', async () => {
+    const successes: PaymentResult[] = [];
+    const cancels: PaymentResult[] = [];
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentInstance.cancel.subscribe((value) => cancels.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const options = applePay.mountExpressCheckout.calls.mostRecent().args[1];
+    options.onAttempt?.();
+    options.onCancel();
+    fixture.detectChanges();
+    expect(cancels.length).toBe(1);
+    expect(successes.length).toBe(0);
+
+    fixture.destroy();
+    expect(applePay.unmountExpressCheckout).toHaveBeenCalledWith({
+      preserveAvailability: true,
+      mountId: 'apple-pay-ece-buttons-1',
+    });
+    expect(applePay.destroy).not.toHaveBeenCalled();
+  });
+
+  it('keeps PayPal ready when Apple Pay ECE reports unavailable', async () => {
+    applePay.isAvailable.and.resolveTo(false);
+    applePay.getAvailabilityStatus.and.returnValue('unavailable');
+    applePay.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      options.onUnavailable?.();
+      return mountId ?? 'apple-pay-ece-buttons-1';
+    });
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-express');
+    expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
+  });
+});
+
+describe('EasyPaymentButtonsComponent Apple Pay dual-host cleanup', () => {
+  let applePay: jasmine.SpyObj<ApplePayAdapter>;
+  let nextMount = 0;
+  const liveMounts = new Set<string>();
+
+  beforeEach(async () => {
+    nextMount = 0;
+    liveMounts.clear();
+
+    applePay = jasmine.createSpyObj<ApplePayAdapter>(
+      'ApplePayAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'isConfigured',
+        'createMountId',
+        'mountExpressCheckout',
+        'unmountExpressCheckout',
+        'destroy',
+        'isProcessing',
+        'getAvailabilityStatus',
+        'setAvailabilityListener',
+        'createPayment',
+        'getActiveEceMountCount',
+      ],
+      { provider: 'applePay', isMock: false },
+    );
+    applePay.initialize.and.resolveTo();
+    applePay.isConfigured.and.returnValue(true);
+    applePay.isAvailable.and.resolveTo(true);
+    applePay.getAvailabilityStatus.and.returnValue('available');
+    applePay.isProcessing.and.returnValue(false);
+    applePay.createMountId.and.callFake(() => `apple-pay-ece-${++nextMount}`);
+    applePay.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      const id = mountId ?? `apple-pay-ece-${++nextMount}`;
+      liveMounts.add(id);
+      options.onReady?.();
+      return id;
+    });
+    applePay.unmountExpressCheckout.and.callFake((options) => {
+      if (options?.mountId) {
+        liveMounts.delete(options.mountId);
+      }
+    });
+    applePay.getActiveEceMountCount.and.callFake(() => liveMounts.size);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_dual_apay' },
+            applePay: { merchantName: 'Demo' },
+          },
+          backend: { createPaymentUrl: '/api/payments/create' },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: ApplePayAdapter, useValue: applePay },
+      ],
+    }).compileComponents();
+  });
+
+  it('destroying one Apple Pay buttons host leaves the sibling ECE mount intact', async () => {
+    const fixtureA = TestBed.createComponent(EasyPaymentButtonsComponent);
+    const fixtureB = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixtureA.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixtureA.componentRef.setInput('methods', ['apple-pay']);
+    fixtureB.componentRef.setInput('methods', ['apple-pay']);
+
+    await render(fixtureA);
+    await render(fixtureB);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixtureA.detectChanges();
+    fixtureB.detectChanges();
+
+    expect(liveMounts.size).toBe(2);
+    const idA = applePay.mountExpressCheckout.calls.first().args[2] as string;
+
+    fixtureA.destroy();
+    expect(applePay.unmountExpressCheckout).toHaveBeenCalledWith({
+      preserveAvailability: true,
+      mountId: idA,
+    });
+    expect(liveMounts.size).toBe(1);
+    expect(
+      fixtureB.nativeElement.querySelector('[data-testid="easy-payment-buttons-apple-pay-express"]'),
+    ).toBeTruthy();
+    expect(applePay.destroy).not.toHaveBeenCalled();
 
     fixtureB.destroy();
     expect(liveMounts.size).toBe(0);

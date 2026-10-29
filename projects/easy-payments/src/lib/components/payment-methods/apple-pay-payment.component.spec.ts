@@ -41,6 +41,7 @@ describe('ApplePayPaymentComponent', () => {
   beforeEach(async () => {
     adapter = jasmine.createSpyObj<ApplePayAdapter>('ApplePayAdapter', [
       'isConfigured',
+      'createMountId',
       'mountExpressCheckout',
       'unmountExpressCheckout',
       'destroy',
@@ -48,9 +49,11 @@ describe('ApplePayPaymentComponent', () => {
       'getAvailabilityStatus',
     ]);
     adapter.isConfigured.and.returnValue(true);
+    adapter.createMountId.and.returnValue('apple-pay-ece-1');
     adapter.getAvailabilityStatus.and.returnValue('checking');
-    adapter.mountExpressCheckout.and.callFake(async (_host, options) => {
+    adapter.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
       options.onReady?.();
+      return mountId ?? 'apple-pay-ece-1';
     });
     adapter.isProcessing.and.returnValue(false);
     adapter.destroy.and.resolveTo();
@@ -149,9 +152,84 @@ describe('ApplePayPaymentComponent', () => {
     expect(text).toContain('not available');
   });
 
-  it('unmounts on destroy but keeps availability so the tile survives a method switch', () => {
+  it('unmounts its owned ECE mount on destroy without adapter.destroy', () => {
     fixture.destroy();
-    expect(adapter.unmountExpressCheckout).toHaveBeenCalledWith({ preserveAvailability: true });
+    expect(adapter.unmountExpressCheckout).toHaveBeenCalledWith({
+      preserveAvailability: true,
+      mountId: 'apple-pay-ece-1',
+    });
     expect(adapter.destroy).not.toHaveBeenCalled();
+  });
+});
+
+describe('ApplePayPaymentComponent compact + ownership', () => {
+  let fixture: ComponentFixture<ApplePayPaymentComponent>;
+  let adapter: jasmine.SpyObj<ApplePayAdapter>;
+
+  beforeEach(async () => {
+    adapter = jasmine.createSpyObj<ApplePayAdapter>('ApplePayAdapter', [
+      'isConfigured',
+      'createMountId',
+      'mountExpressCheckout',
+      'unmountExpressCheckout',
+      'destroy',
+      'isProcessing',
+      'getAvailabilityStatus',
+    ]);
+    adapter.isConfigured.and.returnValue(true);
+    adapter.createMountId.and.returnValue('apple-pay-ece-compact-1');
+    adapter.getAvailabilityStatus.and.returnValue('checking');
+    adapter.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      options.onReady?.();
+      return mountId ?? 'apple-pay-ece-compact-1';
+    });
+    adapter.isProcessing.and.returnValue(false);
+
+    await TestBed.configureTestingModule({
+      imports: [ApplePayPaymentComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_123' },
+            applePay: { merchantName: 'Demo' },
+          },
+          backend: { createPaymentUrl: '/api/payments/create' },
+        }),
+        { provide: ApplePayAdapter, useValue: adapter },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ApplePayPaymentComponent);
+    fixture.componentRef.setInput('product', {
+      id: 'premium-plan',
+      name: 'Premium Plan',
+      amount: 99.99,
+      currency: 'USD',
+      quantity: 1,
+    });
+    fixture.componentRef.setInput('resolvedTheme', 'light');
+    fixture.componentRef.setInput('compact', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  it('hides checkout chrome while mounting Apple Pay–only ECE', () => {
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).not.toContain('Pay with Apple Pay');
+    expect(adapter.mountExpressCheckout).toHaveBeenCalled();
+    expect(adapter.mountExpressCheckout.calls.mostRecent().args[2]).toBe(
+      'apple-pay-ece-compact-1',
+    );
+    expect(fixture.nativeElement.querySelector('.ep-apay--compact')).toBeTruthy();
+  });
+
+  it('passes owned mountId to unmount on destroy', () => {
+    fixture.destroy();
+    expect(adapter.unmountExpressCheckout).toHaveBeenCalledWith({
+      preserveAvailability: true,
+      mountId: 'apple-pay-ece-compact-1',
+    });
   });
 });

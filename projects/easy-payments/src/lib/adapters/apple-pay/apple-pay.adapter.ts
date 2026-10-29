@@ -52,6 +52,19 @@ export function isApplePayAvailableFromPaymentMethods(paymentMethods: unknown): 
   return false;
 }
 
+/** Per-host Stripe Express Checkout Element mount owned by one payment component. */
+interface ApplePayEceMount {
+  readonly id: string;
+  host: HTMLElement;
+  elements: StripeElements | null;
+  expressCheckout: StripeExpressCheckoutElement | null;
+  successHandler: ((result: PaymentResult) => void) | null;
+  cancelHandler: (() => void) | null;
+  errorHandler: ((error: PaymentError) => void) | null;
+  /** Race guard for async Stripe load vs remount of this id. */
+  token: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApplePayAdapter extends BaseProviderAdapter {
   readonly provider = 'applePay' as const;
@@ -62,15 +75,19 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   private readonly stripeSdk = inject(StripeSdkLoader);
 
   private stripe: Stripe | null = null;
-  private elements: StripeElements | null = null;
-  private expressCheckout: StripeExpressCheckoutElement | null = null;
   private configReady = false;
   private readonly configReadySignal = signal(false);
+  /** Shared confirm guard — concurrent live Apple Pay confirms are not isolated. */
   private processing = false;
-  private mountHost: HTMLElement | null = null;
-  private successHandler: ((result: PaymentResult) => void) | null = null;
-  private cancelHandler: (() => void) | null = null;
-  private errorHandler: ((error: PaymentError) => void) | null = null;
+
+  /**
+   * Ownership-scoped ECE mounts.
+   * Omit `mountId` on mount/unmount to use {@link LEGACY_SINGLETON_MOUNT_ID}
+   * (Ready-to-Use Checkout single-host remount path).
+   */
+  private readonly mounts = new Map<string, ApplePayEceMount>();
+  private nextMountSeq = 0;
+  static readonly LEGACY_SINGLETON_MOUNT_ID = 'apple-pay-ece-legacy';
 
   private availabilityState: ApplePayAvailabilityState = 'idle';
   private availabilitySessionKey: string | null = null;
@@ -78,8 +95,6 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   private lastAvailablePaymentMethods: unknown = null;
   private availabilityListener: ((state: ApplePayAvailabilityState) => void) | null = null;
 
-  /** Race guard — increment at each mount; abort stale mounts after await. */
-  private mountToken = 0;
   private abortedMounts = 0;
 
   isConfigured(): boolean {
@@ -238,10 +253,25 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     return stripe;
   }
 
+  /** Allocates a unique ECE mount id for Payment Buttons / multi-host ownership. */
+  createMountId(): string {
+    this.nextMountSeq += 1;
+    return `apple-pay-ece-${this.nextMountSeq}`;
+  }
+
+  /** Active ownership-scoped ECE mounts (test / diagnostics). */
+  getActiveEceMountCount(): number {
+    return this.mounts.size;
+  }
+
   /**
    * Mounts Stripe Express Checkout Element with Apple Pay only.
-   * One real ECE instance — availability is decided by the `ready` event.
+   * Availability is decided by the `ready` event.
    * PaymentIntent is created only on confirm (not on mount).
+   *
+   * @param mountId Ownership token. Omit to use the legacy singleton id
+   *   (Ready-to-Use Checkout). Pass an explicit id for multi-host isolation.
+   * @returns The mount id to pass to {@link unmountExpressCheckout}.
    */
   async mountExpressCheckout(
     host: HTMLElement,
@@ -260,10 +290,9 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       onUnavailable?: () => void;
       onAvailabilityChange?: (state: ApplePayAvailabilityState) => void;
     },
-  ): Promise<void> {
-    this.teardownExpressCheckout('remount');
-
-    const token = ++this.mountToken;
+    mountId: string = ApplePayAdapter.LEGACY_SINGLETON_MOUNT_ID,
+  ): Promise<string> {
+    this.teardownMount(mountId, 'remount');
 
     const sessionKey = buildApplePayRenderKey(options.product);
     const keepAvailable =
@@ -274,21 +303,30 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       this.lastAvailablePaymentMethods = null;
     }
 
-    this.successHandler = options.onSuccess;
-    this.cancelHandler = options.onCancel;
-    this.errorHandler = options.onError;
-    this.mountHost = host;
+    const mount: ApplePayEceMount = {
+      id: mountId,
+      host,
+      elements: null,
+      expressCheckout: null,
+      successHandler: options.onSuccess,
+      cancelHandler: options.onCancel,
+      errorHandler: options.onError,
+      token: 1,
+    };
+    this.mounts.set(mountId, mount);
     host.replaceChildren();
 
     const stripe = await this.ensureStripeLoaded();
-    if (token !== this.mountToken) {
-      // A newer mount already owns the host; finishing here would rip the
-      // newer element's iframe out of the DOM and ready would never fire.
+    const current = this.mounts.get(mountId);
+    if (!current || current !== mount) {
+      // A newer remount of this id already replaced us.
       this.abortedMounts += 1;
-      return;
+      return mountId;
     }
+
     const amount = toStripeAmountCents(options.product);
     if (!Number.isFinite(amount) || amount < 1) {
+      this.teardownMount(mountId, 'destroy');
       throw new PaymentError({
         code: 'PRODUCT_INVALID',
         message: 'Invalid amount for Apple Pay.',
@@ -301,10 +339,8 @@ export class ApplePayAdapter extends BaseProviderAdapter {
 
     // Byte-for-byte parity with the known-good Minimal ECE Control on iPhone Safari.
     // Same paymentMethods contract that unlocked ready+applePay on iPhone Safari.
-    // buttonHeight is Stripe-supported visual sizing only (does not change availability
-    // or PaymentIntent flow). Keep other ECE chrome options out of this path.
-    // Optional `locale` is a documented Stripe Elements option (not Apple Wallet sheet API).
-    this.elements = stripe.elements({
+    // Explicitly never expose Google Pay / Link / etc. in the Apple Pay slot.
+    const elements = stripe.elements({
       mode: 'payment',
       amount,
       currency,
@@ -312,7 +348,7 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       ...(options.locale ? { locale: options.locale as StripeElementLocale } : {}),
     });
 
-    const expressCheckout = this.elements.create('expressCheckout', {
+    const expressCheckout = elements.create('expressCheckout', {
       paymentMethods: {
         applePay: 'always',
         googlePay: 'never',
@@ -324,10 +360,14 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       buttonHeight: 44,
     });
 
-    this.expressCheckout = expressCheckout;
+    mount.elements = elements;
+    mount.expressCheckout = expressCheckout;
 
     // Listeners MUST be attached before mount (Stripe ECE docs pattern).
     expressCheckout.on('ready', (event) => {
+      if (!this.mounts.has(mountId)) {
+        return;
+      }
       this.readyFired = true;
       this.lastAvailablePaymentMethods = event.availablePaymentMethods ?? null;
       const available = isApplePayAvailableFromPaymentMethods(event.availablePaymentMethods);
@@ -342,33 +382,49 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     });
 
     expressCheckout.on('cancel', () => {
+      if (!this.mounts.has(mountId)) {
+        return;
+      }
       this.processing = false;
-      this.cancelHandler?.();
+      mount.cancelHandler?.();
     });
 
     expressCheckout.on('loaderror', (event) => {
+      if (!this.mounts.has(mountId)) {
+        return;
+      }
       this.processing = false;
       this.setAvailabilityState('error', sessionKey);
       options.onAvailabilityChange?.('error');
       const mapped = mapApplePayError(event?.error, 'SDK_LOAD_FAILED', 'Failed to load Apple Pay.');
-      this.errorHandler?.(mapped);
+      mount.errorHandler?.(mapped);
     });
 
     expressCheckout.on('confirm', async () => {
-      if (this.processing) {
+      if (!this.mounts.has(mountId) || this.processing) {
         return;
       }
       this.processing = true;
       options.onAttempt?.();
       try {
-        const result = await this.confirmExpressCheckout(options.product, options.checkout);
-        this.successHandler?.(result);
+        const result = await this.confirmExpressCheckout(
+          mount,
+          options.product,
+          options.checkout,
+        );
+        if (!this.mounts.has(mountId)) {
+          return;
+        }
+        mount.successHandler?.(result);
       } catch (error) {
+        if (!this.mounts.has(mountId)) {
+          return;
+        }
         const paymentError = mapApplePayError(error);
         if (paymentError.code === 'PAYMENT_CANCELLED') {
-          this.cancelHandler?.();
+          mount.cancelHandler?.();
         } else {
-          this.errorHandler?.(paymentError);
+          mount.errorHandler?.(paymentError);
         }
       } finally {
         this.processing = false;
@@ -376,10 +432,19 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     });
 
     expressCheckout.mount(host);
+    return mountId;
   }
 
-  unmountExpressCheckout(options?: { preserveAvailability?: boolean }): void {
-    this.teardownExpressCheckout('destroy', options?.preserveAvailability === true);
+  /**
+   * Unmounts one ECE mount (default: legacy singleton) or clears handlers for that host.
+   * Does not tear down sibling mounts when `mountId` is provided.
+   */
+  unmountExpressCheckout(options?: {
+    preserveAvailability?: boolean;
+    mountId?: string;
+  }): void {
+    const id = options?.mountId ?? ApplePayAdapter.LEGACY_SINGLETON_MOUNT_ID;
+    this.teardownMount(id, 'destroy', options?.preserveAvailability === true);
   }
 
   /**
@@ -396,25 +461,31 @@ export class ApplePayAdapter extends BaseProviderAdapter {
     return this.processing;
   }
 
-  private teardownExpressCheckout(
+  private teardownMount(
+    mountId: string,
     mode: 'remount' | 'destroy',
     preserveAvailability = false,
   ): void {
-    try {
-      this.expressCheckout?.unmount();
-      this.expressCheckout?.destroy();
-    } catch {
-      // Element may already be gone.
+    const mount = this.mounts.get(mountId);
+    if (mount) {
+      try {
+        mount.expressCheckout?.unmount();
+        mount.expressCheckout?.destroy();
+      } catch {
+        // Element may already be gone.
+      }
+      mount.expressCheckout = null;
+      mount.elements = null;
+      mount.successHandler = null;
+      mount.cancelHandler = null;
+      mount.errorHandler = null;
+      try {
+        mount.host.replaceChildren();
+      } catch {
+        // Host may already be detached.
+      }
+      this.mounts.delete(mountId);
     }
-    this.expressCheckout = null;
-    this.elements = null;
-    if (this.mountHost) {
-      this.mountHost.replaceChildren();
-      this.mountHost = null;
-    }
-    this.successHandler = null;
-    this.cancelHandler = null;
-    this.errorHandler = null;
 
     if (preserveAvailability) {
       // Keep readyFired / availablePaymentMethods / availabilityState for the
@@ -422,10 +493,13 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       return;
     }
 
+    // Only reset global availability when no other ECE mounts remain,
+    // or when remounting the last/only mount into checking.
+    if (this.mounts.size > 0) {
+      return;
+    }
+
     if (mode === 'remount') {
-      // Same-product remount (e.g. host swap): keep a confirmed `available` so the
-      // express slot does not flicker, but do not invent availability. readyFired
-      // stays until the replacement ECE emits ready again.
       if (this.availabilityState !== 'available') {
         this.readyFired = false;
         this.lastAvailablePaymentMethods = null;
@@ -452,12 +526,13 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   }
 
   private async confirmExpressCheckout(
+    mount: ApplePayEceMount,
     product: PaymentProduct,
     checkout?: CheckoutOptions,
   ): Promise<PaymentResult> {
     const stripe = await this.ensureStripeLoaded();
-    const elements = this.elements;
-    if (!elements) {
+    const elements = mount.elements;
+    if (!elements || !this.mounts.has(mount.id)) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: 'Apple Pay is not ready.',
@@ -569,7 +644,9 @@ export class ApplePayAdapter extends BaseProviderAdapter {
   }
 
   async destroy(): Promise<void> {
-    this.unmountExpressCheckout();
+    for (const id of Array.from(this.mounts.keys())) {
+      this.teardownMount(id, 'destroy', false);
+    }
     this.processing = false;
     this.stripe = null;
     this.availabilityListener = null;

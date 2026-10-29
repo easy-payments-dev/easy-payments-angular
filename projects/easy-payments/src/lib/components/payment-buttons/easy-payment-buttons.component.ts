@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  NgZone,
   computed,
   effect,
   inject,
@@ -38,10 +39,12 @@ import {
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
 } from '../../i18n';
+import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
 import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
 import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment.component';
+import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 
 /** Slot readiness for the method list. */
@@ -51,8 +54,8 @@ export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable'
  * How a method slot is rendered.
  * - `placeholder` — noninteractive (not yet integrated, loading, or unavailable)
  * - `card-selector` — Card tile that reveals Stripe/mock panel below the list
- * - `paypal-express` / `google-pay-express` — official provider buttons in-slot
- * - `paypal-mock` / `google-pay-mock` — clearly labeled mock controls in-slot
+ * - `*-express` — official provider buttons in-slot
+ * - `*-mock` — clearly labeled mock controls in-slot
  */
 export type EasyPaymentButtonSlotKind =
   | 'placeholder'
@@ -60,7 +63,9 @@ export type EasyPaymentButtonSlotKind =
   | 'paypal-express'
   | 'paypal-mock'
   | 'google-pay-express'
-  | 'google-pay-mock';
+  | 'google-pay-mock'
+  | 'apple-pay-express'
+  | 'apple-pay-mock';
 
 export interface EasyPaymentButtonSlot {
   readonly method: PaymentMethod;
@@ -70,7 +75,7 @@ export interface EasyPaymentButtonSlot {
   readonly kind: EasyPaymentButtonSlotKind;
   /**
    * True for Card selector tiles only.
-   * Express mounts (PayPal / Google Pay) are interactive payments but not selectors.
+   * Express mounts are interactive payments but not selectors.
    */
   readonly interactive: boolean;
 }
@@ -90,7 +95,8 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
  * Step 2A: Card selector → Stripe Payment Element / mock panel below the list.
  * Step 2B: Official PayPal Buttons render directly in the PayPal slot.
  * Step 2C: Official Google Pay button renders directly in the google-pay slot.
- * Other configured methods remain noninteractive placeholders.
+ * Step 2D: Official Apple Pay ECE button renders directly in the apple-pay slot.
+ * Klarna / Affirm remain noninteractive placeholders.
  */
 @Component({
   selector: 'easy-payment-buttons',
@@ -100,6 +106,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     StripeCardPaymentComponent,
     PayPalPaymentComponent,
     GooglePayPaymentComponent,
+    ApplePayPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -118,6 +125,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-card-ready]': 'hasAvailableCard() ? "true" : "false"',
     '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
     '[attr.data-google-pay-ready]': 'hasAvailableGooglePay() ? "true" : "false"',
+    '[attr.data-apple-pay-ready]': 'hasAvailableApplePay() ? "true" : "false"',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -136,6 +144,8 @@ export class EasyPaymentButtonsComponent {
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly themeService = inject(ThemeService);
   private readonly i18n = inject(EasyPaymentsI18nService);
+  private readonly applePayAdapter = inject(ApplePayAdapter);
+  private readonly ngZone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
   private destroyed = false;
 
@@ -226,6 +236,10 @@ export class EasyPaymentButtonsComponent {
     this.methodSlots().some((slot) => slot.method === 'google-pay' && slot.state === 'available'),
   );
 
+  readonly hasAvailableApplePay = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'apple-pay' && slot.state === 'available'),
+  );
+
   readonly selectedCardEntry = computed(() => {
     if (this.selectedMethod() !== 'card') {
       return null;
@@ -253,6 +267,29 @@ export class EasyPaymentButtonsComponent {
   constructor() {
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
+      this.applePayAdapter.setAvailabilityListener(null);
+    });
+
+    // Stripe ECE `ready` often fires outside NgZone — refresh instance availability
+    // so apple-pay slots update after wallet eligibility is known.
+    // Note: ApplePayAdapter allows a single global listener (same as Ready-to-Use Checkout).
+    this.applePayAdapter.setAvailabilityListener(() => {
+      this.ngZone.run(() => {
+        if (this.destroyed) {
+          return;
+        }
+        const product = untracked(() => this.product());
+        const methods = untracked(() => this.methods());
+        const checkout = untracked(() => this.checkout());
+        void this.refreshInstanceAvailability(
+          methods,
+          product,
+          checkout,
+          this.resolvedTheme(),
+        ).catch(() => {
+          // Availability refresh errors are non-fatal for button UI.
+        });
+      });
     });
 
     effect(() => {
@@ -305,7 +342,14 @@ export class EasyPaymentButtonsComponent {
     if (slot.kind === 'google-pay-express') {
       return `${base}, official Google Pay button`;
     }
-    if (slot.kind === 'paypal-mock' || slot.kind === 'google-pay-mock') {
+    if (slot.kind === 'apple-pay-express') {
+      return `${base}, official Apple Pay button`;
+    }
+    if (
+      slot.kind === 'paypal-mock' ||
+      slot.kind === 'google-pay-mock' ||
+      slot.kind === 'apple-pay-mock'
+    ) {
       return `${base}, mock payment`;
     }
     if (!slot.interactive) {
@@ -398,6 +442,31 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  /**
+   * Official Apple Pay has no separate selector — wallet confirm selects the method
+   * for methodChange, then emits started (not on ECE mount / ready).
+   */
+  onApplePayStarted(): void {
+    this.updateSelectedMethod('apple-pay');
+    this.onPaymentStarted('apple-pay');
+  }
+
+  onApplePayBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onApplePaySuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onApplePayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onApplePayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   async onMockCardPay(): Promise<void> {
     await this.runMockPayment('card');
   }
@@ -418,11 +487,31 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('google-pay');
   }
 
+  async onMockApplePayPay(): Promise<void> {
+    if (this.methodsLocked() || this.destroyed) {
+      return;
+    }
+    this.updateSelectedMethod('apple-pay');
+    await this.runMockPayment('apple-pay');
+  }
+
   private resolveSlotKind(
     method: PaymentMethod,
     state: EasyPaymentButtonSlotState,
     isMock: boolean,
   ): EasyPaymentButtonSlotKind {
+    // Apple Pay ECE must mount to learn wallet eligibility (`ready`).
+    // After publish, live apple-pay always gets an express slot; the component
+    // hides the button when Stripe reports Apple Pay unavailable (no fake CTA).
+    if (method === 'apple-pay') {
+      if (state === 'loading') {
+        return 'placeholder';
+      }
+      if (isMock) {
+        return state === 'available' ? 'apple-pay-mock' : 'placeholder';
+      }
+      return 'apple-pay-express';
+    }
     if (state !== 'available') {
       return 'placeholder';
     }

@@ -199,7 +199,9 @@ describe('EasyPaymentsComponent', () => {
       configurable: true,
       get: () => configured.asReadonly(),
     });
-    spyOn(applePay, 'mountExpressCheckout').and.returnValue(Promise.resolve());
+    spyOn(applePay, 'mountExpressCheckout').and.returnValue(
+      Promise.resolve('legacy-singleton'),
+    );
     spyOn(applePay, 'unmountExpressCheckout');
 
     fixture.componentRef.setInput('methods', ['card', 'apple-pay']);

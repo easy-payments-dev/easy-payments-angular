@@ -101,6 +101,39 @@
               (pay)="onMockGooglePayPay()"
             />
           </div>
+        } @else if (slot.kind === 'apple-pay-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-apple-pay-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-apple-pay-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onApplePayStarted()"
+              (busyChange)="onApplePayBusy($event)"
+              (success)="onApplePaySuccess($event)"
+              (cancel)="onApplePayCancel($event)"
+              (error)="onApplePayError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'apple-pay-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-apple-pay-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="apple-pay"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'apple-pay'"
+              (pay)="onMockApplePayPay()"
+            />
+          </div>
         } @else {
           <div
             class="ep-payment-buttons__placeholder"
