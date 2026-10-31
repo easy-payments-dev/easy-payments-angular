@@ -262,6 +262,22 @@ describe('StripeCardPaymentComponent session reuse', () => {
     ).toBeFalse();
   });
 
+  it('styles the Card CTA with opaque disabled contrast (not pale opacity washout)', () => {
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent ?? '')
+      .join('\n');
+    // Angular encodes host attrs between class and pseudo (:disabled).
+    expect(styleText).toMatch(
+      /ep-stripe-card__pay[^{]*:disabled[^{]*\{[^}]*opacity:\s*1/,
+    );
+    expect(styleText).toMatch(
+      /ep-stripe-card__pay[^{]*:disabled[^{]*\{[^}]*color-mix/,
+    );
+    expect(styleText).toMatch(
+      /ep-stripe-card__pay\[aria-busy[^\]]*\][^{]*:disabled[^{]*\{[^}]*color-mix/,
+    );
+  });
+
   it('destroys the Stripe element on teardown', () => {
     const cardDebug = fixture.debugElement.query(By.directive(StripeCardPaymentComponent));
     expect(cardDebug).toBeTruthy();

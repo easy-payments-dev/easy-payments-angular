@@ -179,10 +179,19 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         font-size: 15px;
         font-weight: 650;
         cursor: pointer;
+        transition:
+          background-color 0.15s ease,
+          color 0.15s ease,
+          box-shadow 0.15s ease;
       }
 
       .ep-stripe-card__pay:hover:not(:disabled) {
         background: var(--ep-cta-bg-hover, #1e293b);
+      }
+
+      .ep-stripe-card__pay:active:not(:disabled) {
+        background: var(--ep-cta-bg-hover, #1e293b);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, #000 18%, transparent);
       }
 
       .ep-stripe-card__pay:focus-visible {
@@ -199,9 +208,32 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         font-size: 14px;
       }
 
+      /*
+        Disabled / loading: keep opaque label contrast. Pure opacity on a pale
+        dark-theme CTA made "Pay with card" nearly disappear.
+      */
       .ep-stripe-card__pay:disabled {
-        opacity: 0.55;
         cursor: not-allowed;
+        opacity: 1;
+        background: color-mix(
+          in srgb,
+          var(--ep-cta-bg, #0f172a) 42%,
+          var(--ep-surface, #ffffff)
+        );
+        color: color-mix(
+          in srgb,
+          var(--ep-cta-text, #f8fafc) 72%,
+          var(--ep-text-secondary, #64748b)
+        );
+      }
+
+      .ep-stripe-card__pay[aria-busy='true']:disabled {
+        background: color-mix(
+          in srgb,
+          var(--ep-cta-bg, #0f172a) 58%,
+          var(--ep-surface, #ffffff)
+        );
+        color: var(--ep-cta-text, #f8fafc);
       }
 
       @media (prefers-reduced-motion: reduce) {

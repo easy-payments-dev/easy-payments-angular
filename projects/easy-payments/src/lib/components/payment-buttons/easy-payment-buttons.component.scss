@@ -54,9 +54,14 @@
   --ep-accent: #60a5fa;
   --ep-accent-soft: rgba(96, 165, 250, 0.12);
   --ep-focus: #93c5fd;
-  --ep-cta-bg: #f8fafc;
-  --ep-cta-bg-hover: #e2e8f0;
-  --ep-cta-text: #0f172a;
+  /*
+    Primary CTAs follow accent hue (tracks [visualStyle].accentColor) but are
+    deepened for hierarchy. Pale #f8fafc + disabled opacity washed out
+    "Pay with card" against dark Stripe Element panels.
+  */
+  --ep-cta-bg: color-mix(in srgb, var(--ep-accent, #60a5fa) 42%, #0b3a82);
+  --ep-cta-bg-hover: color-mix(in srgb, var(--ep-accent, #60a5fa) 55%, #1d4ed8);
+  --ep-cta-text: #f8fafc;
   --ep-demo-bg: #1e293b;
   --ep-demo-text: #94a3b8;
   --ep-buttons-border-color: var(--ep-border, #243044);

@@ -962,6 +962,28 @@ describe('EasyPaymentButtonsComponent', () => {
       const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
       expect(luminance).toBeLessThan(0.3);
     });
+
+    it('uses accent-based CTA tokens in dark theme instead of pale near-white', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      fixture.componentRef.setInput('theme', 'dark');
+      await render(fixture);
+
+      expect(host.classList.contains('ep-theme-dark')).toBeTrue();
+      const ctaBg = getComputedStyle(host).getPropertyValue('--ep-cta-bg').trim();
+      const ctaText = getComputedStyle(host).getPropertyValue('--ep-cta-text').trim();
+      const accent = getComputedStyle(host).getPropertyValue('--ep-accent').trim();
+
+      expect(ctaBg.toLowerCase()).not.toBe('#f8fafc');
+      expect(ctaBg).toContain('color-mix');
+      expect(ctaBg).toContain(accent);
+      expect(ctaText.toLowerCase()).toBe('#f8fafc');
+
+      fixture.componentRef.setInput('theme', 'light');
+      await render(fixture);
+      expect(getComputedStyle(host).getPropertyValue('--ep-cta-bg').trim().toLowerCase()).toBe(
+        '#0f172a',
+      );
+    });
   });
 });
 
@@ -1054,6 +1076,52 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
     expect(cta?.textContent?.trim()).toBe('Pay with card');
     expect(cta?.textContent).not.toMatch(/\$\d/);
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps a high-contrast dark-theme Card CTA when enabled and still readable when disabled', async () => {
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.componentRef.setInput('theme', 'dark');
+    await render(fixture);
+    slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const cta = host.querySelector(
+      '[data-testid="easy-payment-buttons-card-panel"] button.ep-stripe-card__pay',
+    ) as HTMLButtonElement;
+    expect(cta).toBeTruthy();
+
+    // Enabled (session ready): solid accent fill, not washed-out near-white.
+    expect(cta.disabled).toBeFalse();
+    const enabledBg = getComputedStyle(cta).backgroundColor;
+    expect(enabledBg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(enabledBg).not.toMatch(/rgba?\(\s*248\s*,\s*250\s*,\s*252/i);
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const sample = (css: string) => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+    };
+    const [er, eg, eb] = sample(enabledBg);
+    const enabledLum = (0.2126 * er + 0.7152 * eg + 0.0722 * eb) / 255;
+    // Deepened accent CTA; pale #f8fafc was ~0.98 luminance.
+    expect(enabledLum).toBeLessThan(0.55);
+    expect(enabledLum).toBeGreaterThan(0.12);
+
+    // Disabled must stay opaque and distinct from the enabled fill.
+    adapter.hasMountedElement.and.returnValue(false);
+    cta.disabled = true;
+    fixture.detectChanges();
+    expect(getComputedStyle(cta).opacity).toBe('1');
+    const disabledBg = getComputedStyle(cta).backgroundColor;
+    expect(disabledBg).not.toBe(enabledBg);
+    host.remove();
   });
 
   it('emits success without rendering application-level outcome banners in the panel', async () => {
