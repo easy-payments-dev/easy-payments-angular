@@ -35,7 +35,7 @@ Before production, review: trusted pricing, auth, rate limits, HTTPS, live crede
 
 ## Endpoints (reference demo)
 
-Base URL in local demo: `http://localhost:3000`
+Base URL in local demo: `http://localhost:3001`
 
 ### Stripe card / wallets (PaymentIntent)
 
@@ -219,7 +219,7 @@ createPaymentUrl: 'https://payments.other-provider.com/create'
 
 **Local proxy.** Leave `baseUrl` unset and use relative paths such as `/api/payments/create`. The Angular dev server proxy forwards them.
 
-**Separate local API.** `baseUrl: 'http://localhost:3000'` with the same relative paths. The API must allow the Angular origin in CORS.
+**Separate local API.** `baseUrl: 'http://localhost:3001'` with the same relative paths. The API must allow the Angular origin in CORS.
 
 **Production.** `baseUrl: 'https://api.example.com'` (HTTPS). Secret keys and PayPal client secrets stay on that server, never in Angular.
 
@@ -237,10 +237,10 @@ The NestJS demo server includes **optional** verified webhook receivers. They ar
 
 ### Stripe
 
-1. Set `STRIPE_WEBHOOK_SECRET=whsec_...` (Dashboard → Developers → Webhooks, or `stripe listen --forward-to localhost:3000/api/webhooks/stripe`).
+1. Set `STRIPE_WEBHOOK_SECRET=whsec_...` (Dashboard → Developers → Webhooks, or `stripe listen --forward-to localhost:3001/api/webhooks/stripe`).
 2. The handler verifies `Stripe-Signature` against the **exact raw body** (`NestFactory` `rawBody: true`). Missing secret → **503**. Invalid signature → **400**.
 3. Supported reference events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.processing`, `payment_intent.canceled`. Other types are acknowledged without changing status.
-4. Local CLI: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` then trigger a test PaymentIntent.
+4. Local CLI: `stripe listen --forward-to localhost:3001/api/webhooks/stripe` then trigger a test PaymentIntent.
 
 ### PayPal
 

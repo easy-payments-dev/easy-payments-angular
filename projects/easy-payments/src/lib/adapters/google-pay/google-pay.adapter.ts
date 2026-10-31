@@ -181,6 +181,11 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       onClick: () => void | Promise<void>;
       /** ISO 639-1 button locale (en / es / pt). Affects button text only. */
       buttonLocale?: string;
+      /**
+       * Buttons Only strip: official logo-only button for a compact footprint.
+       * Full checkout keeps `pay` (may include account UI).
+       */
+      compact?: boolean;
     },
     mountId?: string,
   ): Promise<string> {
@@ -191,13 +196,17 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     const client = await this.ensurePaymentsClient();
     host.replaceChildren();
 
+    // Compact uses `short`, not `plain`: for signed-in Chrome users pay.js swaps
+    // `plain`/`pay` for a personalized card-info button (min-width 240px, saved
+    // card art) whenever Google enables its server-side dynamic-button flags.
+    // `short` renders the same logo-only mark and is excluded from that swap.
     const buttonOptions: GooglePayButtonOptions = {
       onClick: (event) => {
         event.preventDefault();
         void options.onClick();
       },
       buttonColor: options.theme === 'dark' ? 'white' : 'black',
-      buttonType: 'pay',
+      buttonType: options.compact ? 'short' : 'pay',
       buttonSizeMode: 'fill',
       ...(options.buttonLocale ? { buttonLocale: options.buttonLocale } : {}),
     };

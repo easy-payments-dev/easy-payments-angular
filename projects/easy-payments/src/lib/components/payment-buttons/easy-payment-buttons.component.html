@@ -2,16 +2,36 @@
   class="ep-payment-buttons"
   [class.ep-payment-buttons--horizontal]="layout() === 'horizontal'"
   [class.ep-payment-buttons--vertical]="layout() === 'vertical'"
+  [class.ep-payment-buttons--separators]="separatorsEnabled()"
+  [class.ep-payment-buttons--borderless]="borderlessSelectors()"
   data-testid="easy-payment-buttons-root"
 >
+  @if (showDemoModeNotice()) {
+    <p class="ep-payment-buttons__demo-notice" role="status" data-testid="easy-payment-buttons-demo-notice">
+      {{ msgs().buttonsDemoModeNotice }}
+    </p>
+  }
+
+  @if (noMethodsAvailable()) {
+    <p class="ep-payment-buttons__empty" role="status" data-testid="easy-payment-buttons-empty">
+      {{ msgs().noPaymentMethodsAvailable }}
+    </p>
+  }
+
   <div
     class="ep-payment-buttons__list"
     role="group"
     [attr.aria-label]="regionAriaLabel()"
   >
     @for (slot of methodSlots(); track slot.method) {
+      <!--
+        Unavailable slots collapse instead of unmounting: Apple Pay's Stripe
+        Express Checkout Element must stay mounted to report eligibility.
+      -->
       <div
         class="ep-payment-buttons__item"
+        [class.ep-payment-buttons__item--collapsed]="slot.state === 'unavailable'"
+        [attr.aria-hidden]="slot.state === 'unavailable' ? 'true' : null"
         [attr.data-method]="slot.method"
         [attr.data-state]="slot.state"
         [attr.data-kind]="slot.kind"
@@ -26,18 +46,20 @@
           <button
             type="button"
             class="ep-payment-buttons__selector"
-            role="radio"
             [class.ep-payment-buttons__selector--selected]="selectedMethod() === slot.method"
             [class.ep-payment-buttons__selector--mock]="slot.isMock"
-            [attr.aria-checked]="selectedMethod() === slot.method"
+            [class.ep-payment-buttons__selector--labeled]="slot.showVisibleLabel"
+            [attr.aria-pressed]="selectedMethod() === slot.method"
             [attr.aria-label]="slotAriaLabel(slot)"
             [disabled]="methodsLocked()"
             (click)="selectMethod(slot.method)"
           >
-            <span class="ep-payment-buttons__icon">
+            <span class="ep-payment-buttons__mark" aria-hidden="true">
               <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
             </span>
-            <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+            @if (slot.showVisibleLabel) {
+              <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+            }
           </button>
         } @else if (slot.kind === 'paypal-express') {
           <div
@@ -65,6 +87,7 @@
           >
             <easy-mock-method-panel
               method="paypal"
+              presentation="strip"
               [product]="product()"
               [theme]="resolvedTheme()"
               [isMock]="true"
@@ -98,6 +121,7 @@
           >
             <easy-mock-method-panel
               method="google-pay"
+              presentation="strip"
               [product]="product()"
               [theme]="resolvedTheme()"
               [isMock]="true"
@@ -131,6 +155,7 @@
           >
             <easy-mock-method-panel
               method="apple-pay"
+              presentation="strip"
               [product]="product()"
               [theme]="resolvedTheme()"
               [isMock]="true"
@@ -144,25 +169,19 @@
             [class.ep-payment-buttons__placeholder--loading]="slot.state === 'loading'"
             [class.ep-payment-buttons__placeholder--unavailable]="slot.state === 'unavailable'"
             [class.ep-payment-buttons__placeholder--mock]="slot.isMock"
+            role="status"
             aria-disabled="true"
             [attr.aria-label]="slotAriaLabel(slot)"
           >
-            <span class="ep-payment-buttons__icon">
+            <span class="ep-payment-buttons__mark" aria-hidden="true">
               <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
-            </span>
-            <span class="ep-payment-buttons__label">{{ slot.label }}</span>
-            <span class="ep-payment-buttons__status" aria-hidden="true">
-              @if (slot.state === 'loading') {
-                Loading
-              } @else if (slot.state === 'unavailable') {
-                Unavailable
-              } @else {
-                Unavailable
-              }
             </span>
           </div>
         }
       </div>
+      @if (separatorsEnabled() && separatorAfter().has(slot.method)) {
+        <div class="ep-payment-buttons__separator" aria-hidden="true"></div>
+      }
     }
   </div>
 
@@ -170,12 +189,13 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-card-panel"
-      aria-label="Card payment"
+      [attr.aria-label]="msgs().cardPaymentRegionAria"
     >
       <easy-stripe-card-payment
         [product]="product()"
         [checkout]="checkout()"
         [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
         (started)="onCardStarted()"
         (busyChange)="onCardBusy($event)"
         (success)="onCardSuccess($event)"
@@ -189,10 +209,11 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-card-mock-panel"
-      aria-label="Card payment"
+      [attr.aria-label]="msgs().cardPaymentRegionAria"
     >
       <easy-mock-method-panel
         method="card"
+        presentation="expand"
         [product]="product()"
         [theme]="resolvedTheme()"
         [isMock]="true"
@@ -206,12 +227,13 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-klarna-panel"
-      aria-label="Klarna payment"
+      [attr.aria-label]="msgs().klarnaPaymentRegionAria"
     >
       <easy-klarna-payment
         [product]="product()"
         [checkout]="checkout()"
         [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
         (started)="onKlarnaStarted()"
         (busyChange)="onKlarnaBusy($event)"
         (success)="onKlarnaSuccess($event)"
@@ -225,10 +247,11 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-klarna-mock-panel"
-      aria-label="Klarna payment"
+      [attr.aria-label]="msgs().klarnaPaymentRegionAria"
     >
       <easy-mock-method-panel
         method="klarna"
+        presentation="expand"
         [product]="product()"
         [theme]="resolvedTheme()"
         [isMock]="true"
@@ -242,12 +265,13 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-affirm-panel"
-      aria-label="Affirm payment"
+      [attr.aria-label]="msgs().affirmPaymentRegionAria"
     >
       <easy-affirm-payment
         [product]="product()"
         [checkout]="checkout()"
         [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
         (started)="onAffirmStarted()"
         (busyChange)="onAffirmBusy($event)"
         (success)="onAffirmSuccess($event)"
@@ -261,10 +285,11 @@
     <section
       class="ep-payment-buttons__panel"
       data-testid="easy-payment-buttons-affirm-mock-panel"
-      aria-label="Affirm payment"
+      [attr.aria-label]="msgs().affirmPaymentRegionAria"
     >
       <easy-mock-method-panel
         method="affirm"
+        presentation="expand"
         [product]="product()"
         [theme]="resolvedTheme()"
         [isMock]="true"

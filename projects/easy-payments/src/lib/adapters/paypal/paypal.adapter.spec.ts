@@ -290,6 +290,51 @@ describe('PayPalAdapter', () => {
     expect(adapter.getActiveButtonMountCount()).toBe(0);
   });
 
+  it('passes fundingSource through to PayPal Buttons for single-button mounts', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    const host = document.createElement('div');
+    await adapter.renderButtons(host, {
+      fundingSource: 'paypal',
+      style: { height: 40, label: 'paypal' },
+      createOrder: async () => 'ORDER-1',
+      onApprove: async () => undefined,
+    });
+
+    expect(paypalNs.Buttons).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        fundingSource: 'paypal',
+        style: jasmine.objectContaining({
+          height: 40,
+          label: 'paypal',
+          layout: 'vertical',
+        }),
+      }),
+    );
+  });
+
+  it('never sends SDK-invalid style types (string height, vertical tagline)', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    await adapter.renderButtons(document.createElement('div'), {
+      fundingSource: 'paypal',
+      style: { height: 40 },
+      createOrder: async () => 'ORDER-1',
+      onApprove: async () => undefined,
+    });
+
+    const style = (paypalNs.Buttons as jasmine.Spy).calls.mostRecent().args[0].style as Record<
+      string,
+      unknown
+    >;
+    expect(typeof style['height']).toBe('number');
+    expect('tagline' in style).toBeFalse();
+  });
+
   it('keeps sibling Buttons mounts when one host is destroyed', async () => {
     const closes: jasmine.Spy[] = [];
     (paypalNs.Buttons as jasmine.Spy).and.callFake(() => {

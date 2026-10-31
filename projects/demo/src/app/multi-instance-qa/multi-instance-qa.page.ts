@@ -8,7 +8,9 @@ import {
   PaymentProduct,
   PaymentResult,
   PaymentTheme,
+  type EasyPaymentButtonsAppearance,
   type EasyPaymentButtonsLayout,
+  type EasyPaymentsLocale,
 } from '@easy-payments/angular';
 
 type QaScenario =
@@ -19,6 +21,8 @@ type QaScenario =
   | 'five-plus-five'
   | 'mixed-methods'
   | 'layouts-themes'
+  | 'buttons-style'
+  | 'buttons-locale'
   | 'destroy-recreate'
   | 'unavailable';
 
@@ -29,6 +33,8 @@ interface QaHostSpec {
   readonly methods: PaymentMethod[];
   readonly theme: PaymentTheme;
   readonly layout?: EasyPaymentButtonsLayout;
+  readonly locale?: EasyPaymentsLocale;
+  readonly buttonsAppearance?: EasyPaymentButtonsAppearance;
   readonly checkoutInstanceId: string;
 }
 
@@ -74,7 +80,9 @@ export class MultiInstanceQaPage {
     { id: 'ten-checkouts', label: '4. Ten full checkouts' },
     { id: 'five-plus-five', label: '5. Five + five mixed' },
     { id: 'mixed-methods', label: '6. Mixed methods / order' },
-    { id: 'layouts-themes', label: '7–9. Layouts, themes, products' },
+    { id: 'layouts-themes', label: '7. Layouts & themes' },
+    { id: 'buttons-style', label: '8. Strip styles / separators' },
+    { id: 'buttons-locale', label: '9. EN / ES Buttons Only' },
     { id: 'destroy-recreate', label: '10. Destroy / recreate' },
     { id: 'unavailable', label: '11. Provider unavailable' },
   ];
@@ -139,10 +147,15 @@ export class MultiInstanceQaPage {
       case 'one-checkout':
         return [this.checkoutHost(0, ALL_METHODS, 'light')];
       case 'one-buttons':
-        return [this.buttonsHost(0, ALL_METHODS, 'light', 'vertical')];
+        return [this.buttonsHost(0, ALL_METHODS, 'light', 'horizontal')];
       case 'ten-buttons':
         return Array.from({ length: 10 }, (_, i) =>
-          this.buttonsHost(i, ALL_METHODS, i % 2 ? 'dark' : 'light', i % 2 ? 'horizontal' : 'vertical'),
+          this.buttonsHost(
+            i,
+            ALL_METHODS,
+            i % 2 ? 'dark' : 'light',
+            i % 2 ? 'horizontal' : 'vertical',
+          ),
         );
       case 'ten-checkouts':
         return Array.from({ length: 10 }, (_, i) =>
@@ -166,9 +179,40 @@ export class MultiInstanceQaPage {
         return [
           this.buttonsHost(0, ALL_METHODS, 'light', 'vertical'),
           this.buttonsHost(1, ALL_METHODS, 'dark', 'horizontal'),
-          this.buttonsHost(2, ALL_METHODS, 'light', 'horizontal'),
+          this.buttonsHost(2, ALL_METHODS, 'system', 'horizontal'),
           this.checkoutHost(3, ALL_METHODS, 'dark'),
           this.checkoutHost(4, ALL_METHODS, 'light'),
+        ];
+      case 'buttons-style':
+        return [
+          this.buttonsHost(0, ALL_METHODS, 'light', 'horizontal', 'en', {
+            separators: 'line',
+            gap: '16px',
+            background: 'transparent',
+          }),
+          this.buttonsHost(1, ALL_METHODS, 'light', 'horizontal', 'en', {
+            border: 'none',
+            borderRadius: '999px',
+            background: '#f8fafc',
+            gap: '10px',
+          }),
+          this.buttonsHost(2, ALL_METHODS, 'dark', 'vertical', 'en', {
+            separators: 'line',
+            separatorColor: '#475569',
+            borderRadius: '8px',
+            buttonHeight: '44px',
+          }),
+          this.buttonsHost(3, ALL_METHODS, 'light', 'vertical', 'en', {
+            border: 'default',
+            borderColor: '#2563eb',
+            borderWidth: '2px',
+            borderRadius: '0',
+          }),
+        ];
+      case 'buttons-locale':
+        return [
+          this.buttonsHost(0, ALL_METHODS, 'light', 'horizontal', 'en'),
+          this.buttonsHost(1, ALL_METHODS, 'light', 'horizontal', 'es'),
         ];
       case 'destroy-recreate':
         return [
@@ -199,6 +243,8 @@ export class MultiInstanceQaPage {
     methods: PaymentMethod[],
     theme: PaymentTheme,
     layout: EasyPaymentButtonsLayout,
+    locale: EasyPaymentsLocale = 'en',
+    buttonsAppearance?: EasyPaymentButtonsAppearance,
   ): QaHostSpec {
     return {
       id: `buttons-${i}`,
@@ -207,6 +253,8 @@ export class MultiInstanceQaPage {
       methods,
       theme,
       layout,
+      locale,
+      buttonsAppearance,
       checkoutInstanceId: `qa-buttons-${i}`,
     };
   }

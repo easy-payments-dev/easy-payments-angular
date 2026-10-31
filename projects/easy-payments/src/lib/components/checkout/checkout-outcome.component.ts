@@ -251,6 +251,7 @@ import { CheckoutViewState, formatTransactionReference } from './checkout-view-s
       }
 
       .ep-outcome__action:focus-visible {
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
       }

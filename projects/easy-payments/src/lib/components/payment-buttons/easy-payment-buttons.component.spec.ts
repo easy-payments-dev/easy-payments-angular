@@ -203,6 +203,28 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(started.length).toBe(0);
   });
 
+  it('exposes selector pressed state and focusable native buttons for keyboard use', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'klarna', 'paypal']);
+    await render(fixture);
+
+    const card = slotItem(fixture, 'card')?.querySelector(
+      'button.ep-payment-buttons__selector',
+    ) as HTMLButtonElement;
+    const klarna = slotItem(fixture, 'klarna')?.querySelector(
+      'button.ep-payment-buttons__selector',
+    ) as HTMLButtonElement;
+    expect(card.type).toBe('button');
+    expect(card.getAttribute('aria-pressed')).toBe('false');
+    expect(klarna.getAttribute('aria-pressed')).toBe('false');
+
+    card.focus();
+    expect(document.activeElement).toBe(card);
+    card.click();
+    fixture.detectChanges();
+    expect(card.getAttribute('aria-pressed')).toBe('true');
+    expect(klarna.getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('emits methodChange on Card selection and lifecycle events on mock pay', async () => {
     const methodChanges: unknown[] = [];
     const started: unknown[] = [];
@@ -251,7 +273,7 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes.length).toBe(0);
 
     const pay = slotItem(fixture, 'paypal')?.querySelector(
-      'button.ep-mock-panel__cta',
+      'button.ep-mock-panel__strip',
     ) as HTMLButtonElement;
     pay.click();
     await fixture.whenStable();
@@ -277,7 +299,7 @@ describe('EasyPaymentButtonsComponent', () => {
     await render(fixture);
 
     slotItem(fixture, 'paypal')
-      ?.querySelector('button.ep-mock-panel__cta')
+      ?.querySelector('button.ep-mock-panel__strip')
       ?.dispatchEvent(new Event('click'));
     await fixture.whenStable();
     fixture.detectChanges();
@@ -370,7 +392,7 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes.length).toBe(0);
 
     const pay = slotItem(fixture, 'google-pay')?.querySelector(
-      'button.ep-mock-panel__cta',
+      'button.ep-mock-panel__strip',
     ) as HTMLButtonElement;
     pay.click();
     await fixture.whenStable();
@@ -421,7 +443,7 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(successes.length).toBe(0);
 
     slotItem(fixture, 'apple-pay')
-      ?.querySelector('button.ep-mock-panel__cta')
+      ?.querySelector('button.ep-mock-panel__strip')
       ?.dispatchEvent(new Event('click'));
     await fixture.whenStable();
     fixture.detectChanges();
@@ -654,6 +676,293 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(checkout.nativeElement.textContent).toContain('Complete your purchase');
     expect(checkout.nativeElement.querySelector('easy-checkout-product-summary')).toBeTruthy();
   });
+
+  describe('Buttons Only strip redesign', () => {
+    it('renders mark-only wallet buttons without duplicated names, DEMO badges, or amounts', async () => {
+      fixture.componentRef.setInput('methods', [
+        'apple-pay',
+        'google-pay',
+        'paypal',
+        'card',
+        'klarna',
+        'affirm',
+      ]);
+      await render(fixture);
+
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.textContent).not.toMatch(/\$\d/);
+      expect(root.querySelector('.ep-mock-panel__title')).toBeNull();
+      expect(root.querySelector('.ep-checkout__title')).toBeNull();
+      expect(root.querySelector('.ep-payment-buttons__demo')).toBeNull();
+      expect(root.querySelector('.ep-mock-panel__strip-demo')).toBeNull();
+      expect(root.querySelector('.ep-mock-panel__strip-label')).toBeNull();
+      expect(root.querySelector('[data-testid="easy-payment-buttons-demo-notice"]')?.textContent).toContain(
+        'Demo mode',
+      );
+      expect(slotItem(fixture, 'paypal')?.querySelector('button.ep-mock-panel__strip')).toBeTruthy();
+      expect(slotItem(fixture, 'paypal')?.querySelector('button.ep-mock-panel__cta')).toBeNull();
+      // Wallet brand marks — no duplicated visible provider text beside the mark.
+      for (const method of ['paypal', 'klarna', 'affirm', 'apple-pay', 'google-pay'] as const) {
+        const label = slotItem(fixture, method)?.querySelector('.ep-payment-buttons__label');
+        expect(label).toBeNull();
+      }
+      // Card uses a compact visible label because the generic icon does not name the method.
+      const cardBtn = slotItem(fixture, 'card')?.querySelector(
+        'button.ep-payment-buttons__selector',
+      ) as HTMLButtonElement;
+      expect(cardBtn).toBeTruthy();
+      expect(cardBtn.getAttribute('aria-label')).toContain('Card');
+      expect(cardBtn.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe('Card');
+      cardBtn.click();
+      fixture.detectChanges();
+      expect(cardBtn.classList.contains('ep-payment-buttons__selector--selected')).toBeTrue();
+      expect(cardBtn.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('places Card / Klarna / Affirm panels below the strip and only one at a time', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'klarna', 'affirm', 'paypal']);
+      await render(fixture);
+
+      const root = fixture.nativeElement as HTMLElement;
+      const list = root.querySelector('.ep-payment-buttons__list');
+      expect(list).toBeTruthy();
+
+      slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      const cardPanel = root.querySelector(
+        '[data-testid="easy-payment-buttons-card-mock-panel"]',
+      ) as HTMLElement;
+      expect(cardPanel).toBeTruthy();
+      expect(
+        list!.compareDocumentPosition(cardPanel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(cardPanel.textContent).toContain('Complete demo payment');
+      expect(cardPanel.textContent).not.toMatch(/Pay \$/);
+      expect(root.querySelector('[data-testid="easy-payment-buttons-klarna-mock-panel"]')).toBeNull();
+
+      slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(root.querySelector('[data-testid="easy-payment-buttons-card-mock-panel"]')).toBeNull();
+      expect(root.querySelector('[data-testid="easy-payment-buttons-klarna-mock-panel"]')).toBeTruthy();
+      expect(root.querySelectorAll('.ep-payment-buttons__panel').length).toBe(1);
+    });
+
+    it('applies horizontal layout, separators, borderless selectors, and custom radius', async () => {
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('buttonsAppearance', {
+        separators: 'line',
+        border: 'none',
+        borderRadius: '999px',
+        gap: '16px',
+        padding: '8px',
+        background: 'transparent',
+      });
+      fixture.componentRef.setInput('methods', ['card', 'paypal', 'klarna']);
+      await render(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.getAttribute('data-layout')).toBe('horizontal');
+      expect(host.getAttribute('data-separators')).toBe('line');
+      expect(host.style.getPropertyValue('--ep-buttons-gap')).toBe('16px');
+      expect(host.style.getPropertyValue('--ep-buttons-padding')).toBe('8px');
+      expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('999px');
+      expect(host.style.getPropertyValue('--ep-buttons-strip-bg')).toBe('transparent');
+      expect(host.querySelector('.ep-payment-buttons--borderless')).toBeTruthy();
+      expect(host.querySelectorAll('.ep-payment-buttons__separator').length).toBe(2);
+    });
+
+    it('localizes English and Spanish confirm labels and demo notice', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'paypal']);
+      fixture.componentRef.setInput('locale', 'en');
+      await render(fixture);
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="easy-payment-buttons-demo-notice"]',
+        )?.textContent,
+      ).toContain('Demo mode');
+
+      slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="easy-payment-buttons-card-mock-panel"]',
+        )?.textContent,
+      ).toContain('Complete demo payment');
+
+      fixture.componentRef.setInput('locale', 'es');
+      await render(fixture);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="easy-payment-buttons-demo-notice"]',
+        )?.textContent,
+      ).toContain('Modo demo');
+      slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      const esPanel = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="easy-payment-buttons-card-mock-panel"]',
+      );
+      expect(esPanel?.textContent).toContain('Completar pago de demostración');
+      expect(fixture.nativeElement.getAttribute('data-locale')).toBe('es');
+      expect(fixture.nativeElement.getAttribute('lang')).toBe('es');
+      expect(
+        slotItem(fixture, 'card')?.querySelector('button')?.getAttribute('aria-label'),
+      ).toContain('Tarjeta');
+    });
+
+    it('labels the demo confirm CTA as a demo payment with no real charge', async () => {
+      fixture.componentRef.setInput('methods', ['card']);
+      await render(fixture);
+      slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      const cta = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="easy-payment-buttons-card-mock-panel"] button.ep-mock-panel__cta',
+      );
+      expect(cta?.textContent?.trim()).toBe('Complete demo payment');
+      expect(cta?.getAttribute('aria-label')).toContain('no real charge');
+    });
+
+    it('collapses unavailable methods out of the strip and hides them from assistive tech', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'apple-pay', 'paypal']);
+      await render(fixture);
+      applyInstanceAvailability(fixture, [
+        { method: 'card', isMock: true, available: true, status: 'available' },
+        { method: 'apple-pay', isMock: false, available: false, status: 'unavailable' },
+        { method: 'paypal', isMock: true, available: true, status: 'available' },
+      ]);
+      fixture.detectChanges();
+
+      const apple = slotItem(fixture, 'apple-pay')!;
+      expect(apple.classList.contains('ep-payment-buttons__item--collapsed')).toBeTrue();
+      expect(apple.getAttribute('aria-hidden')).toBe('true');
+      expect(apple.getBoundingClientRect().height).toBe(0);
+      expect(getComputedStyle(apple).position).toBe('absolute');
+
+      const card = slotItem(fixture, 'card')!;
+      expect(card.classList.contains('ep-payment-buttons__item--collapsed')).toBeFalse();
+      expect(card.getAttribute('aria-hidden')).toBeNull();
+    });
+
+    it('draws separators only between visible slots', async () => {
+      fixture.componentRef.setInput('buttonsAppearance', { separators: 'line' });
+      fixture.componentRef.setInput('methods', ['card', 'paypal', 'klarna']);
+      await render(fixture);
+      applyInstanceAvailability(fixture, [
+        { method: 'card', isMock: true, available: true, status: 'available' },
+        { method: 'paypal', isMock: true, available: true, status: 'available' },
+        { method: 'klarna', isMock: true, available: false, status: 'unavailable' },
+      ]);
+      fixture.detectChanges();
+
+      // card | paypal — no trailing separator before the collapsed Klarna slot.
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('.ep-payment-buttons__separator')
+          .length,
+      ).toBe(1);
+    });
+
+    it('shows one status message when no requested method is available', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'paypal']);
+      await render(fixture);
+      applyInstanceAvailability(fixture, [
+        { method: 'card', isMock: true, available: false, status: 'unavailable' },
+        { method: 'paypal', isMock: true, available: false, status: 'unavailable' },
+      ]);
+      fixture.detectChanges();
+
+      const empty = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="easy-payment-buttons-empty"]',
+      );
+      expect(empty?.getAttribute('role')).toBe('status');
+      expect(empty?.textContent).toContain('No payment methods are available');
+    });
+
+    it('gives every horizontal slot the same fixed width without flex-grow', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '600px';
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('methods', ['card', 'paypal', 'google-pay', 'klarna', 'affirm']);
+      await render(fixture);
+
+      const widths = ['card', 'paypal', 'google-pay', 'klarna', 'affirm'].map((m) =>
+        Math.round(slotItem(fixture, m)!.getBoundingClientRect().width),
+      );
+      // 600px fits three 160px slots per row; the two on the last row must not stretch.
+      expect(new Set(widths).size).toBe(1);
+      expect(widths[0]).toBe(160);
+      expect(getComputedStyle(slotItem(fixture, 'affirm')!).flexGrow).toBe('0');
+      host.remove();
+    });
+
+    it('maps a fixed buttonWidth onto every horizontal slot', async () => {
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('buttonsAppearance', { buttonWidth: '180px' });
+      await render(fixture);
+      expect(
+        (fixture.nativeElement as HTMLElement).style.getPropertyValue('--ep-buttons-slot-width'),
+      ).toBe('180px');
+
+      fixture.componentRef.setInput('buttonsAppearance', { buttonWidth: '100%' });
+      await render(fixture);
+      expect(
+        (fixture.nativeElement as HTMLElement).style.getPropertyValue('--ep-buttons-slot-width'),
+      ).toBe('');
+    });
+
+    it('keeps library-owned selectors keyboard-focusable with a focus-visible outline rule', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'klarna']);
+      await render(fixture);
+
+      const btn = slotItem(fixture, 'card')!.querySelector(
+        'button.ep-payment-buttons__selector',
+      ) as HTMLButtonElement;
+      expect(btn.disabled).toBeFalse();
+      expect(btn.tabIndex).toBeGreaterThanOrEqual(0);
+
+      // Angular injects component styles into <style> tags (selectors are attribute-encoded).
+      const styleText = Array.from(document.querySelectorAll('style'))
+        .map((el) => el.textContent ?? '')
+        .join('\n');
+      expect(styleText).toMatch(
+        /ep-payment-buttons__selector[^{]*:focus-visible[^{]*\{[^}]*outline:\s*2px\s+solid/,
+      );
+    });
+
+    it('keeps the selected Card selector opaque so dark text never sits on the page backdrop', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('theme', 'dark');
+      fixture.componentRef.setInput('methods', ['card']);
+      await render(fixture);
+
+      const btn = slotItem(fixture, 'card')!.querySelector(
+        'button.ep-payment-buttons__selector',
+      ) as HTMLButtonElement;
+      btn.click();
+      fixture.detectChanges();
+
+      const probe = document.createElement('div');
+      probe.style.background = getComputedStyle(btn).backgroundColor;
+      document.body.appendChild(probe);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 1, 1);
+      ctx.fillStyle = getComputedStyle(probe).backgroundColor;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b] = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+      probe.remove();
+      host.remove();
+
+      // Composited over white, a dark-theme selected fill must stay dark
+      // (the old translucent rgba fill came out near-white behind #f8fafc text).
+      const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      expect(luminance).toBeLessThan(0.3);
+    });
+  });
 });
 
 describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
@@ -730,6 +1039,62 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
     ).toBeTruthy();
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
     expect(adapter.createPaymentSession).toHaveBeenCalled();
+  });
+
+  it('labels the real card confirm CTA "Pay with card" without the amount', async () => {
+    await render(fixture);
+    slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const cta = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="easy-payment-buttons-card-panel"] button.ep-stripe-card__pay',
+    );
+    expect(cta?.textContent?.trim()).toBe('Pay with card');
+    expect(cta?.textContent).not.toMatch(/\$\d/);
+    expect(adapter.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('emits success without rendering application-level outcome banners in the panel', async () => {
+    adapter.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'card',
+      provider: 'stripe',
+      transactionId: 'pi_buttons_ok',
+    });
+
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+
+    await render(fixture);
+    slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const cta = fixture.nativeElement.querySelector(
+      'button.ep-stripe-card__pay',
+    ) as HTMLButtonElement;
+    cta.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(successes).toEqual([
+      jasmine.objectContaining({
+        status: 'success',
+        method: 'card',
+        transactionId: 'pi_buttons_ok',
+      }),
+    ]);
+    const panel = fixture.nativeElement.querySelector(
+      '[data-testid="easy-payment-buttons-card-panel"]',
+    ) as HTMLElement;
+    expect(panel.querySelector('.ep-stripe-card__success')).toBeNull();
+    expect(panel.querySelector('easy-checkout-outcome')).toBeNull();
+    expect(panel.textContent).not.toContain('Payment completed');
+    expect(panel.textContent).not.toContain('Payment failed');
+    expect(panel.textContent).not.toContain('Payment cancelled');
   });
 });
 
@@ -820,6 +1185,9 @@ describe('EasyPaymentButtonsComponent real PayPal express', () => {
     expect(paypalSlot?.querySelector('easy-paypal-payment')).toBeTruthy();
     expect(paypalSlot?.querySelector('.ep-paypal--compact')).toBeTruthy();
     expect(paypal.renderButtons).toHaveBeenCalled();
+    expect(paypal.renderButtons.calls.mostRecent().args[1]).toEqual(
+      jasmine.objectContaining({ fundingSource: 'paypal' }),
+    );
     expect(paypal.captureOrder).not.toHaveBeenCalled();
     expect(paypal.createOrder).not.toHaveBeenCalled();
 
@@ -891,6 +1259,46 @@ describe('EasyPaymentButtonsComponent real PayPal express', () => {
     fixture.destroy();
     expect(paypal.destroyButtons).toHaveBeenCalledWith('paypal-buttons-1');
     expect(paypal.destroy).not.toHaveBeenCalled();
+  });
+
+  it('emits PayPal errors without inserting a strip outcome banner', async () => {
+    const errors: unknown[] = [];
+    fixture.componentInstance.error.subscribe((value) => errors.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const options = paypal.renderButtons.calls.mostRecent().args[1];
+    options.onError?.(new Error('INSTRUMENT_DECLINED'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(errors.length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.ep-paypal__error')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.ep-paypal--compact')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(
+      /unable|failed|declined/i,
+    );
+  });
+
+  it('keeps express PayPal focus-within host outlines suppressed', async () => {
+    await render(fixture);
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent ?? '')
+      .join('\n');
+    // Angular encodes host attrs between class and pseudo (:focus-within).
+    expect(styleText).toMatch(
+      /ep-payment-buttons__express[^{]*:focus-within[^{]*\{[^}]*outline:\s*none/,
+    );
+    expect(styleText).toMatch(
+      /paypal-express[^{]*:focus-within[^{]*\{[^}]*outline:\s*none/,
+    );
+    expect(styleText).toMatch(
+      /paypal-express[^{]*iframe[^{]*:focus-visible[^{]*\{[^}]*outline:\s*none/,
+    );
   });
 
   it('does not call real PayPal create/capture APIs merely by mounting', async () => {
@@ -1011,6 +1419,9 @@ describe('EasyPaymentButtonsComponent real Google Pay express', () => {
     expect(gpaySlot?.querySelector('easy-google-pay-payment')).toBeTruthy();
     expect(gpaySlot?.querySelector('.ep-gpay--compact')).toBeTruthy();
     expect(googlePay.renderOfficialButton).toHaveBeenCalled();
+    expect(googlePay.renderOfficialButton.calls.mostRecent().args[1]).toEqual(
+      jasmine.objectContaining({ compact: true }),
+    );
     expect(googlePay.payWithGooglePay).not.toHaveBeenCalled();
 
     expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
@@ -1389,6 +1800,27 @@ describe('EasyPaymentButtonsComponent real Apple Pay express', () => {
     expect(slotItem(fixture, 'apple-pay')?.getAttribute('data-kind')).toBe('apple-pay-express');
     expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
   });
+
+  it('renders no in-strip Apple Pay unavailable text; the slot collapses instead', async () => {
+    applePay.isAvailable.and.resolveTo(false);
+    applePay.getAvailabilityStatus.and.returnValue('unavailable');
+    applePay.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      options.onUnavailable?.();
+      return mountId ?? 'apple-pay-ece-buttons-1';
+    });
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const apple = slotItem(fixture, 'apple-pay')!;
+    expect(apple.querySelector('.ep-apay__status')).toBeNull();
+    expect(apple.textContent?.trim()).toBe('');
+    expect(apple.classList.contains('ep-payment-buttons__item--collapsed')).toBeTrue();
+    // ECE host stays mounted so a later eligibility change can still be reported.
+    expect(apple.querySelector('easy-apple-pay-payment')).toBeTruthy();
+  });
 });
 
 describe('EasyPaymentButtonsComponent Apple Pay dual-host cleanup', () => {
@@ -1641,6 +2073,9 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
     expect(klarna.confirmPayment).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('easy-affirm-payment')).toBeNull();
     expect(slotItem(fixture, 'paypal')?.getAttribute('data-kind')).toBe('paypal-express');
+    expect(
+      fixture.nativeElement.querySelector('.ep-klarna__pay')?.textContent?.trim(),
+    ).toBe('Continue to Klarna');
   });
 
   it('mounts easy-affirm-payment after Affirm selection without auto-confirm', async () => {
@@ -1666,6 +2101,9 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
     expect(affirm.createPaymentSession).toHaveBeenCalled();
     expect(affirm.confirmPayment).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.ep-affirm__pay')?.textContent?.trim(),
+    ).toBe('Continue to Affirm');
   });
 
   it('marks Affirm unavailable without mounting Affirm UI when ineligible', async () => {

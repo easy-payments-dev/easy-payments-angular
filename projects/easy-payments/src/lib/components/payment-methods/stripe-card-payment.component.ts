@@ -41,11 +41,20 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-stripe-card" [attr.data-state]="uiState()">
-      <div class="ep-stripe-card__header">
-        <h3 class="ep-stripe-card__title">{{ msgs().payWithCard }}</h3>
+    <div
+      class="ep-stripe-card"
+      [class.ep-stripe-card--minimal]="chrome() === 'minimal'"
+      [attr.data-state]="uiState()"
+      [attr.data-chrome]="chrome()"
+    >
+      @if (chrome() === 'full') {
+        <div class="ep-stripe-card__header">
+          <h3 class="ep-stripe-card__title">{{ msgs().payWithCard }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCardPaymentStripe" />
+        </div>
+      } @else {
         <easy-checkout-security-message [message]="msgs().secureCardPaymentStripe" />
-      </div>
+      }
 
       @if (uiState() === 'initializing' || uiState() === 'loading-session') {
         <p class="ep-stripe-card__status" role="status">{{ msgs().preparingSecureCardForm }}</p>
@@ -65,15 +74,21 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         [attr.aria-label]="msgs().stripeCardFormAria"
       ></div>
 
-      <p class="ep-stripe-card__brands" [attr.aria-label]="msgs().acceptedCardsAria">
-        {{ msgs().cardsAcceptedViaStripe }}
-      </p>
+      @if (chrome() === 'full') {
+        <p class="ep-stripe-card__brands" [attr.aria-label]="msgs().acceptedCardsAria">
+          {{ msgs().cardsAcceptedViaStripe }}
+        </p>
+      }
 
       @if (inlineError()) {
         <p class="ep-stripe-card__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      <!--
+        Full Checkout may show an in-panel completion banner.
+        Buttons Only (chrome=minimal) is event-driven — the host owns outcome UI.
+      -->
+      @if (uiState() === 'success' && chrome() !== 'minimal') {
         <p class="ep-stripe-card__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
@@ -173,6 +188,15 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       .ep-stripe-card__pay:focus-visible {
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+      }
+
+      .ep-stripe-card--minimal .ep-stripe-card__pay {
+        min-height: 44px;
+        align-self: flex-start;
+        min-width: min(100%, 200px);
+        padding: 0 20px;
+        font-size: 14px;
       }
 
       .ep-stripe-card__pay:disabled {
@@ -201,6 +225,11 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
   readonly product = input.required<PaymentProduct>();
   readonly checkout = input<CheckoutOptions>();
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * `full` — checkout chrome (title, brands, amount CTA).
+   * `minimal` — Buttons Only expanded panel (security + Element + confirm, no amount).
+   */
+  readonly chrome = input<'full' | 'minimal'>('full');
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -239,7 +268,9 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
         ),
   );
   readonly payLabel = computed(() =>
-    interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
+    this.chrome() === 'minimal'
+      ? this.msgs().payWithCard
+      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
   );
 
   constructor() {

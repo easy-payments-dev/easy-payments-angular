@@ -140,6 +140,18 @@ import {
         width: 100%;
       }
 
+      .ep-gpay--compact .ep-gpay__button {
+        min-height: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+      }
+
+      .ep-gpay--compact .ep-gpay__button > * {
+        width: 100%;
+        max-width: 100%;
+      }
+
       .ep-gpay__button--busy {
         pointer-events: none;
         opacity: 0.65;
@@ -235,12 +247,13 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       const checkout = this.checkout();
       const theme = this.resolvedTheme();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const compact = this.compact();
       const ready = this.viewReady();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButton(product, checkout, theme, locale);
+        void this.ensureButton(product, checkout, theme, locale, compact);
       });
     });
 
@@ -281,6 +294,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     checkout: CheckoutOptions | undefined,
     theme: ResolvedPaymentTheme,
     locale: EasyPaymentsResolvedLocale,
+    compact = false,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -297,7 +311,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     const buttonLocale = toGooglePayButtonLocale(locale);
-    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}`;
+    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}|compact:${compact ? 1 : 0}`;
     const themeChanged = this.lastTheme !== theme;
     const localeChanged = this.lastButtonLocale !== buttonLocale;
     if (nextKey === this.renderKey && !themeChanged && !localeChanged && this.uiState() === 'ready') {
@@ -336,6 +350,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
         {
           theme,
           buttonLocale,
+          compact,
           onClick: () => this.onGooglePayClick(product, checkout, generation),
         },
         this.buttonMountId ?? undefined,

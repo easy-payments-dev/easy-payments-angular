@@ -47,11 +47,12 @@ import {
         </div>
       }
 
-      @if (uiState() === 'initializing') {
+      <!-- Compact (Buttons Only): the strip host owns loading/unavailable presentation. -->
+      @if (uiState() === 'initializing' && !compact()) {
         <p class="ep-apay__status" role="status">{{ msgs().preparingApplePay }}</p>
       }
 
-      @if (uiState() === 'unavailable') {
+      @if (uiState() === 'unavailable' && !compact()) {
         <p class="ep-apay__status" role="status">
           {{ msgs().applePayUnavailable }}
         </p>

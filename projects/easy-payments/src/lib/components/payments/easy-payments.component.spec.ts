@@ -138,6 +138,27 @@ describe('EasyPaymentsComponent', () => {
     expect(fixture.nativeElement.querySelector('easy-mock-method-panel')).toBeTruthy();
   });
 
+  it('keeps method tiles keyboard-focusable inside a radiogroup', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+
+    const group = fixture.nativeElement.querySelector('[role="radiogroup"]') as HTMLElement;
+    const tiles = Array.from(
+      fixture.nativeElement.querySelectorAll('button.ep-tile'),
+    ) as HTMLButtonElement[];
+    expect(group).toBeTruthy();
+    expect(tiles.length).toBe(2);
+    expect(tiles[0].type).toBe('button');
+
+    tiles[1].focus();
+    expect(document.activeElement).toBe(tiles[1]);
+
+    const pay = payCta(fixture);
+    expect(pay).toBeTruthy();
+    pay!.focus();
+    expect(document.activeElement).toBe(pay);
+  });
+
   it('exposes radiogroup accessibility attributes on the selector', async () => {
     fixture.componentRef.setInput('methods', ['card', 'paypal']);
     await render(fixture);

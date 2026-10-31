@@ -165,22 +165,41 @@ These payloads omit PaymentIntent client secrets, secret keys, PayPal client sec
 
 Standalone **Payment Buttons Only** host. Selector: `easy-payment-buttons`.
 
-Lightweight alternative to `<easy-payments>`: no product summary, checkout title, or checkout card shell. The host background is **always transparent**. Method order is exactly the developer `[methods]` array (one to six of the same IDs: `card`, `paypal`, `apple-pay`, `google-pay`, `klarna`, `affirm`).
+Lightweight alternative to `<easy-payments>`: **no** product summary, checkout title, method tiles, repeated amounts, DEMO badges inside buttons, or checkout card shell. The merchant owns product/price UI; Easy Payments renders a compact payment **button strip** (horizontal or vertical) plus one shared expanded region for Card / Klarna / Affirm.
+
+Brand marks / official SDK buttons identify each method — the strip does **not** repeat the provider name beside the logo. When mock methods are present, a **single** notice appears above the strip (`buttonsDemoModeNotice`), not a badge on every button.
+
+The demo playground at `http://localhost:4200/` can switch between Full Checkout and Payment Buttons Only with live `[buttonsAppearance]` controls and a copyable Angular example. Multi-instance stress QA remains at `/?ep_qa=multi` (lazy-loaded).
+
+Method order is exactly the developer `[methods]` array (one to six of: `apple-pay`, `google-pay`, `paypal`, `card`, `klarna`, `affirm`).
 
 Configure providers with existing `provideEasyPayments(...)` — there is no competing `[config]` input.
 
-### Live methods (Phase 4 Step 2E — all six)
+### Buttons Only vs full checkout
+
+| | `<easy-payments>` | `<easy-payment-buttons>` |
+|--|-------------------|--------------------------|
+| Product / total UI | Built-in summary | Merchant-owned (not rendered) |
+| Method chrome | Selection tiles + detail panels | Compact strip + one shared panel |
+| Host fill | Theme / `appearance` / `visualStyle` | Transparent by default (`buttonsAppearance.background` optional) |
+| Wallet buttons | In checkout detail / express slots | Official SDK buttons in the strip |
+| Card / Klarna / Affirm | Per-method panels under tiles | Selectors in strip → **one** panel **below the entire strip** |
+| Outcome UI | Optional built-in confirmation / error screens | **Event-driven only** — no success/error/cancel/pending banners inside the component |
+
+### Live methods (Phase 4 Step 4 — strip redesign)
 
 | Method | Behavior |
 |--------|----------|
-| `card` | Interactive when Stripe (or mock mode) is available. Selecting Card reveals the secure Stripe Payment Element (or mock panel) **inline below** the button group. Selection alone does **not** charge; the buyer must confirm with the Stripe/mock pay control. |
-| `paypal` | When PayPal is ready, the **official PayPal Buttons SDK** mounts **directly in the PayPal method slot** (compact `easy-paypal-payment`). No EP selector tile and no extra click before the official button is usable. |
-| `google-pay` | When Google Pay is ready, the **official Google Pay button** mounts **directly in the google-pay slot** (compact `easy-google-pay-payment`). No EP selector tile and no extra click. |
-| `apple-pay` | When Apple Pay is configured, the **Stripe Express Checkout Element** mounts **directly in the apple-pay slot** (compact `easy-apple-pay-payment`, Apple Pay only). No EP selector tile and no extra click. Eligibility comes from ECE `ready` / `availablePaymentMethods.applePay` — not from UA sniffing. |
-| `klarna` | Interactive when Klarna is ready. Selecting Klarna reveals the existing Stripe Payment Element BNPL UI (`easy-klarna-payment`) **inline below** the list. Selection alone does **not** start payment; the buyer must confirm. |
-| `affirm` | Interactive when Affirm is ready. Selecting Affirm reveals the existing Stripe Payment Element BNPL UI (`easy-affirm-payment`) **inline below** the list. Selection alone does **not** start payment; the buyer must confirm. |
+| `apple-pay` | Official Stripe Express Checkout Element Apple Pay button in the strip (`compact`). No extra Pay CTA. |
+| `google-pay` | Official Google Pay button in the strip. `compact` uses `buttonType: 'short'` (logo only). Google's `plain`/`pay`/`buy` types can be swapped by pay.js for a personalized card-info button (saved card art, min-width 240px) for signed-in Chrome users when Google enables its server-side dynamic-button flags; `short` is excluded from that swap. Full checkout keeps `buttonType: 'pay'`. No extra Pay CTA. |
+| `paypal` | Official PayPal Buttons SDK in the strip (`compact`) with `fundingSource: 'paypal'` and `style.height: 40` (number — the SDK rejects strings) so exactly one PayPal button appears. Full checkout still shows all eligible funding sources (e.g. Pay Later) when the SDK offers them. |
+| `card` | Compact library-owned selector with a visible **Card** label (generic icon alone is not enough). Selected state uses an opaque fill so contrast does not depend on the page behind the strip. Selecting Card opens the Stripe Payment Element in the **shared panel below the strip** with wallets/Link disabled (`wallets.link: 'never'`) so the traditional card fields appear. The panel's **Pay with card** button is the explicit confirmation Stripe requires after details are entered; selection never charges. |
+| `klarna` | Compact selector → shared panel below the strip (Stripe BNPL). **Continue to Klarna** confirms and redirects. Selection does not start payment. |
+| `affirm` | Compact selector → shared panel below the strip (Stripe BNPL). **Continue to Affirm** confirms and redirects. Selection does not start payment. |
 
-Unavailable methods stay noninteractive (or Apple Pay ECE shows its unavailable state without a fake CTA). Card / Apple Pay / Google Pay / Klarna / Affirm share Stripe publishable-key + create-payment dependencies; PayPal does not.
+Horizontal strips give every slot the same width (`160px` default, or `buttonsAppearance.buttonWidth`) and wrap; slots never stretch to fill a row. Narrow containers switch to two columns, then one.
+
+Unavailable methods are collapsed out of the strip (no space, `aria-hidden`), and separators only sit between visible slots. Apple Pay's Express Checkout Element stays mounted while collapsed so a later eligibility result can reveal it. When no requested method is available, one `role="status"` message is shown. In Demo Mode the panel CTA reads **Complete demo payment**. Card / Apple Pay / Google Pay / Klarna / Affirm share Stripe publishable-key + create-payment dependencies; PayPal does not.
 
 #### PayPal readiness
 
@@ -219,21 +238,48 @@ When a return is not recovered, no payment events are emitted. Confirm status on
 
 #### Mock mode
 
-When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDKs are **not** loaded for those methods. Clearly labeled **mock** controls appear (in-slot for wallets; below-list panels for Card / Klarna / Affirm after selection). They are never presented as live provider UI and do not call payment endpoints.
+When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDKs are **not** loaded for those methods. Clearly labeled **Demo** strip stand-ins appear for wallets; Card / Klarna / Affirm still expand the shared panel below the strip. Mock controls are never shipped as production wallet replacements and do not call payment endpoints.
 
 ### Inputs
 
 | Property | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `product` | `PaymentProduct` | — | **Yes** | Same product contract as `<easy-payments>` (availability / payment context). |
-| `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order (each method stays in its configured index). |
+| `product` | `PaymentProduct` | — | **Yes** | Payment context for adapters/backends. **Not** rendered as a product summary in Buttons Only. |
+| `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order. |
 | `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (including BNPL return URL context). |
 | `checkoutInstanceId` | `string \| null` | `null` | No | Optional stable id for multi-host redirect ownership (same rules as `<easy-payments>`). |
-| `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` \| `vertical`. |
-| `theme` | `PaymentTheme` | `'system'` | No | Same as `<easy-payments>`. |
-| `locale` | `EasyPaymentsLocale` | `'auto'` | No | Same as `<easy-payments>`. |
-| `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Same as `<easy-payments>`. |
-| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned list chrome tokens. Host fill stays transparent even if `backgroundColor` is set. Provider-owned Stripe / PayPal / Google Pay / Apple Pay / Klarna / Affirm surfaces may still apply. |
+| `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` (wraps) \| `vertical` (stacks). |
+| `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip presentation: `gap`, `separators` (`none`\|`line`), `separatorColor`, `background` (default transparent), `border` (`default`\|`none`), `borderColor`, `borderWidth`, `borderRadius`, `buttonHeight`, `buttonWidth`, `buttonMinWidth`. Applies to **library-owned** selectors/placeholders; official SDK buttons keep provider branding. |
+| `theme` | `PaymentTheme` | `'system'` | No | `light` \| `dark` \| `system`. |
+| `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `auto` (same resolver as checkout). French (`fr`) is planned for Phase 5 — not implemented yet. |
+| `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens. Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
+
+### Localization notes
+
+- Library-owned Card labels, expanded confirm CTAs, loading/unavailable status, errors, and mock Demo chrome follow `locale` / `translations`.
+- Provider SDKs (Stripe Elements, PayPal, Apple Pay, Google Pay) use their own supported locale mapping where available — they are not guaranteed to match EP copy 1:1.
+- Runtime locale changes update EP-owned text without starting a payment. Active Stripe sessions follow existing remount rules.
+
+### Event-driven outcomes (host-owned UI)
+
+`<easy-payment-buttons>` is an **event-driven payment strip**. It does **not** render application-level success, failure, cancel, or pending banners. The host application owns those surfaces (toasts, modals, confirmation pages, or route navigation).
+
+Still rendered inside Buttons Only (payment-form UI, not app outcomes):
+
+- Stripe Payment Element validation and provider-required messages
+- Secure authentication challenges (for example 3DS)
+- Required confirm CTAs (`Pay with card`, `Continue to Klarna`, `Continue to Affirm`)
+- Accessible loading / busy states and retry safeguards after `error` / `cancel`
+- Provider initialization diagnostics needed for safe operation
+
+`<easy-payments>` (Full Checkout) may keep its built-in outcome screens. That behavior is unchanged.
+
+**Fulfillment rules**
+
+- Treat `success` as a confirmed provider/backend result for that attempt — never as selection, SDK mount, or redirect return alone.
+- Treat `pending` as **not completed**. Do not fulfill the order; await your backend / webhooks (`payment_intent.succeeded`, `payment_intent.payment_failed`, PayPal capture webhooks, and your own order state).
+- Backend / webhook verification remains required before shipping or unlocking entitlements.
 
 ### Outputs
 
@@ -241,9 +287,9 @@ Same payload types as `<easy-payments>`:
 
 | Output | When it fires |
 |--------|----------------|
-| `methodChange` | **Card / Klarna / Affirm:** buyer selects or clears the method (selection ≠ payment). **PayPal / Google Pay / Apple Pay:** buyer engages the official button (or mock pay) — there is no separate selector. Not fired on SDK/ECE/Payment Element mount alone. |
-| `started` | **Card / Klarna / Affirm:** buyer confirms pay in the Stripe/mock UI. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). Not fired for redirect return recovery. |
-| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Card / Google Pay / Apple Pay / Klarna / Affirm `success` only after Stripe **confirm** (or verified retrieve after redirect) — never on token/wallet authorization, PaymentIntent create, redirect URL, or pending/processing alone. |
+| `methodChange` | **Card / Klarna / Affirm:** buyer selects or clears the method (selection ≠ payment). **PayPal / Google Pay / Apple Pay:** buyer engages the official button (or mock strip control). Not fired on SDK mount alone. |
+| `started` | **Card / Klarna / Affirm:** buyer confirms in the shared panel. **PayPal:** order creation begins. **Google Pay:** official button click. **Apple Pay:** ECE confirm attempt (not on `ready`). Not fired for redirect return recovery. |
+| `success` / `cancel` / `error` | After provider (or mock) confirmation outcome. PayPal `success` only after **capture**. Card / Google Pay / Apple Pay / Klarna / Affirm `success` only after Stripe **confirm** (or verified retrieve after redirect). |
 | `pending` | PaymentIntent still `processing` after confirm or return retrieve. Not success and not a definitive failure. Host locks retry; await backend/webhook. |
 
 Duplicate terminal events for one attempt are suppressed. Destroyed hosts emit nothing from stale provider callbacks. After an `error` or `cancel`, the buyer can retry from the same host. After `pending`, retry stays locked.
@@ -262,20 +308,110 @@ Visible method lists and ordering remain instance-local via `CheckoutAvailabilit
 
 ### Example
 
-```html
-<easy-payment-buttons
-  [product]="product"
-  [methods]="['affirm', 'paypal', 'card', 'klarna', 'google-pay', 'apple-pay']"
-  layout="horizontal"
-  (started)="onStarted($event)"
-  (methodChange)="onMethodChange($event)"
-  (success)="onSuccess($event)"
-  (cancel)="onCancel($event)"
-  (error)="onError($event)"
-/>
+```typescript
+import { Component } from '@angular/core';
+import { bootstrapApplication } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
+import {
+  provideEasyPayments,
+  EasyPaymentButtonsComponent,
+  PaymentError,
+  type EasyPaymentButtonsAppearance,
+  type PaymentMethodChangeEvent,
+  type PaymentProduct,
+  type PaymentResult,
+  type PaymentStartedEvent,
+} from '@easy-payments/angular';
+
+bootstrapApplication(App, {
+  providers: [
+    provideHttpClient(),
+    provideEasyPayments({
+      // providers + backend URLs — same config as full checkout
+    }),
+  ],
+});
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [EasyPaymentButtonsComponent],
+  template: `
+    <!-- Merchant-owned product / total UI goes here -->
+
+    <easy-payment-buttons
+      [product]="product"
+      [methods]="methods"
+      layout="horizontal"
+      theme="system"
+      locale="en"
+      [buttonsAppearance]="buttonsAppearance"
+      checkoutInstanceId="cart-session-123"
+      (started)="onStarted($event)"
+      (methodChange)="onMethodChange($event)"
+      (success)="onSuccess($event)"
+      (cancel)="onCancel($event)"
+      (error)="onError($event)"
+      (pending)="onPending($event)"
+    />
+
+    <!-- Host-owned outcome UI (toast, modal, route, etc.) — not part of the library -->
+    @if (hostMessage) {
+      <p role="status">{{ hostMessage }}</p>
+    }
+  `,
+})
+export class App {
+  readonly product: PaymentProduct = {
+    id: 'sku-1',
+    name: 'Premium Plan',
+    amount: 49,
+    currency: 'USD',
+  };
+
+  readonly methods = ['apple-pay', 'google-pay', 'paypal', 'card', 'klarna', 'affirm'] as const;
+
+  readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
+    gap: '12px',
+    separators: 'none',
+    background: 'transparent',
+    border: 'default',
+    borderRadius: '10px',
+  };
+
+  hostMessage: string | null = null;
+
+  onStarted(event: PaymentStartedEvent): void {
+    this.hostMessage = `Started ${event.method}`;
+  }
+
+  onMethodChange(event: PaymentMethodChangeEvent): void {
+    this.hostMessage = `Method ${event.previousMethod ?? 'none'} → ${event.method ?? 'none'}`;
+  }
+
+  onSuccess(result: PaymentResult): void {
+    // Confirmed provider/backend result for this attempt — still verify webhooks before fulfillment.
+    this.hostMessage = `Success · ${result.method}${
+      result.transactionId ? ` · ${result.transactionId}` : ''
+    }`;
+  }
+
+  onCancel(result: PaymentResult): void {
+    this.hostMessage = `Cancelled · ${result.method}`;
+  }
+
+  onError(error: PaymentError): void {
+    this.hostMessage = `Error · ${error.method ?? 'unknown'} · ${error.code}`;
+  }
+
+  onPending(result: PaymentResult): void {
+    // Not completed — do not fulfill; await backend/webhook.
+    this.hostMessage = `Pending · ${result.method} · await webhook`;
+  }
+}
 ```
 
-Each instance uses a local `CheckoutAvailabilitySession` (same pattern as Step 0). `EasyPaymentsDiagnosticsService` remains global / last-refresh.
+Each instance uses a local `CheckoutAvailabilitySession`. `EasyPaymentsDiagnosticsService` remains global / last-refresh.
 
 ---
 
@@ -721,7 +857,7 @@ Snapshots and diagnostic messages are safe to log. They do not include Stripe se
 From `@easy-payments/angular` (see `public-api.ts`):
 
 - `EasyPaymentsComponent`
-- `EasyPaymentButtonsComponent`, `EasyPaymentButtonsLayout`, `EasyPaymentButtonSlot`, `EasyPaymentButtonSlotState`
+- `EasyPaymentButtonsComponent`, `EasyPaymentButtonsLayout`, `EasyPaymentButtonsAppearance`, `EasyPaymentButtonSlot`, `EasyPaymentButtonSlotState`
 - `provideEasyPayments`, `EasyPaymentsConfigService`
 - Models / types above (including `EasyPaymentsAppearance`, `EasyPaymentsVisualStyle`)
 - `PaymentError`, `normalizeError`
@@ -751,7 +887,7 @@ From `@easy-payments/angular` (see `public-api.ts`):
 Development-only page in the Angular demo app (not exported from `@easy-payments/angular`).
 
 1. Run the demo (`npx ng serve demo` or your usual demo command) with **Demo Mode**.
-2. Open `http://localhost:4200/?ep_qa=multi` (port may vary).
+2. Open `http://localhost:4200/?ep_qa=multi` (port may vary). The harness is **lazy-loaded** only for that query — the normal playground does not include it in the initial bundle.
 3. Use the left panel to switch scenarios (1 host, 10 hosts, 5+5, layouts/themes, destroy/recreate, unavailable methods).
 4. Mock pay controls exercise success / fail / cancel without live credentials.
 5. Exit with the link back to `/` (or remove `ep_qa=multi`).

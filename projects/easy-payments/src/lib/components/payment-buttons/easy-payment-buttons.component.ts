@@ -24,6 +24,7 @@ import {
   ResolvedPaymentTheme,
 } from '../../models';
 import type { EasyPaymentButtonsLayout } from '../../models/easy-payment-buttons-layout.model';
+import type { EasyPaymentButtonsAppearance } from '../../models/easy-payment-buttons-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
@@ -38,6 +39,7 @@ import { PAYMENT_METHOD_LABELS } from '../../models/payment-method.model';
 import { getPaymentMethodPresentation } from '../../branding/payment-method-presentation';
 import {
   EasyPaymentsI18nService,
+  interpolate,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
 } from '../../i18n';
@@ -63,9 +65,9 @@ export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable'
 /**
  * How a method slot is rendered.
  * - `placeholder` — noninteractive (loading or unavailable)
- * - `*-selector` — tile that reveals Stripe/mock panel below the list
+ * - `*-selector` — compact strip selector that reveals the shared panel below
  * - `*-express` — official provider buttons in-slot
- * - `*-mock` — clearly labeled mock wallet controls in-slot
+ * - `*-mock` — development-only mock wallet strip buttons in-slot
  */
 export type EasyPaymentButtonSlotKind =
   | 'placeholder'
@@ -92,10 +94,15 @@ export interface EasyPaymentButtonSlot {
   readonly label: string;
   readonly kind: EasyPaymentButtonSlotKind;
   /**
-   * True for Card / Klarna / Affirm selector tiles.
+   * True for Card / Klarna / Affirm strip selectors.
    * Express mounts are interactive payments but not selectors.
    */
   readonly interactive: boolean;
+  /**
+   * Visible text next to the mark. Always false when the mark already includes
+   * the brand name (Klarna / Affirm) or when Card uses the icon alone.
+   */
+  readonly showVisibleLabel: boolean;
 }
 
 const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
@@ -108,13 +115,11 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
 ];
 
 /**
- * Payment Buttons Only — transparent method list + inline provider mounts.
+ * Payment Buttons Only — compact payment strip + shared expanded panel.
  *
- * Step 2A: Card selector → Stripe Payment Element / mock panel below the list.
- * Step 2B: Official PayPal Buttons render directly in the PayPal slot.
- * Step 2C: Official Google Pay button renders directly in the google-pay slot.
- * Step 2D: Official Apple Pay ECE button renders directly in the apple-pay slot.
- * Step 2E: Klarna / Affirm selectors → Stripe Payment Element / mock panels below.
+ * Wallets (Apple Pay / Google Pay / PayPal) mount official SDK buttons in the strip.
+ * Card / Klarna / Affirm use compact selectors; their secure forms open in one shared
+ * region below the entire strip. Mock wallet stand-ins are development-only.
  */
 @Component({
   selector: 'easy-payment-buttons',
@@ -142,6 +147,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-layout]': 'layout()',
     '[attr.data-locale]': 'effectiveLocale()',
     '[attr.lang]': 'effectiveLocale()',
+    '[attr.data-separators]': 'separatorsEnabled() ? "line" : "none"',
     '[attr.data-card-ready]': 'hasAvailableCard() ? "true" : "false"',
     '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
     '[attr.data-google-pay-ready]': 'hasAvailableGooglePay() ? "true" : "false"',
@@ -157,6 +163,17 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[style.--ep-focus]': 'visualStyleCssVars().accentColor',
     '[style.--ep-radius]': 'visualStyleCssVars().borderRadius',
     '[style.--ep-spacing]': 'visualStyleCssVars().spacing',
+    '[style.--ep-buttons-gap]': 'buttonsGapCss()',
+    '[style.--ep-buttons-padding]': 'buttonsPaddingCss()',
+    '[style.--ep-buttons-height]': 'buttonsHeightCss()',
+    '[style.--ep-buttons-min-width]': 'buttonsMinWidthCss()',
+    '[style.--ep-buttons-width]': 'buttonsWidthCss()',
+    '[style.--ep-buttons-slot-width]': 'buttonsSlotWidthCss()',
+    '[style.--ep-buttons-radius]': 'buttonsRadiusCss()',
+    '[style.--ep-buttons-border-width]': 'buttonsBorderWidthCss()',
+    '[style.--ep-buttons-border-color]': 'buttonsBorderColorCss()',
+    '[style.--ep-buttons-separator-color]': 'buttonsSeparatorColorCss()',
+    '[style.--ep-buttons-strip-bg]': 'buttonsStripBackgroundCss()',
     role: 'region',
     '[attr.aria-label]': 'regionAriaLabel()',
   },
@@ -205,8 +222,14 @@ export class EasyPaymentButtonsComponent {
   /**
    * Optional EP-owned token overrides for list chrome.
    * Host background remains permanently transparent regardless of `backgroundColor`.
+   * Use `[buttonsAppearance].background` for an optional strip fill.
    */
   readonly visualStyle = input<EasyPaymentsVisualStyle | null>(null);
+  /**
+   * Optional strip presentation (gap, separators, borders, radius, dimensions).
+   * Defaults to a transparent compact payment strip.
+   */
+  readonly buttonsAppearance = input<EasyPaymentButtonsAppearance | null>(null);
 
   readonly started = output<PaymentStartedEvent>();
   readonly methodChange = output<PaymentMethodChangeEvent>();
@@ -230,10 +253,78 @@ export class EasyPaymentButtonsComponent {
   readonly processingMethod = signal<PaymentMethod | null>(null);
 
   readonly visualStyleCssVars = computed(() => resolveVisualStyleCssVars(this.visualStyle()));
+  readonly msgs = computed(() => this.i18n.messages());
 
   readonly regionAriaLabel = computed(() => {
-    const msgs = this.i18n.messages();
+    const msgs = this.msgs();
     return msgs.paymentMethodSelectionAria || 'Payment methods';
+  });
+
+  readonly separatorsEnabled = computed(
+    () => (this.buttonsAppearance()?.separators ?? 'none') === 'line',
+  );
+
+  readonly borderlessSelectors = computed(
+    () => (this.buttonsAppearance()?.border ?? 'default') === 'none',
+  );
+
+  readonly buttonsGapCss = computed(
+    () =>
+      this.buttonsAppearance()?.gap ??
+      this.visualStyleCssVars().spacing ??
+      '8px',
+  );
+
+  readonly buttonsPaddingCss = computed(
+    () => this.buttonsAppearance()?.padding ?? '0px',
+  );
+
+  readonly buttonsHeightCss = computed(
+    () => this.buttonsAppearance()?.buttonHeight ?? '40px',
+  );
+
+  readonly buttonsMinWidthCss = computed(
+    () => this.buttonsAppearance()?.buttonMinWidth ?? '100px',
+  );
+
+  readonly buttonsWidthCss = computed(
+    () => this.buttonsAppearance()?.buttonWidth ?? '100%',
+  );
+
+  /** Horizontal slot width; `null` keeps the stylesheet default. */
+  readonly buttonsSlotWidthCss = computed(() => {
+    const width = this.buttonsAppearance()?.buttonWidth?.trim();
+    return width && width !== '100%' && width !== 'auto' ? width : null;
+  });
+
+  readonly buttonsRadiusCss = computed(
+    () =>
+      this.buttonsAppearance()?.borderRadius ??
+      this.visualStyleCssVars().borderRadius ??
+      null,
+  );
+
+  readonly buttonsBorderWidthCss = computed(() => {
+    if (this.borderlessSelectors()) {
+      return '0px';
+    }
+    return this.buttonsAppearance()?.borderWidth ?? '1px';
+  });
+
+  readonly buttonsBorderColorCss = computed(
+    () => this.buttonsAppearance()?.borderColor ?? null,
+  );
+
+  readonly buttonsSeparatorColorCss = computed(
+    () => this.buttonsAppearance()?.separatorColor ?? null,
+  );
+
+  readonly buttonsStripBackgroundCss = computed(() => {
+    const bg = this.buttonsAppearance()?.background;
+    if (bg == null || bg === 'transparent') {
+      return 'transparent';
+    }
+    return bg;
   });
 
   readonly methodsLocked = computed(
@@ -249,6 +340,7 @@ export class EasyPaymentButtonsComponent {
     const published = this.availabilityPublished();
     const availability = this.availableMethods();
     const theme = this.resolvedTheme();
+    const msgs = this.msgs();
 
     return requested.map((method) => {
       const entry = availability.find((item) => item.method === method);
@@ -258,16 +350,46 @@ export class EasyPaymentButtonsComponent {
       }
       const isMock = entry?.isMock ?? false;
       const kind = this.resolveSlotKind(method, state, isMock);
+      const presentation = getPaymentMethodPresentation(method, theme);
+      const brandLabel = presentation.label || PAYMENT_METHOD_LABELS[method];
+      // Card is library-owned copy; wallet brand names stay provider trademarks.
+      const label = method === 'card' ? msgs.methodCard : brandLabel;
+      // Brand marks already name the provider — never duplicate visible text.
+      // Card's generic icon does not include the name; show a compact "Card" label
+      // so the selector stays visible in light/dark and selected states.
+      const showVisibleLabel = method === 'card';
       return {
         method,
         state,
         isMock,
-        label: getPaymentMethodPresentation(method, theme).label || PAYMENT_METHOD_LABELS[method],
+        label,
         kind,
         interactive: SELECTOR_SLOT_KINDS.has(kind),
+        showVisibleLabel,
       };
     });
   });
+
+  /**
+   * Methods followed by a separator. Unavailable slots are collapsed, so a
+   * separator only sits between two visible slots.
+   */
+  readonly separatorAfter = computed<ReadonlySet<PaymentMethod>>(() => {
+    const visible = this.methodSlots().filter((slot) => slot.state !== 'unavailable');
+    return new Set(visible.slice(0, -1).map((slot) => slot.method));
+  });
+
+  /** Availability is known and no requested method can be shown. */
+  readonly noMethodsAvailable = computed(
+    () =>
+      this.availabilityPublished() &&
+      this.methodSlots().every((slot) => slot.state === 'unavailable'),
+  );
+
+  /** One notice above the strip when any mock stand-in is present (not per-button). */
+  readonly showDemoModeNotice = computed(() =>
+    this.methodSlots().some((slot) => slot.isMock && slot.state === 'available'),
+  );
 
   readonly hasAvailableCard = computed(() =>
     this.methodSlots().some((slot) => slot.method === 'card' && slot.state === 'available'),
@@ -455,30 +577,31 @@ export class EasyPaymentButtonsComponent {
 
   slotAriaLabel(slot: EasyPaymentButtonSlot): string {
     const base = slot.label;
+    const msgs = this.msgs();
     if (slot.state === 'loading') {
-      return `${base}, checking availability`;
+      return `${base}, ${msgs.methodLoadingStatus}`;
     }
     if (slot.state === 'unavailable') {
-      return `${base}, unavailable`;
+      return `${base}, ${msgs.methodUnavailableStatus}`;
     }
     if (slot.kind === 'paypal-express') {
-      return `${base}, official PayPal button`;
+      return msgs.paypalCheckoutAria;
     }
     if (slot.kind === 'google-pay-express') {
-      return `${base}, official Google Pay button`;
+      return msgs.googlePayCheckoutAria;
     }
     if (slot.kind === 'apple-pay-express') {
-      return `${base}, official Apple Pay button`;
+      return msgs.applePayCheckoutAria;
     }
     if (
       slot.kind === 'paypal-mock' ||
       slot.kind === 'google-pay-mock' ||
       slot.kind === 'apple-pay-mock'
     ) {
-      return `${base}, mock payment`;
+      return interpolate(msgs.demoWalletButtonAria, { method: base });
     }
     if (!slot.interactive) {
-      return `${base}, payment actions not available yet`;
+      return `${base}, ${msgs.methodUnavailableStatus}`;
     }
     if (this.selectedMethod() === slot.method) {
       return `${base}, selected`;

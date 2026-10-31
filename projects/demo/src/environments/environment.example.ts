@@ -14,8 +14,8 @@
  * 1. Angular dev-server proxy — relative paths, no baseUrl:
  *    createPaymentUrl: '/api/payments/create'
  *
- * 2. NestJS on http://localhost:3000 — one baseUrl plus relative paths:
- *    backendBaseUrl: 'http://localhost:3000'
+ * 2. NestJS on http://localhost:3001 — one baseUrl plus relative paths:
+ *    backendBaseUrl: 'http://localhost:3001'
  *    createPaymentUrl: '/api/payments/create'
  *
  * 3. Production API on another HTTPS origin:
@@ -30,11 +30,11 @@ export const environment = {
   production: false,
   stripePublishableKey: 'YOUR_STRIPE_PUBLISHABLE_KEY',
   paypalClientId: 'YOUR_PAYPAL_CLIENT_ID',
-  backendBaseUrl: '',
-  createPaymentUrl: 'http://localhost:3000/api/payments/create',
-  paypalCreateOrderUrl: 'http://localhost:3000/api/payments/paypal/create',
-  paypalCaptureOrderUrl: 'http://localhost:3000/api/payments/paypal/capture',
-  klarnaCreatePaymentUrl: 'http://localhost:3000/api/payments/klarna/create',
-  affirmCreatePaymentUrl: 'http://localhost:3000/api/payments/affirm/create',
-  catalogProductUrl: 'http://localhost:3000/api/catalog/products',
+  backendBaseUrl: 'http://localhost:3001',
+  createPaymentUrl: '/api/payments/create',
+  paypalCreateOrderUrl: '/api/payments/paypal/create',
+  paypalCaptureOrderUrl: '/api/payments/paypal/capture',
+  klarnaCreatePaymentUrl: '/api/payments/klarna/create',
+  affirmCreatePaymentUrl: '/api/payments/affirm/create',
+  catalogProductUrl: 'http://localhost:3001/api/catalog/products',
 };

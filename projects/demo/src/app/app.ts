@@ -1,7 +1,16 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { NgComponentOutlet } from '@angular/common';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+  type Type,
+} from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
+  EasyPaymentButtonsComponent,
   EasyPaymentsComponent,
   EasyPaymentsConfigService,
   EasyPaymentsDiagnosticsService,
@@ -17,12 +26,17 @@ import {
   PaymentTheme,
   PAYMENT_METHOD_LABELS,
   isAnyStripeBnplReturnAttempt,
+  type EasyPaymentButtonsAppearance,
+  type EasyPaymentButtonsLayout,
   type EasyPaymentsAppearance,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
   type EasyPaymentsVisualStyle,
   resolveEffectiveLocale,
 } from '@easy-payments/angular';
+
+/** Main playground: Ready-to-Use Checkout vs Payment Buttons Only. */
+type PlaygroundExperience = 'checkout' | 'buttons';
 import { environment } from '../environments/environment';
 import {
   persistDemoMode,
@@ -30,7 +44,6 @@ import {
   type PersistedDemoMode,
 } from './demo-mode-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
-import { MultiInstanceQaPage } from './multi-instance-qa/multi-instance-qa.page';
 
 function isMultiInstanceQaQuery(): boolean {
   if (typeof window === 'undefined') {
@@ -190,7 +203,7 @@ const VISUAL_STYLE_FIELDS: readonly {
 
 @Component({
   selector: 'app-root',
-  imports: [EasyPaymentsComponent, MultiInstanceQaPage],
+  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent, NgComponentOutlet],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
@@ -198,9 +211,12 @@ const VISUAL_STYLE_FIELDS: readonly {
 export class App {
   /**
    * Dev-only multi-instance harness. Open `/?ep_qa=multi`.
-   * Not part of the published library API; does not change the default playground.
+   * Loaded via dynamic import so the normal demo stays out of that chunk.
+   * Not part of the published library API.
    */
   readonly multiInstanceQa = isMultiInstanceQaQuery();
+  /** Set only when `?ep_qa=multi` — keeps MultiInstanceQaPage out of the initial bundle. */
+  readonly qaPage = signal<Type<unknown> | null>(null);
 
   private readonly mockController = inject(MockPaymentController);
   private readonly configValidator = inject(EasyPaymentsConfigValidator);
@@ -251,9 +267,149 @@ export class App {
   readonly lastEvent = signal<string>('No payment events yet.');
   /** Newest first. Safe event lines only. */
   readonly paymentEvents = signal<string[]>([]);
+  /**
+   * Demo-application outcome banner for Buttons Only.
+   * Not library UI — shows how a host can react to public events.
+   */
+  readonly buttonsHostOutcome = signal<{
+    kind: 'success' | 'error' | 'cancel' | 'pending';
+    title: string;
+    detail: string;
+  } | null>(null);
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
   readonly switchingMode = signal(false);
+  /** Full Checkout vs Payment Buttons Only playground surface. */
+  readonly playgroundExperience = signal<PlaygroundExperience>('checkout');
+  readonly buttonsLayout = signal<EasyPaymentButtonsLayout>('horizontal');
+  readonly buttonsSeparators = signal<'none' | 'line'>('none');
+  readonly buttonsSeparatorColor = signal('');
+  readonly buttonsBackgroundPreset = signal<'transparent' | 'light' | 'dark' | 'custom'>(
+    'transparent',
+  );
+  readonly buttonsBackgroundCustom = signal('#f8fafc');
+  readonly buttonsBorder = signal<'default' | 'none'>('default');
+  readonly buttonsBorderColor = signal('');
+  readonly buttonsBorderWidth = signal('1px');
+  readonly buttonsBorderRadius = signal(10);
+  readonly buttonsGap = signal(8);
+  readonly buttonsPadding = signal(0);
+  readonly buttonsHeight = signal(40);
+  readonly buttonsMinWidth = signal(100);
+  readonly buttonsWidthMode = signal<'auto' | 'fixed'>('auto');
+  readonly buttonsFixedWidth = signal(160);
+  readonly buttonsCheckoutInstanceId = signal('demo-buttons-1');
+
+  readonly buttonsAppearance = computed<EasyPaymentButtonsAppearance>(() => {
+    const bgPreset = this.buttonsBackgroundPreset();
+    let background: EasyPaymentButtonsAppearance['background'] = 'transparent';
+    if (bgPreset === 'light') {
+      background = '#f8fafc';
+    } else if (bgPreset === 'dark') {
+      background = '#0f172a';
+    } else if (bgPreset === 'custom') {
+      background = this.buttonsBackgroundCustom().trim() || 'transparent';
+    }
+
+    const appearance: EasyPaymentButtonsAppearance = {
+      gap: `${this.buttonsGap()}px`,
+      padding: `${this.buttonsPadding()}px`,
+      separators: this.buttonsSeparators(),
+      background,
+      border: this.buttonsBorder(),
+      borderRadius: `${this.buttonsBorderRadius()}px`,
+      buttonHeight: `${this.buttonsHeight()}px`,
+      buttonMinWidth: `${this.buttonsMinWidth()}px`,
+    };
+
+    const sepColor = this.buttonsSeparatorColor().trim();
+    if (sepColor) {
+      appearance.separatorColor = sepColor;
+    }
+    if (this.buttonsBorder() !== 'none') {
+      const borderColor = this.buttonsBorderColor().trim();
+      if (borderColor) {
+        appearance.borderColor = borderColor;
+      }
+      const borderWidth = this.buttonsBorderWidth().trim();
+      if (borderWidth) {
+        appearance.borderWidth = borderWidth;
+      }
+    }
+    if (this.buttonsWidthMode() === 'fixed') {
+      appearance.buttonWidth = `${this.buttonsFixedWidth()}px`;
+    }
+    return appearance;
+  });
+
+  /** Copy-ready Angular example reflecting the current Buttons Only configuration. */
+  readonly buttonsCodeExample = computed(() => {
+    const methods = this.methods();
+    const methodsLiteral = methods.length
+      ? `[${methods.map((m) => `'${m}'`).join(', ')}]`
+      : `['card', 'paypal']`;
+    const appearance = this.buttonsAppearance();
+    const appearanceLines = Object.entries(appearance)
+      .filter(([, value]) => value != null && value !== '')
+      .map(([key, value]) => `  ${key}: ${JSON.stringify(value)},`)
+      .join('\n');
+    const locale = this.locale();
+    const theme = this.theme();
+    const layout = this.buttonsLayout();
+    const instanceId = this.buttonsCheckoutInstanceId().trim() || 'demo-buttons-1';
+
+    return `import { bootstrapApplication } from '@angular/platform-browser';
+import {
+  provideEasyPayments,
+  EasyPaymentButtonsComponent,
+  type EasyPaymentButtonsAppearance,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+bootstrapApplication(App, {
+  providers: [
+    provideEasyPayments({
+      // Configure providers + backend URLs for live payments.
+      // Demo Mode in this playground uses enableMockMode: true.
+    }),
+  ],
+});
+
+readonly product: PaymentProduct = {
+  id: ${JSON.stringify(this.product().id)},
+  name: ${JSON.stringify(this.product().name)},
+  amount: ${this.product().amount},
+  currency: ${JSON.stringify(this.product().currency)},
+};
+
+readonly methods = ${methodsLiteral} as const;
+
+readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
+${appearanceLines}
+};
+
+// template — Buttons Only is event-driven; host owns outcome UI
+<easy-payment-buttons
+  [product]="product"
+  [methods]="methods"
+  layout="${layout}"
+  theme="${theme}"
+  locale="${locale}"
+  [buttonsAppearance]="buttonsAppearance"
+  checkoutInstanceId="${instanceId}"
+  (started)="onStarted($event)"
+  (methodChange)="onMethodChange($event)"
+  (success)="onSuccess($event)"
+  (cancel)="onCancel($event)"
+  (error)="onError($event)"
+  (pending)="onPending($event)"
+/>
+
+// Host example (not library UI):
+// onSuccess(result) { showToast('Paid ' + result.method); }
+// onPending(result) { showToast('Pending — await webhook'); } // not completed
+`;
+  });
   /**
    * False until persisted/forced mode + provider config are applied.
    * Prevents mounting <easy-payments> in Demo Mode while recovering a real Klarna return.
@@ -321,7 +477,13 @@ export class App {
   constructor() {
     this.mockController.setDelay(350);
     this.applyThemeFromQuery();
-    void this.bootstrapPlaygroundMode();
+    if (this.multiInstanceQa) {
+      void import('./multi-instance-qa/multi-instance-qa.page').then((m) => {
+        this.qaPage.set(m.MultiInstanceQaPage);
+      });
+    } else {
+      void this.bootstrapPlaygroundMode();
+    }
   }
 
   private applyThemeFromQuery(): void {
@@ -438,6 +600,37 @@ export class App {
 
   setShowMultiInstanceQa(enabled: boolean): void {
     this.showMultiInstanceQa.set(enabled);
+  }
+
+  setPlaygroundExperience(experience: PlaygroundExperience): void {
+    this.playgroundExperience.set(experience);
+    this.buttonsHostOutcome.set(null);
+  }
+
+  setButtonsLayout(layout: EasyPaymentButtonsLayout): void {
+    this.buttonsLayout.set(layout);
+  }
+
+  setButtonsSeparators(value: 'none' | 'line'): void {
+    this.buttonsSeparators.set(value);
+  }
+
+  setButtonsBackgroundPreset(value: 'transparent' | 'light' | 'dark' | 'custom'): void {
+    this.buttonsBackgroundPreset.set(value);
+  }
+
+  setButtonsBorder(value: 'default' | 'none'): void {
+    this.buttonsBorder.set(value);
+  }
+
+  async copyButtonsCodeExample(): Promise<void> {
+    const text = this.buttonsCodeExample();
+    try {
+      await navigator.clipboard.writeText(text);
+      this.lastEvent.set('Copied Buttons Only integration example.');
+    } catch {
+      this.lastEvent.set('Could not copy example — select the code block manually.');
+    }
   }
 
   setCheckoutMaxWidth(value: number | string): void {
@@ -611,6 +804,15 @@ export class App {
   onPaymentSuccess(result: PaymentResult): void {
     const reference = result.transactionId ?? result.sessionId;
     this.recordEvent(`success · ${result.method}${reference ? ` · ${reference}` : ''}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'success',
+        title: 'Payment succeeded',
+        detail: reference
+          ? `${result.method} · ${reference} — fulfill only after backend/webhook verification.`
+          : `${result.method} — fulfill only after backend/webhook verification.`,
+      });
+    }
   }
 
   onSuccessContinue(result: PaymentResult): void {
@@ -622,10 +824,39 @@ export class App {
 
   onPaymentCancel(result: PaymentResult): void {
     this.recordEvent(`cancel · ${result.method}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'cancel',
+        title: 'Payment cancelled',
+        detail: `${result.method} — the buyer cancelled before confirmation.`,
+      });
+    }
+  }
+
+  onPaymentPending(result: PaymentResult): void {
+    this.recordEvent(`pending · ${result.method} · await webhook`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'pending',
+        title: 'Payment pending',
+        detail: `${result.method} — not completed. Await backend/webhook before fulfillment.`,
+      });
+    }
   }
 
   onPaymentError(error: PaymentError): void {
     this.recordEvent(`error · ${error.method ?? 'unknown'} · ${error.code}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'error',
+        title: 'Payment failed',
+        detail: `${error.method ?? 'unknown'} · ${error.code}`,
+      });
+    }
+  }
+
+  clearButtonsHostOutcome(): void {
+    this.buttonsHostOutcome.set(null);
   }
 
   private recordEvent(line: string): void {

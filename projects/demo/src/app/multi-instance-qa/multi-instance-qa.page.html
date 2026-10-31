@@ -54,7 +54,7 @@
     <main class="qa-stage" aria-label="Multi-instance hosts">
       <p class="qa-count">{{ hosts().length }} host(s)</p>
       <div class="qa-grid" [attr.data-count]="hosts().length">
-        @for (host of hosts(); track host.checkoutInstanceId + '-' + remountToken()) {
+        @for (host of hosts(); track scenario() + '-' + host.checkoutInstanceId + '-' + remountToken()) {
           <section class="qa-host" [attr.data-kind]="host.kind" [attr.data-theme]="host.theme">
             <header class="qa-host__meta">
               <strong>{{ host.id }}</strong>
@@ -78,7 +78,9 @@
                 [product]="host.product"
                 [methods]="host.methods"
                 [theme]="host.theme"
+                [locale]="host.locale ?? 'en'"
                 [layout]="host.layout ?? 'vertical'"
+                [buttonsAppearance]="host.buttonsAppearance ?? null"
                 [checkoutInstanceId]="host.checkoutInstanceId"
                 (success)="onSuccess(host.id, $event)"
                 (pending)="onPending(host.id, $event)"

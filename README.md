@@ -267,7 +267,7 @@ export const appConfig: ApplicationConfig = {
       // Easy Payments calls these endpoints from the frontend.
       // Secret provider credentials remain on the server.
       // Optional baseUrl prefixes relative paths only. Omit it to use the URLs below as written.
-      // Local NestJS: baseUrl: 'http://localhost:3000'
+      // Local NestJS: baseUrl: 'http://localhost:3001'
       // Production:   baseUrl: 'https://api.example.com'
       backend: {
         // baseUrl: 'https://api.example.com',
@@ -320,7 +320,7 @@ backend: {
 }
 ```
 
-A trailing slash on `baseUrl` does not matter. `https://api.example.com/v1` plus `/payments/create` stays under `/v1`. An absolute `https://...` endpoint is not prefixed. For a local Angular proxy, omit `baseUrl` and use `/api/...`. For the demo NestJS server, use `baseUrl: 'http://localhost:3000'` with those relative paths, and allow the Angular origin in CORS. Production APIs should be HTTPS. `javascript:`, `data:`, and `//host/...` URLs are rejected without taking down unrelated providers.
+A trailing slash on `baseUrl` does not matter. `https://api.example.com/v1` plus `/payments/create` stays under `/v1`. An absolute `https://...` endpoint is not prefixed. For a local Angular proxy, omit `baseUrl` and use `/api/...`. For the demo NestJS server, use `baseUrl: 'http://localhost:3001'` with those relative paths, and allow the Angular origin in CORS. Production APIs should be HTTPS. `javascript:`, `data:`, and `//host/...` URLs are rejected without taking down unrelated providers.
 
 ### 3. `app.component.ts` — product + handlers
 
@@ -788,7 +788,7 @@ npm install
 npm run start:dev
 ```
 
-API: http://localhost:3000
+API: http://localhost:3001
 
 More: [docs/demo.md](docs/demo.md) · Phase 3 visual QA checklist: [docs/phase-3-visual-qa.md](docs/phase-3-visual-qa.md)
 

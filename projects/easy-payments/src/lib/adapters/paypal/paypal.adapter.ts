@@ -256,7 +256,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
    */
   async renderButtons(
     container: HTMLElement,
-    options: Omit<PayPalButtonsOptions, 'style'> & { style?: Record<string, string> },
+    options: PayPalButtonsOptions,
     locale: EasyPaymentsResolvedLocale = 'en',
     mountId?: string,
   ): Promise<string> {
@@ -265,6 +265,13 @@ export class PayPalAdapter extends BaseProviderAdapter {
     await this.destroyButtons(id);
 
     const paypal = await this.ensureSdkLoaded(locale);
+    // When fundingSource is set (Buttons Only compact), PayPal renders one button.
+    // Full checkout omits it so eligible Pay Later / card funding can still appear.
+    const resolvedFunding =
+      typeof options.fundingSource === 'string' && options.fundingSource.trim()
+        ? options.fundingSource.trim()
+        : undefined;
+
     const buttons = paypal.Buttons({
       style: {
         layout: 'vertical',
@@ -273,6 +280,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
         label: 'paypal',
         ...(options.style ?? {}),
       },
+      ...(resolvedFunding ? { fundingSource: resolvedFunding } : {}),
       createOrder: options.createOrder,
       onApprove: options.onApprove,
       onCancel: options.onCancel,

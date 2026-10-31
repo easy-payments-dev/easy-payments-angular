@@ -1,13 +1,17 @@
 @if (multiInstanceQa) {
-  <app-multi-instance-qa />
+  @if (qaPage(); as page) {
+    <ng-container [ngComponentOutlet]="page" />
+  } @else {
+    <p class="qa-loading" role="status">Loading multi-instance QA…</p>
+  }
 } @else {
 <div class="demo">
   <header class="demo-header">
     <div>
       <p class="eyebrow">Easy Payments</p>
-      <h1>Checkout playground</h1>
+      <h1>Payment playground</h1>
       <p class="lede">
-        Configure the library on the left. Preview the customer-facing checkout on the right.
+        Configure the library on the left. Preview Full Checkout or Payment Buttons Only on the right.
       </p>
     </div>
     @if (mode() === 'demo') {
@@ -20,6 +24,37 @@
   <div class="demo-layout">
     <aside class="panel" aria-label="Developer playground controls">
       <p class="panel-kicker">Developer controls</p>
+
+      <section>
+        <h2>Experience</h2>
+        <fieldset class="choice-group">
+          <legend class="visually-hidden">Playground experience</legend>
+          <label class="choice">
+            <input
+              type="radio"
+              name="playgroundExperience"
+              value="checkout"
+              [checked]="playgroundExperience() === 'checkout'"
+              (change)="setPlaygroundExperience('checkout')"
+            />
+            <span>Full Checkout</span>
+          </label>
+          <label class="choice">
+            <input
+              type="radio"
+              name="playgroundExperience"
+              value="buttons"
+              [checked]="playgroundExperience() === 'buttons'"
+              (change)="setPlaygroundExperience('buttons')"
+            />
+            <span>Payment Buttons Only</span>
+          </label>
+        </fieldset>
+        <p class="hint">
+          Full Checkout is <code>&lt;easy-payments&gt;</code>. Buttons Only is
+          <code>&lt;easy-payment-buttons&gt;</code> — a compact strip for your own checkout UI.
+        </p>
+      </section>
 
       <section>
         <h2>Mode</h2>
@@ -250,6 +285,7 @@
         </p>
       </section>
 
+      @if (playgroundExperience() === 'checkout') {
       <section>
         <h2>Appearance</h2>
         <p class="hint">
@@ -429,6 +465,7 @@
           />
         </label>
       </section>
+      }
 
       @if (mode() === 'demo') {
         <section>
@@ -483,6 +520,270 @@
         </ul>
       </section>
 
+      @if (playgroundExperience() === 'buttons') {
+        <section class="buttons-config" aria-label="Buttons Only appearance">
+          <h2>Buttons layout</h2>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Buttons layout</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsLayout"
+                value="horizontal"
+                [checked]="buttonsLayout() === 'horizontal'"
+                (change)="setButtonsLayout('horizontal')"
+              />
+              <span>Horizontal</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsLayout"
+                value="vertical"
+                [checked]="buttonsLayout() === 'vertical'"
+                (change)="setButtonsLayout('vertical')"
+              />
+              <span>Vertical</span>
+            </label>
+          </fieldset>
+
+          <h2>Separators</h2>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Separators</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsSeparators"
+                value="none"
+                [checked]="buttonsSeparators() === 'none'"
+                (change)="setButtonsSeparators('none')"
+              />
+              <span>None</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsSeparators"
+                value="line"
+                [checked]="buttonsSeparators() === 'line'"
+                (change)="setButtonsSeparators('line')"
+              />
+              <span>Line</span>
+            </label>
+          </fieldset>
+          @if (buttonsSeparators() === 'line') {
+            <label class="field">
+              <span>Separator color</span>
+              <input
+                type="text"
+                [value]="buttonsSeparatorColor()"
+                (input)="buttonsSeparatorColor.set($any($event.target).value)"
+                placeholder="#e2e8f0"
+              />
+            </label>
+          }
+
+          <h2>Background</h2>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Strip background</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBg"
+                value="transparent"
+                [checked]="buttonsBackgroundPreset() === 'transparent'"
+                (change)="setButtonsBackgroundPreset('transparent')"
+              />
+              <span>Transparent</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBg"
+                value="light"
+                [checked]="buttonsBackgroundPreset() === 'light'"
+                (change)="setButtonsBackgroundPreset('light')"
+              />
+              <span>Light</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBg"
+                value="dark"
+                [checked]="buttonsBackgroundPreset() === 'dark'"
+                (change)="setButtonsBackgroundPreset('dark')"
+              />
+              <span>Dark</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBg"
+                value="custom"
+                [checked]="buttonsBackgroundPreset() === 'custom'"
+                (change)="setButtonsBackgroundPreset('custom')"
+              />
+              <span>Custom</span>
+            </label>
+          </fieldset>
+          @if (buttonsBackgroundPreset() === 'custom') {
+            <label class="field">
+              <span>Custom background</span>
+              <input
+                type="text"
+                [value]="buttonsBackgroundCustom()"
+                (input)="buttonsBackgroundCustom.set($any($event.target).value)"
+                placeholder="#f8fafc"
+              />
+            </label>
+          }
+
+          <h2>Borders</h2>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Selector borders</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBorder"
+                value="default"
+                [checked]="buttonsBorder() === 'default'"
+                (change)="setButtonsBorder('default')"
+              />
+              <span>Default</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsBorder"
+                value="none"
+                [checked]="buttonsBorder() === 'none'"
+                (change)="setButtonsBorder('none')"
+              />
+              <span>None</span>
+            </label>
+          </fieldset>
+          @if (buttonsBorder() === 'default') {
+            <label class="field">
+              <span>Border color</span>
+              <input
+                type="text"
+                [value]="buttonsBorderColor()"
+                (input)="buttonsBorderColor.set($any($event.target).value)"
+                placeholder="#e2e8f0"
+              />
+            </label>
+            <label class="field">
+              <span>Border width</span>
+              <input
+                type="text"
+                [value]="buttonsBorderWidth()"
+                (input)="buttonsBorderWidth.set($any($event.target).value)"
+                placeholder="1px"
+              />
+            </label>
+          }
+
+          <h2>Radius &amp; spacing</h2>
+          <label class="field">
+            <span>Border radius ({{ buttonsBorderRadius() }}px)</span>
+            <input
+              type="range"
+              min="0"
+              max="24"
+              [value]="buttonsBorderRadius()"
+              (input)="buttonsBorderRadius.set(+$any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Gap ({{ buttonsGap() }}px)</span>
+            <input
+              type="range"
+              min="0"
+              max="32"
+              [value]="buttonsGap()"
+              (input)="buttonsGap.set(+$any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Outer padding ({{ buttonsPadding() }}px)</span>
+            <input
+              type="range"
+              min="0"
+              max="32"
+              [value]="buttonsPadding()"
+              (input)="buttonsPadding.set(+$any($event.target).value)"
+            />
+          </label>
+
+          <h2>Button size</h2>
+          <label class="field">
+            <span>Height ({{ buttonsHeight() }}px)</span>
+            <input
+              type="range"
+              min="32"
+              max="56"
+              [value]="buttonsHeight()"
+              (input)="buttonsHeight.set(+$any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Min width ({{ buttonsMinWidth() }}px)</span>
+            <input
+              type="range"
+              min="72"
+              max="220"
+              [value]="buttonsMinWidth()"
+              (input)="buttonsMinWidth.set(+$any($event.target).value)"
+            />
+          </label>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Button width mode</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsWidthMode"
+                value="auto"
+                [checked]="buttonsWidthMode() === 'auto'"
+                (change)="buttonsWidthMode.set('auto')"
+              />
+              <span>Fluid width</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="buttonsWidthMode"
+                value="fixed"
+                [checked]="buttonsWidthMode() === 'fixed'"
+                (change)="buttonsWidthMode.set('fixed')"
+              />
+              <span>Fixed width</span>
+            </label>
+          </fieldset>
+          @if (buttonsWidthMode() === 'fixed') {
+            <label class="field">
+              <span>Fixed width ({{ buttonsFixedWidth() }}px)</span>
+              <input
+                type="range"
+                min="100"
+                max="280"
+                [value]="buttonsFixedWidth()"
+                (input)="buttonsFixedWidth.set(+$any($event.target).value)"
+              />
+            </label>
+          }
+
+          <label class="field">
+            <span>checkoutInstanceId</span>
+            <input
+              type="text"
+              [value]="buttonsCheckoutInstanceId()"
+              (input)="buttonsCheckoutInstanceId.set($any($event.target).value)"
+            />
+          </label>
+        </section>
+      }
+
       <section>
         <h2>Provider status</h2>
         <ul class="status-list">
@@ -496,8 +797,12 @@
     <main class="checkout">
       <div class="preview-meta">
         <div>
-          <p class="preview-kicker">Customer checkout preview</p>
-          <h2>Embedded <code>&lt;easy-payments&gt;</code></h2>
+          <p class="preview-kicker">Live preview</p>
+          @if (playgroundExperience() === 'checkout') {
+            <h2>Embedded <code>&lt;easy-payments&gt;</code></h2>
+          } @else {
+            <h2>Embedded <code>&lt;easy-payment-buttons&gt;</code></h2>
+          }
         </div>
         @if (mode() === 'demo') {
           <p class="preview-chip preview-chip--demo">Demo payments</p>
@@ -508,13 +813,20 @@
 
       <div
         class="checkout-stage"
-        [class.checkout-stage--transparent-demo]="appearance() === 'transparent'"
+        [class.checkout-stage--transparent-demo]="
+          playgroundExperience() === 'checkout' && appearance() === 'transparent'
+        "
         [class.checkout-stage--backdrop-light]="
-          appearance() === 'transparent' && transparentPreviewBackdrop() === 'light'
+          playgroundExperience() === 'checkout' &&
+          appearance() === 'transparent' &&
+          transparentPreviewBackdrop() === 'light'
         "
         [class.checkout-stage--backdrop-dark]="
-          appearance() === 'transparent' && transparentPreviewBackdrop() === 'dark'
+          playgroundExperience() === 'checkout' &&
+          appearance() === 'transparent' &&
+          transparentPreviewBackdrop() === 'dark'
         "
+        [class.checkout-stage--buttons]="playgroundExperience() === 'buttons'"
       >
         <div class="checkout-stage__surface">
           @if (!checkoutReady()) {
@@ -525,7 +837,7 @@
                 Loading checkout…
               }
             </p>
-          } @else {
+          } @else if (playgroundExperience() === 'checkout') {
             <easy-payments
               [product]="product()"
               [methods]="methods()"
@@ -542,11 +854,67 @@
               (methodChange)="onPaymentMethodChange($event)"
               (successContinue)="onSuccessContinue($event)"
             />
+          } @else {
+            <easy-payment-buttons
+              [product]="product()"
+              [methods]="methods()"
+              [theme]="theme()"
+              [locale]="locale()"
+              [translations]="customTranslations()"
+              [layout]="buttonsLayout()"
+              [buttonsAppearance]="buttonsAppearance()"
+              [checkoutInstanceId]="buttonsCheckoutInstanceId()"
+              (started)="onPaymentStarted($event)"
+              (success)="onPaymentSuccess($event)"
+              (cancel)="onPaymentCancel($event)"
+              (error)="onPaymentError($event)"
+              (methodChange)="onPaymentMethodChange($event)"
+              (pending)="onPaymentPending($event)"
+            />
           }
         </div>
       </div>
 
-      @if (showMultiInstanceQa() && checkoutReady()) {
+      @if (playgroundExperience() === 'buttons') {
+        @if (buttonsHostOutcome(); as outcome) {
+          <section
+            class="demo-host-outcome"
+            [attr.data-kind]="outcome.kind"
+            data-testid="demo-buttons-host-outcome"
+            role="status"
+            aria-live="polite"
+          >
+            <div class="demo-host-outcome__meta">
+              <p class="preview-kicker">Demo application (not library UI)</p>
+              <button type="button" class="demo-action" (click)="clearButtonsHostOutcome()">
+                Dismiss
+              </button>
+            </div>
+            <h2 class="demo-host-outcome__title">{{ outcome.title }}</h2>
+            <p class="demo-host-outcome__detail">{{ outcome.detail }}</p>
+            <p class="demo-host-outcome__hint">
+              <code>&lt;easy-payment-buttons&gt;</code> emits events only. Your app chooses toasts,
+              modals, or confirmation pages. Do not treat <code>pending</code> as completed;
+              verify fulfillment on your backend / webhooks.
+            </p>
+          </section>
+        }
+
+        <section class="buttons-code" aria-label="Buttons Only integration example">
+          <div class="preview-meta">
+            <div>
+              <p class="preview-kicker">Integration</p>
+              <h2>Angular example</h2>
+            </div>
+            <button type="button" class="demo-action" (click)="copyButtonsCodeExample()">
+              Copy example
+            </button>
+          </div>
+          <pre class="buttons-code__pre"><code>{{ buttonsCodeExample() }}</code></pre>
+        </section>
+      }
+
+      @if (playgroundExperience() === 'checkout' && showMultiInstanceQa() && checkoutReady()) {
         <section
           class="multi-instance-qa"
           data-testid="multi-instance-qa"
@@ -592,8 +960,26 @@
         </section>
       }
 
-      <section class="event-log" aria-live="polite">
-        <h2>Last event</h2>
+      <section class="event-log" aria-live="polite" data-testid="demo-event-log">
+        <div class="preview-meta">
+          <div>
+            <p class="preview-kicker">
+              @if (playgroundExperience() === 'buttons') {
+                Host event inspector
+              } @else {
+                Events
+              }
+            </p>
+            <h2>Last event</h2>
+          </div>
+        </div>
+        @if (playgroundExperience() === 'buttons') {
+          <p class="hint">
+            Inspect <code>started</code>, <code>methodChange</code>, <code>success</code>,
+            <code>cancel</code>, <code>error</code>, and <code>pending</code> emitted by
+            <code>&lt;easy-payment-buttons&gt;</code>. Outcome banners above are demo-app UI.
+          </p>
+        }
         <p>{{ lastEvent() }}</p>
         @if (paymentEvents().length > 0) {
           <h2>Event history</h2>

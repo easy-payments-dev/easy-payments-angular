@@ -10,6 +10,7 @@ Source: [`projects/demo`](../projects/demo)
 
 ## What the demo shows
 
+- Experience switch: **Full Checkout** (`<easy-payments>`) vs **Payment Buttons Only** (`<easy-payment-buttons>`)
 - Card, PayPal, Apple Pay, Google Pay, Klarna, Affirm (availability depends on mode/config)
 - Product fields (demo default **$99** USD `premium-plan`)
 - Method enable/disable and **reorder**
@@ -17,7 +18,8 @@ Source: [`projects/demo`](../projects/demo)
 - Appearance: default / transparent (+ preview backdrops)
 - Phase 3 **Visual style QA** (`[visualStyle]` fields, presets, dual-instance theme check) — see [phase-3-visual-qa.md](./phase-3-visual-qa.md)
 - `maxWidth` presets and slider (320–1200)
-- Success / cancel / error event log
+- Event log (`started` / `methodChange` / `success` / `cancel` / `error` / `pending`)
+- **Buttons Only host outcome banner** outside the library component (demo-app UI only) — shows how a merchant can present outcomes from events
 - **Demo Mode** (mocks) vs **Real / Test Providers**
 
 ---
@@ -43,7 +45,7 @@ npm install
 npm run start:dev
 ```
 
-Server: http://localhost:3000
+Server: http://localhost:3001
 
 Root scripts also include:
 

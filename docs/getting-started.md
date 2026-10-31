@@ -135,7 +135,7 @@ export const appConfig: ApplicationConfig = {
       // baseUrl is optional. Omit it to use each URL exactly as written.
       backend: {
         // Shared origin for the relative paths below.
-        // Local NestJS: 'http://localhost:3000'
+        // Local NestJS: 'http://localhost:3001'
         // Production: 'https://api.example.com'
         baseUrl: 'https://api.example.com',
 
@@ -412,6 +412,19 @@ Checkout `success` events are not fulfillment. For production settlement, verify
 
 ---
 
+## Payment Buttons Only (event-driven)
+
+Use `<easy-payment-buttons>` when your app already owns product/price UI and you want a compact provider strip.
+
+- The component emits `started`, `methodChange`, `success`, `cancel`, `error`, and `pending`.
+- It does **not** render application-level outcome banners — show toasts, modals, or confirmation pages in your host.
+- Keep listening for Stripe Payment Element validation and confirm CTAs inside the shared panel; those are payment-form UI, not app outcomes.
+- Treat `pending` as incomplete. Verify fulfillment with backend / webhooks.
+
+Full integration example and contracts: **[api.md — `<easy-payment-buttons>`](./api.md#component-easy-payment-buttons)**.
+
+---
+
 ## Run the demo locally
 
 ```bash
@@ -437,6 +450,6 @@ cp .env.example .env   # fill YOUR_* with TEST secrets (gitignored)
 npm run start:dev
 ```
 
-Server: http://localhost:3000  
+Server: http://localhost:3001
 
 Details: [demo.md](./demo.md)

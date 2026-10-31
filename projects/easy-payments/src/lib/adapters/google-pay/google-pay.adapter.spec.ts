@@ -149,6 +149,22 @@ describe('GooglePayAdapter', () => {
     expect(adapter.getActiveButtonMountCount()).toBe(0);
   });
 
+  it('uses the logo-only short button (no signed-in card-info swap) for compact mounts', async () => {
+    const host = document.createElement('div');
+    await adapter.renderOfficialButton(host, {
+      theme: 'dark',
+      compact: true,
+      onClick: () => undefined,
+    });
+    expect(paymentsClient.createButton).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        buttonType: 'short',
+        buttonColor: 'white',
+        buttonSizeMode: 'fill',
+      }),
+    );
+  });
+
   it('keeps sibling Google Pay button mounts when one host is destroyed', async () => {
     const hostA = document.createElement('div');
     const hostB = document.createElement('div');

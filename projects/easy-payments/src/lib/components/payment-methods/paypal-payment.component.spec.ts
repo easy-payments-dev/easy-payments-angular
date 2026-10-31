@@ -183,6 +183,20 @@ describe('PayPalPaymentComponent', () => {
     expect(text).toContain('Secure checkout powered by PayPal');
     expect(text.toLowerCase()).not.toContain('stripe');
   });
+
+  it('keeps Full Checkout payment error alerts inside the PayPal panel', async () => {
+    const options = adapter.renderButtons.calls.mostRecent().args[1];
+    options.onError?.(new Error('INSTRUMENT_DECLINED'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const alert = fixture.nativeElement.querySelector('.ep-paypal__error') as HTMLElement;
+    expect(alert).toBeTruthy();
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert.textContent?.trim().length).toBeGreaterThan(0);
+    expect(host.errors.length).toBe(1);
+  });
 });
 
 describe('PayPalPaymentComponent compact', () => {
@@ -243,6 +257,148 @@ describe('PayPalPaymentComponent compact', () => {
     expect(text).not.toContain('Secure checkout powered by PayPal');
     expect(adapter.renderButtons).toHaveBeenCalledTimes(1);
     expect(fixture.nativeElement.querySelector('.ep-paypal--compact')).toBeTruthy();
+  });
+
+  it('requests a single primary PayPal funding button in compact mode', () => {
+    const options = adapter.renderButtons.calls.mostRecent().args[1];
+    expect(options.fundingSource).toBe('paypal');
+    expect(options.style).toEqual(
+      jasmine.objectContaining({
+        label: 'paypal',
+        layout: 'vertical',
+        height: 40,
+      }),
+    );
+  });
+
+  it('sends a numeric height and no tagline (PayPal SDK rejects string height)', () => {
+    const style = { ...adapter.renderButtons.calls.mostRecent().args[1].style } as Record<
+      string,
+      unknown
+    >;
+    expect(typeof style['height']).toBe('number');
+    expect('tagline' in style).toBeFalse();
+  });
+
+  it('emits payment errors without inserting a compact strip error banner', async () => {
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    const errors: unknown[] = [];
+    fixture.componentInstance.error.subscribe((err) => errors.push(err));
+    const options = adapter.renderButtons.calls.mostRecent().args[1];
+    const root = () => host.querySelector('.ep-paypal--compact') as HTMLElement;
+    const beforeHeight = root().getBoundingClientRect().height;
+
+    options.onError?.(new Error('INSTRUMENT_DECLINED'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(errors.length).toBe(1);
+    expect(host.querySelector('.ep-paypal__error')).toBeNull();
+    expect(host.textContent).not.toMatch(/unable|failed|declined/i);
+    expect(root().getAttribute('data-has-error')).toBe('true');
+    expect(Math.round(root().getBoundingClientRect().height)).toBe(Math.round(beforeHeight));
+    expect(Math.round(root().getBoundingClientRect().height)).toBe(40);
+    host.remove();
+  });
+
+  it('emits cancel without expanding compact slot chrome', async () => {
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    const cancels: unknown[] = [];
+    fixture.componentInstance.cancel.subscribe((result) => cancels.push(result));
+    const options = adapter.renderButtons.calls.mostRecent().args[1];
+    const beforeHeight = (
+      host.querySelector('.ep-paypal--compact') as HTMLElement
+    ).getBoundingClientRect().height;
+
+    options.onCancel?.();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(cancels.length).toBe(1);
+    expect(host.querySelector('.ep-paypal__error')).toBeNull();
+    expect(host.textContent ?? '').not.toContain('cancelled');
+    expect(
+      Math.round(
+        (host.querySelector('.ep-paypal--compact') as HTMLElement).getBoundingClientRect().height,
+      ),
+    ).toBe(Math.round(beforeHeight));
+    host.remove();
+  });
+
+  it('suppresses host-page focus rings around the compact Buttons mount (not iframe internals)', () => {
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent ?? '')
+      .join('\n');
+    // ::ng-deep pierces to SDK-injected iframe nodes (no _ngcontent attrs).
+    expect(styleText).toMatch(
+      /ep-paypal--compact[^{]*ep-paypal__buttons[^{]*:focus-within[^{]*\{[^}]*outline:\s*none/,
+    );
+    expect(styleText).toMatch(
+      /ep-paypal__buttons[^{]*iframe[^{]*:focus-visible[^{]*\{[^}]*outline:\s*none/,
+    );
+  });
+});
+
+describe('PayPalPaymentComponent compact init failure', () => {
+  it('keeps a fixed compact slot after SDK init failure and still emits error', async () => {
+    const adapter = jasmine.createSpyObj<PayPalAdapter>('PayPalAdapter', [
+      'ensureSdkLoaded',
+      'renderButtons',
+      'destroyButtons',
+      'destroy',
+      'createOrder',
+      'captureOrder',
+      'isBusy',
+      'getActiveOrderId',
+    ]);
+    adapter.ensureSdkLoaded.and.rejectWith(new Error('sdk boom'));
+    adapter.destroyButtons.and.resolveTo();
+    adapter.isBusy.and.returnValue(false);
+    adapter.getActiveOrderId.and.returnValue(null);
+
+    await TestBed.configureTestingModule({
+      imports: [PayPalPaymentComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { paypal: { clientId: 'sb' } },
+          backend: {
+            paypalCreateOrderUrl: '/paypal/create',
+            paypalCaptureOrderUrl: '/paypal/capture',
+          },
+        }),
+        { provide: PayPalAdapter, useValue: adapter },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(PayPalPaymentComponent);
+    const errors: unknown[] = [];
+    fixture.componentInstance.error.subscribe((err) => errors.push(err));
+    fixture.componentRef.setInput('product', {
+      id: 'premium-plan',
+      name: 'Premium Plan',
+      amount: 99.99,
+      currency: 'USD',
+      quantity: 1,
+    });
+    fixture.componentRef.setInput('resolvedTheme', 'light');
+    fixture.componentRef.setInput('compact', true);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(errors.length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.ep-paypal__error')).toBeNull();
+    const root = fixture.nativeElement.querySelector('.ep-paypal--compact') as HTMLElement;
+    expect(root.getAttribute('data-state')).toBe('error');
+    expect(Math.round(root.getBoundingClientRect().height)).toBe(40);
+    expect(fixture.nativeElement.querySelector('.ep-paypal__buttons--unavailable')).toBeTruthy();
+    fixture.nativeElement.remove();
   });
 });
 

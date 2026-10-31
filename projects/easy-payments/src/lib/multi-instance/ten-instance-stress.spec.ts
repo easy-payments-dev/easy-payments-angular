@@ -300,7 +300,7 @@ describe('Ten-instance stress (mock mode)', () => {
       });
 
     const buttonsHost = hosts[1];
-    (slot(buttonsHost, 'paypal')!.querySelector('button.ep-mock-panel__cta') as HTMLButtonElement).click();
+    (slot(buttonsHost, 'paypal')!.querySelector('button.ep-mock-panel__strip') as HTMLButtonElement).click();
     await settle(hosts);
     expect(buttonsHost.successes.length).toBe(1);
     expect(buttonsHost.successes[0].method).toBe('paypal');
@@ -352,7 +352,7 @@ describe('Ten-instance stress (mock mode)', () => {
 
     openButtonsCard(hosts[0]).click();
     await settle(hosts);
-    (slot(hosts[1], 'paypal')!.querySelector('button.ep-mock-panel__cta') as HTMLButtonElement).click();
+    (slot(hosts[1], 'paypal')!.querySelector('button.ep-mock-panel__strip') as HTMLButtonElement).click();
     await settle(hosts);
 
     expect(hosts[0].errors.length).toBe(1);

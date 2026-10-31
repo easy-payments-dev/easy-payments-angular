@@ -14,6 +14,7 @@ import { PaymentProduct, PaymentResult, ResolvedPaymentTheme } from '../../model
     <easy-stripe-card-payment
       [product]="product()"
       [resolvedTheme]="theme()"
+      [chrome]="chrome()"
       (started)="starts.push($event)"
       (success)="successes.push($event)"
       (error)="errors.push($event)"
@@ -30,6 +31,7 @@ class HostComponent {
     quantity: 1,
   });
   readonly theme = signal<ResolvedPaymentTheme>('light');
+  readonly chrome = signal<'full' | 'minimal'>('full');
   starts: unknown[] = [];
   successes: PaymentResult[] = [];
   errors: PaymentError[] = [];
@@ -192,6 +194,72 @@ describe('StripeCardPaymentComponent session reuse', () => {
     expect(adapter.confirmPayment).toHaveBeenCalledTimes(2);
     expect(fixture.componentInstance.starts.length).toBe(2);
     expect(fixture.componentInstance.errors.length).toBe(2);
+  });
+
+  it('shows the Full Checkout success banner after confirmation by default', async () => {
+    adapter.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'card',
+      provider: 'stripe',
+      transactionId: 'pi_full_banner',
+    });
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.ep-stripe-card__success')?.textContent).toContain(
+      'Payment completed',
+    );
+  });
+
+  it('emits success without an application-level banner when chrome is minimal', async () => {
+    fixture.componentInstance.chrome.set('minimal');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    adapter.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'card',
+      provider: 'stripe',
+      transactionId: 'pi_minimal_ok',
+    });
+    (fixture.nativeElement.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.successes.length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.ep-stripe-card__success')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Payment completed');
+    expect(fixture.nativeElement.querySelector('button.ep-stripe-card__pay')).toBeTruthy();
+  });
+
+  it('keeps decline alerts visible for retry in chrome=minimal', async () => {
+    fixture.componentInstance.chrome.set('minimal');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    adapter.confirmPayment.and.rejectWith(
+      new PaymentError({
+        code: 'CARD_DECLINED',
+        message: 'declined',
+        method: 'card',
+        provider: 'stripe',
+      }),
+    );
+
+    (fixture.nativeElement.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.ep-stripe-card__error')?.getAttribute('role')).toBe(
+      'alert',
+    );
+    expect(fixture.componentInstance.errors.map((error) => error.code)).toEqual(['CARD_DECLINED']);
+    expect(
+      (fixture.nativeElement.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement)
+        .disabled,
+    ).toBeFalse();
   });
 
   it('destroys the Stripe element on teardown', () => {

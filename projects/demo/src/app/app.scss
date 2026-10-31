@@ -387,6 +387,116 @@ h2 {
   line-height: 1.5;
 }
 
+.checkout-stage--buttons {
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+}
+
+.checkout-stage--buttons .checkout-stage__surface {
+  padding: 20px;
+  max-width: 640px;
+}
+
+.demo-host-outcome {
+  margin: 16px 0 0;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.demo-host-outcome__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.demo-host-outcome__title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.demo-host-outcome__detail,
+.demo-host-outcome__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.demo-host-outcome__hint {
+  margin-top: 10px;
+  color: #64748b;
+}
+
+.demo-host-outcome[data-kind='success'] {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.demo-host-outcome[data-kind='error'] {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.demo-host-outcome[data-kind='cancel'] {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.demo-host-outcome[data-kind='pending'] {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.buttons-config h2 {
+  margin-top: 1.25rem;
+}
+
+.buttons-config h2:first-child {
+  margin-top: 0;
+}
+
+.buttons-code {
+  margin-top: 1.5rem;
+}
+
+.buttons-code__pre {
+  margin: 0.75rem 0 0;
+  padding: 14px 16px;
+  overflow: auto;
+  max-height: 360px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 500 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+
+.demo-action {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.demo-action:hover {
+  border-color: #94a3b8;
+}
+
+.demo-action:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -421,4 +531,10 @@ h2 {
     transition: none !important;
     animation: none !important;
   }
+}
+
+.qa-loading {
+  margin: 2rem;
+  color: #64748b;
+  font: 500 0.95rem/1.4 "Segoe UI", system-ui, sans-serif;
 }

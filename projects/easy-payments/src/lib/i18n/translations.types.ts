@@ -46,10 +46,27 @@ export interface EasyPaymentsTranslations {
 
   payWithMethod: string;
   demoCheckoutHint: string;
+  /** Single notice above the Buttons Only strip when mock methods are present. */
+  buttonsDemoModeNotice: string;
   continuePaymentHint: string;
   processingPayment: string;
   payAmount: string;
   payAmountWithMethodAria: string;
+  /** Confirm CTA without repeating the merchant-owned amount (Buttons Only expanded panels). */
+  confirmPayment: string;
+  confirmPaymentWithMethodAria: string;
+  /** Buttons Only redirect-method CTA (Klarna / Affirm). `{{method}}` is the provider name. */
+  continueToMethod: string;
+  /** Buttons Only demo-mode CTA — makes clear no real payment is made. */
+  completeDemoPayment: string;
+  /** Buttons Only demo-mode CTA accessible name. `{{method}}` is the method label. */
+  completeDemoPaymentWithMethodAria: string;
+  methodLoadingStatus: string;
+  methodUnavailableStatus: string;
+  cardPaymentRegionAria: string;
+  klarnaPaymentRegionAria: string;
+  affirmPaymentRegionAria: string;
+  demoWalletButtonAria: string;
 
   payWithCard: string;
   secureCardPaymentStripe: string;

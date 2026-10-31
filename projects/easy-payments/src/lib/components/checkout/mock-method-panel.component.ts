@@ -10,42 +10,89 @@ import { EasyPaymentsI18nService, EN_TRANSLATIONS, interpolate } from '../../i18
 import { PaymentMethodIconComponent } from './payment-method-icon.component';
 
 /**
- * Detail panel for mock / non-Stripe payment methods after selection.
+ * Mock / demo payment chrome.
+ *
+ * - `panel` — full checkout-style detail (title, hint, amount CTA). Default for `<easy-payments>`.
+ * - `strip` — single compact wallet stand-in for Buttons Only (no amount, no description).
+ * - `expand` — Buttons Only shared panel: confirm CTA without repeating merchant amount/copy.
+ */
+export type MockMethodPanelPresentation = 'panel' | 'strip' | 'expand';
+
+/**
+ * Detail panel for mock / non-Stripe payment methods after selection,
+ * or a compact strip stand-in for wallet methods in Buttons Only mock mode.
  */
 @Component({
   selector: 'easy-mock-method-panel',
   standalone: true,
   imports: [PaymentMethodIconComponent],
   template: `
-    <div class="ep-mock-panel">
-      <div class="ep-mock-panel__header">
-        <easy-payment-method-icon [method]="method()" [theme]="theme()" />
-        <div>
-          <h3 class="ep-mock-panel__title">{{ title() }}</h3>
-          @if (isMock()) {
-            <p class="ep-mock-panel__hint">{{ msgs().demoCheckoutHint }}</p>
-          } @else {
-            <p class="ep-mock-panel__hint">{{ msgs().continuePaymentHint }}</p>
-          }
-        </div>
-      </div>
-
+    @if (presentation() === 'strip') {
       <button
         type="button"
-        class="ep-mock-panel__cta"
+        class="ep-mock-panel__strip"
         [disabled]="loading()"
         [attr.aria-busy]="loading()"
-        [attr.aria-label]="ctaAriaLabel()"
+        [attr.aria-label]="stripAriaLabel()"
+        data-testid="easy-mock-strip-button"
         (click)="pay.emit()"
       >
+        <span class="ep-mock-panel__strip-icon" aria-hidden="true">
+          <easy-payment-method-icon [method]="method()" [theme]="theme()" />
+        </span>
         @if (loading()) {
           <span class="ep-mock-panel__spinner" aria-hidden="true"></span>
-          {{ msgs().processingPayment }}
-        } @else {
-          {{ payLabel() }}
         }
       </button>
-    </div>
+    } @else if (presentation() === 'expand') {
+      <div class="ep-mock-panel ep-mock-panel--expand">
+        <button
+          type="button"
+          class="ep-mock-panel__cta"
+          [disabled]="loading()"
+          [attr.aria-busy]="loading()"
+          [attr.aria-label]="expandAriaLabel()"
+          (click)="pay.emit()"
+        >
+          @if (loading()) {
+            <span class="ep-mock-panel__spinner" aria-hidden="true"></span>
+            {{ msgs().processingPayment }}
+          } @else {
+            {{ expandLabel() }}
+          }
+        </button>
+      </div>
+    } @else {
+      <div class="ep-mock-panel">
+        <div class="ep-mock-panel__header">
+          <easy-payment-method-icon [method]="method()" [theme]="theme()" />
+          <div>
+            <h3 class="ep-mock-panel__title">{{ title() }}</h3>
+            @if (isMock()) {
+              <p class="ep-mock-panel__hint">{{ msgs().demoCheckoutHint }}</p>
+            } @else {
+              <p class="ep-mock-panel__hint">{{ msgs().continuePaymentHint }}</p>
+            }
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="ep-mock-panel__cta"
+          [disabled]="loading()"
+          [attr.aria-busy]="loading()"
+          [attr.aria-label]="ctaAriaLabel()"
+          (click)="pay.emit()"
+        >
+          @if (loading()) {
+            <span class="ep-mock-panel__spinner" aria-hidden="true"></span>
+            {{ msgs().processingPayment }}
+          } @else {
+            {{ payLabel() }}
+          }
+        </button>
+      </div>
+    }
   `,
   styles: [
     `
@@ -58,6 +105,10 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
         display: flex;
         flex-direction: column;
         gap: 16px;
+      }
+
+      .ep-mock-panel--expand {
+        gap: 10px;
       }
 
       .ep-mock-panel__header {
@@ -77,6 +128,10 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
         margin: 4px 0 0;
         font-size: 13px;
         color: var(--ep-text-secondary, #64748b);
+      }
+
+      .ep-mock-panel--expand .ep-mock-panel__hint {
+        margin: 0;
       }
 
       .ep-mock-panel__cta {
@@ -103,11 +158,66 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
       .ep-mock-panel__cta:focus-visible {
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
       }
 
       .ep-mock-panel__cta:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+      }
+
+      .ep-mock-panel__strip {
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: var(--ep-buttons-width, 100%);
+        min-width: var(--ep-buttons-min-width, 100px);
+        height: var(--ep-buttons-height, 40px);
+        min-height: var(--ep-buttons-height, 40px);
+        padding: 0 12px;
+        border: var(--ep-buttons-border-width, 1px) solid
+          var(--ep-buttons-border-color, var(--ep-border, #e2e8f0));
+        border-radius: var(--ep-buttons-radius, var(--ep-radius-md, 10px));
+        background: var(--ep-surface, #fff);
+        color: var(--ep-text, #0f172a);
+        font: inherit;
+        cursor: pointer;
+        transition:
+          border-color 0.15s ease,
+          background-color 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+
+      .ep-mock-panel__strip:hover:not(:disabled) {
+        border-color: var(--ep-border-strong, #cbd5e1);
+      }
+
+      .ep-mock-panel__strip:focus-visible {
+        outline: 2px solid var(--ep-focus, #2563eb);
+        outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+      }
+
+      .ep-mock-panel__strip:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .ep-mock-panel__strip-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        max-height: 24px;
+        max-width: 100%;
+      }
+
+      .ep-mock-panel__strip-icon ::ng-deep img,
+      .ep-mock-panel__strip-icon ::ng-deep svg {
+        max-height: 22px;
+        width: auto;
       }
 
       .ep-mock-panel__spinner {
@@ -131,6 +241,10 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
           border-right-color: currentColor;
           opacity: 0.7;
         }
+
+        .ep-mock-panel__strip {
+          transition: none;
+        }
       }
     `,
   ],
@@ -146,6 +260,8 @@ export class MockMethodPanelComponent {
   readonly theme = input<ResolvedPaymentTheme>('light');
   readonly isMock = input(false);
   readonly loading = input(false);
+  /** Visual density. Default `panel` preserves full-checkout mock chrome. */
+  readonly presentation = input<MockMethodPanelPresentation>('panel');
 
   readonly pay = output<void>();
 
@@ -179,5 +295,25 @@ export class MockMethodPanelComponent {
       amount: this.amountLabel(),
       method: this.label(),
     });
+  }
+
+  readonly expandLabel = computed(() =>
+    this.isMock() ? this.msgs().completeDemoPayment : this.msgs().confirmPayment,
+  );
+
+  expandAriaLabel(): string {
+    return interpolate(
+      this.isMock()
+        ? this.msgs().completeDemoPaymentWithMethodAria
+        : this.msgs().confirmPaymentWithMethodAria,
+      { method: this.label() },
+    );
+  }
+
+  stripAriaLabel(): string {
+    if (this.isMock()) {
+      return interpolate(this.msgs().demoWalletButtonAria, { method: this.label() });
+    }
+    return interpolate(this.msgs().payWithMethod, { method: this.label() });
   }
 }

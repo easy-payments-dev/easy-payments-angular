@@ -24,7 +24,10 @@ export function stripeAppearanceThemeName(
 /**
  * Payment Element options for Easy Payments `card`.
  * Method availability is primarily controlled by the PaymentIntent
- * (`payment_method_types: ['card']`). These options keep wallets off.
+ * (`payment_method_types: ['card']`). These options keep wallets / Link off so
+ * shoppers see the traditional card-entry fields (not a saved Link card).
+ * Link remains controllable in the Stripe Dashboard; we disable it here for a
+ * predictable card form in both Full Checkout and Buttons Only.
  */
 export const STRIPE_PAYMENT_ELEMENT_OPTIONS: StripePaymentElementOptions = {
   layout: {
@@ -33,6 +36,7 @@ export const STRIPE_PAYMENT_ELEMENT_OPTIONS: StripePaymentElementOptions = {
   wallets: {
     applePay: 'never',
     googlePay: 'never',
+    link: 'never',
   },
 };
 

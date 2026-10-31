@@ -51,11 +51,20 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-klarna" [attr.data-state]="uiState()">
-      <div class="ep-klarna__header">
-        <h3 class="ep-klarna__title">{{ msgs().payWithKlarna }}</h3>
+    <div
+      class="ep-klarna"
+      [class.ep-klarna--minimal]="chrome() === 'minimal'"
+      [attr.data-state]="uiState()"
+      [attr.data-chrome]="chrome()"
+    >
+      @if (chrome() === 'full') {
+        <div class="ep-klarna__header">
+          <h3 class="ep-klarna__title">{{ msgs().payWithKlarna }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutKlarna" />
+        </div>
+      } @else {
         <easy-checkout-security-message [message]="msgs().secureCheckoutKlarna" />
-      </div>
+      }
 
       @if (uiState() === 'initializing' || uiState() === 'loading-session') {
         <p class="ep-klarna__status" role="status">{{ msgs().preparingKlarna }}</p>
@@ -79,7 +88,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-klarna__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      <!--
+        Full Checkout may show an in-panel completion banner.
+        Buttons Only (chrome=minimal) is event-driven — the host owns outcome UI.
+      -->
+      @if (uiState() === 'success' && chrome() !== 'minimal') {
         <p class="ep-klarna__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
@@ -173,6 +186,15 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       .ep-klarna__pay:focus-visible {
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+      }
+
+      .ep-klarna--minimal .ep-klarna__pay {
+        min-height: 44px;
+        align-self: flex-start;
+        min-width: min(100%, 200px);
+        padding: 0 20px;
+        font-size: 14px;
       }
 
       .ep-klarna__pay:disabled {
@@ -203,6 +225,11 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   readonly product = input.required<PaymentProduct>();
   readonly checkout = input<CheckoutOptions>();
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * `full` — checkout chrome (title + amount CTA).
+   * `minimal` — Buttons Only expanded panel (security + Element + confirm).
+   */
+  readonly chrome = input<'full' | 'minimal'>('full');
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -249,7 +276,9 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
         ),
   );
   readonly payLabel = computed(() =>
-    interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
+    this.chrome() === 'minimal'
+      ? interpolate(this.msgs().continueToMethod, { method: 'Klarna' })
+      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
   );
 
   constructor() {
