@@ -140,3 +140,16 @@ export {
   toStripeBnplLocale,
   toStripeElementsLocale,
 } from './lib/i18n';
+
+/** Headless Checkout foundation (v1.2.0 H2 — session/readiness only; no payment execution yet). */
+export {
+  EasyPaymentsHeadless,
+} from './lib/headless';
+export type {
+  HeadlessCheckoutEvents,
+  HeadlessCheckoutSession,
+  HeadlessMethodInteraction,
+  HeadlessMethodStatus,
+  HeadlessSessionOptions,
+  HeadlessSessionState,
+} from './lib/headless';

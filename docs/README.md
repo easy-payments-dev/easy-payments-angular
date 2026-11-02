@@ -8,6 +8,7 @@
 | [API Reference](./api.md) | Complete public API |
 | [Backend](./backend.md) | Contract + NestJS reference |
 | [Demo](./demo.md) | Run the Angular playground |
+| [Headless Checkout](./headless.md) | H2 session API foundation (no payment execution yet) |
 | [Payment flow](./payment-flow.md) | Checkout → processing → success / error / cancel |
 | [Security](./security.md) | Frontend vs backend secrets, pricing |
 | [Release branch](./release-branch.md) | `release/1.0.0`, GitHub visibility limits, protection |
