@@ -19,8 +19,8 @@ import type {
 /**
  * Public Headless Checkout session lifecycle.
  *
- * H2 transitions: `idle → initializing → ready | error → destroyed`.
- * `processing` / `pending` / `success` / `cancelled` are reserved for H3/H4 payment execution.
+ * H2: `idle → initializing → ready | error → destroyed`.
+ * H3.1 Card: `ready → processing → success | pending | cancelled | error`.
  */
 export type HeadlessSessionState =
   | 'idle'
@@ -32,6 +32,15 @@ export type HeadlessSessionState =
   | 'cancelled'
   | 'error'
   | 'destroyed';
+
+/**
+ * Handle returned by {@link HeadlessCheckoutSession.mount}.
+ * `unmount()` is idempotent and does not destroy the Headless session.
+ */
+export interface HeadlessMountHandle {
+  readonly method: PaymentMethod;
+  unmount(): Promise<void> | void;
+}
 
 /**
  * How the merchant will interact with a method once H3 mounts provider UI.
@@ -89,25 +98,25 @@ export interface HeadlessMethodStatus {
 }
 
 export interface HeadlessCheckoutEvents {
-  /** Reserved for H3 — not emitted in H2. */
+  /** Emitted when a payment attempt begins (H3.1: Card confirm). */
   readonly started: Observable<PaymentStartedEvent>;
   /** Emitted when {@link HeadlessCheckoutSession.selectMethod} changes selection. */
   readonly methodChange: Observable<PaymentMethodChangeEvent>;
-  /** Reserved for H3/H4 — not emitted in H2. */
+  /** Emitted when a payment is still processing (not success; await backend/webhooks). */
   readonly pending: Observable<PaymentResult>;
-  /** Reserved for H3/H4 — not emitted in H2. */
+  /** Emitted after a verified provider success result for the current attempt. */
   readonly success: Observable<PaymentResult>;
-  /** Reserved for H3/H4 — not emitted in H2. */
+  /** Emitted when the buyer cancels (or the provider reports cancelled). */
   readonly cancel: Observable<PaymentResult>;
-  /** Emitted for session-level failures (e.g. initialize). */
+  /** Emitted for session or payment failures. */
   readonly error: Observable<PaymentError>;
 }
 
 /**
- * Public Headless Checkout session (H2 foundation).
+ * Public Headless Checkout session.
  *
- * Supports create → initialize → readiness → selectMethod → destroy.
- * Payment execution and provider UI mounting are not available in H2.
+ * H2: initialize, readiness, selection, destroy.
+ * H3.1: mount/confirm for Stripe Card only (official Payment Element).
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;
@@ -116,7 +125,7 @@ export interface HeadlessCheckoutSession {
   readonly selectedMethod: Signal<PaymentMethod | null>;
   readonly availableMethods: Signal<readonly HeadlessMethodStatus[]>;
   readonly lastError: Signal<PaymentError | null>;
-  /** Always `null` in H2 — payment execution is not implemented. */
+  /** Latest payment result for this session, if any. */
   readonly lastResult: Signal<PaymentResult | null>;
 
   readonly events: HeadlessCheckoutEvents;
@@ -124,5 +133,18 @@ export interface HeadlessCheckoutSession {
   initialize(): Promise<void>;
   refreshAvailability(): Promise<readonly HeadlessMethodStatus[]>;
   selectMethod(method: PaymentMethod | null): void;
+
+  /**
+   * Mount official provider UI into a merchant-owned container.
+   * H3.1 supports `card` only (Stripe Payment Element).
+   */
+  mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
+
+  /**
+   * Confirm the selected method.
+   * H3.1: requires `selectedMethod() === 'card'` and an active Card mount.
+   */
+  confirm(): Promise<void>;
+
   destroy(): Promise<void>;
 }

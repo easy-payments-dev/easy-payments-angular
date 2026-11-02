@@ -4,6 +4,7 @@ export type {
   HeadlessCheckoutSession,
   HeadlessMethodInteraction,
   HeadlessMethodStatus,
+  HeadlessMountHandle,
   HeadlessSessionOptions,
   HeadlessSessionState,
 } from './headless.types';

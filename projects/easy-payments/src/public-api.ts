@@ -141,7 +141,7 @@ export {
   toStripeElementsLocale,
 } from './lib/i18n';
 
-/** Headless Checkout foundation (v1.2.0 H2 — session/readiness only; no payment execution yet). */
+/** Headless Checkout (v1.2.0 — H3.1 Stripe Card mount/confirm; other providers later). */
 export {
   EasyPaymentsHeadless,
 } from './lib/headless';
@@ -150,6 +150,7 @@ export type {
   HeadlessCheckoutSession,
   HeadlessMethodInteraction,
   HeadlessMethodStatus,
+  HeadlessMountHandle,
   HeadlessSessionOptions,
   HeadlessSessionState,
 } from './lib/headless';

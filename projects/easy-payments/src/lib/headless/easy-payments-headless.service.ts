@@ -5,6 +5,7 @@ import { PaymentOrchestratorService } from '../services/payment-orchestrator.ser
 import { BrowserGuard } from '../utils/browser-guard';
 import { createPaymentOwnerId } from '../utils/payment-owner-id';
 import { isValidCheckoutInstanceId } from '../adapters/stripe/stripe-redirect-return';
+import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import type { PaymentMethod } from '../models/payment-method.model';
 import { isKnownPaymentMethod } from './headless-method-meta';
 import { HeadlessCheckoutSessionImpl } from './headless-checkout-session';
@@ -15,16 +16,17 @@ import type {
 } from './headless.types';
 
 /**
- * Public factory for Headless Checkout sessions (v1.2.0 H2 foundation).
+ * Public factory for Headless Checkout sessions (v1.2.0).
  *
- * Creates independently owned sessions. Does not mount provider UI or execute
- * payments — those arrive in H3/H4.
+ * H3.1: Stripe Card mount/confirm via the existing StripeCardAdapter.
+ * Other providers remain not mountable until later milestones.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsHeadless {
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly registry = inject(HeadlessSessionRegistry);
   private readonly browser = inject(BrowserGuard);
+  private readonly stripeCard = inject(StripeCardAdapter);
 
   createSession(options: HeadlessSessionOptions): HeadlessCheckoutSession {
     if (!options || typeof options !== 'object') {
@@ -59,6 +61,7 @@ export class EasyPaymentsHeadless {
         orchestrator: this.orchestrator,
         registry: this.registry,
         browser: this.browser,
+        stripeCard: this.stripeCard,
       });
     } catch (error) {
       this.registry.release(id);
