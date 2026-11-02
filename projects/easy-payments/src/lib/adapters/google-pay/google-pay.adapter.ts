@@ -17,6 +17,7 @@ import { PaymentError } from '../../errors/payment-error';
 import { BackendService } from '../../services/backend.service';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { BaseMockAdapter, BaseProviderAdapter } from '../base.adapter';
+import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { mapGooglePayError } from './google-pay-error.mapper';
 import { GooglePaySdkLoader } from './google-pay-sdk.loader';
@@ -47,8 +48,15 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   private paymentsClient: GooglePayPaymentsClient | null = null;
   private stripe: Stripe | null = null;
   private configReady = false;
-  private processing = false;
-  private buttonHost: HTMLElement | null = null;
+  private readonly gate = inject(StripeConfirmationGate);
+  /** Owners (button mounts) with a Google Pay flow in flight. */
+  private readonly processingOwners = new Set<string>();
+  /**
+   * Per-host official button mounts. Destroying one host must not clear another's DOM.
+   * Keyed by opaque mount ids owned by GooglePayPaymentComponent instances.
+   */
+  private readonly buttonMounts = new Map<string, HTMLElement>();
+  private nextMountId = 0;
 
   /**
    * Validates Google Pay + Stripe gateway prerequisites.
@@ -161,8 +169,10 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   }
 
   /**
-   * Renders Google's official createButton into the host.
+   * Renders Google's official createButton into the host under an ownership-scoped mount id.
    * Theme only affects official buttonColor — does not start payments.
+   * Re-rendering with the same `mountId` replaces only that mount; sibling hosts stay intact.
+   * @returns The mount id to pass to {@link destroyButtonMount} on host teardown.
    */
   async renderOfficialButton(
     host: HTMLElement,
@@ -171,47 +181,92 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       onClick: () => void | Promise<void>;
       /** ISO 639-1 button locale (en / es / pt). Affects button text only. */
       buttonLocale?: string;
+      /**
+       * Buttons Only strip: official logo-only button for a compact footprint.
+       * Full checkout keeps `pay` (may include account UI).
+       */
+      compact?: boolean;
     },
-  ): Promise<void> {
+    mountId?: string,
+  ): Promise<string> {
+    const id = mountId ?? this.allocateMountId();
+    // Replace only this owner's previous button instance.
+    this.destroyButtonMount(id);
+
     const client = await this.ensurePaymentsClient();
     host.replaceChildren();
 
+    // Compact uses `short`, not `plain`: for signed-in Chrome users pay.js swaps
+    // `plain`/`pay` for a personalized card-info button (min-width 240px, saved
+    // card art) whenever Google enables its server-side dynamic-button flags.
+    // `short` renders the same logo-only mark and is excluded from that swap.
     const buttonOptions: GooglePayButtonOptions = {
       onClick: (event) => {
         event.preventDefault();
         void options.onClick();
       },
       buttonColor: options.theme === 'dark' ? 'white' : 'black',
-      buttonType: 'pay',
+      buttonType: options.compact ? 'short' : 'pay',
       buttonSizeMode: 'fill',
       ...(options.buttonLocale ? { buttonLocale: options.buttonLocale } : {}),
     };
 
     const button = client.createButton(buttonOptions);
     host.appendChild(button);
-    this.buttonHost = host;
+    this.buttonMounts.set(id, host);
+    return id;
   }
 
-  clearButtonHost(): void {
-    if (this.buttonHost) {
-      this.buttonHost.replaceChildren();
-      this.buttonHost = null;
+  /**
+   * Clears one official button mount (host teardown) or all mounts when `mountId` is omitted.
+   */
+  destroyButtonMount(mountId?: string): void {
+    if (mountId !== undefined) {
+      const host = this.buttonMounts.get(mountId);
+      this.buttonMounts.delete(mountId);
+      host?.replaceChildren();
+      return;
     }
+
+    for (const host of this.buttonMounts.values()) {
+      host.replaceChildren();
+    }
+    this.buttonMounts.clear();
   }
 
-  isProcessing(): boolean {
-    return this.processing;
+  /** @deprecated Prefer {@link destroyButtonMount}; kept for callers that clear “the” host. */
+  clearButtonHost(): void {
+    this.destroyButtonMount();
+  }
+
+  /** Active ownership-scoped button mounts (test / diagnostics). */
+  getActiveButtonMountCount(): number {
+    return this.buttonMounts.size;
+  }
+
+  private allocateMountId(): string {
+    this.nextMountId += 1;
+    return `google-pay-button-${this.nextMountId}`;
+  }
+
+  /** True while `ownerId` (or, when omitted, any owner) has a Google Pay flow in flight. */
+  isProcessing(ownerId?: string): boolean {
+    return ownerId === undefined
+      ? this.processingOwners.size > 0
+      : this.processingOwners.has(ownerId);
   }
 
   /**
    * Full click flow: trusted PaymentIntent → Google sheet → Stripe confirm.
    * PaymentIntent is created only on user click (not on mount/theme).
+   * A concurrent attempt from another host is rejected before any PaymentIntent exists.
    */
   async payWithGooglePay(
     product: PaymentProduct,
     checkout?: CheckoutOptions,
+    ownerId: string = 'google-pay-legacy',
   ): Promise<PaymentResult> {
-    if (this.processing) {
+    if (this.processingOwners.has(ownerId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A Google Pay payment is already in progress.',
@@ -220,7 +275,8 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.processing = true;
+    const release = this.gate.acquire(`google-pay:${ownerId}`, 'google-pay', 'googlePay');
+    this.processingOwners.add(ownerId);
     try {
       const quantity = product.quantity ?? 1;
       const totalPrice = formatGooglePayTotalPrice(product.amount, quantity);
@@ -246,7 +302,8 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       // 3) Confirm via Stripe using the gateway token (no raw card data handled by Easy Payments).
       return await this.confirmWithStripeToken(paymentData, session.clientSecret, session.paymentIntentId);
     } finally {
-      this.processing = false;
+      this.processingOwners.delete(ownerId);
+      release();
     }
   }
 
@@ -414,7 +471,19 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     }
 
     const status = paymentIntent?.status;
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+    if (status === 'processing') {
+      return normalizePaymentResult({
+        status: 'processing',
+        method: 'google-pay',
+        provider: 'googlePay',
+        transactionId: paymentIntent?.id ?? paymentIntentId,
+        sessionId: paymentIntent?.id ?? paymentIntentId,
+        message:
+          'Google Pay payment is still processing. Do not retry — confirm the final status on your backend.',
+        metadata: { processor: 'stripe', stripeStatus: status },
+      });
+    }
+    if (status === 'succeeded' || status === 'requires_capture') {
       return normalizePaymentResult({
         status: 'success',
         method: 'google-pay',
@@ -450,9 +519,13 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     });
   }
 
+  /**
+   * Full adapter reset: clears every button mount and in-flight processing flag.
+   * Prefer {@link destroyButtonMount}(mountId) from individual payment hosts.
+   */
   async destroy(): Promise<void> {
-    this.clearButtonHost();
-    this.processing = false;
+    this.destroyButtonMount();
+    this.processingOwners.clear();
   }
 }
 

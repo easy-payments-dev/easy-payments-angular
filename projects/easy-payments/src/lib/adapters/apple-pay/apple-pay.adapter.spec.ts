@@ -521,6 +521,88 @@ describe('ApplePayAdapter', () => {
     expect(uaSpy).not.toHaveBeenCalled();
     expect(platformSpy).not.toHaveBeenCalled();
   });
+
+  it('configures ECE paymentMethods to Apple Pay only (never Google Pay)', async () => {
+    const host = document.createElement('div');
+    await adapter.mountExpressCheckout(host, {
+      product,
+      theme: 'light',
+      onSuccess: () => undefined,
+      onCancel: () => undefined,
+      onError: () => undefined,
+    });
+    expect(elements.create).toHaveBeenCalledWith(
+      'expressCheckout',
+      jasmine.objectContaining({
+        paymentMethods: jasmine.objectContaining({
+          applePay: 'always',
+          googlePay: 'never',
+          link: 'never',
+          paypal: 'never',
+        }),
+      }),
+    );
+  });
+
+  it('keeps sibling ECE mounts when one host is destroyed', async () => {
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    const idA = adapter.createMountId();
+    const idB = adapter.createMountId();
+
+    // Second mount needs its own ECE stub instance.
+    const expressB = jasmine.createSpyObj('expressB', ['mount', 'unmount', 'destroy', 'on']);
+    expressB.on.and.returnValue(expressB);
+    expressB.mount.and.callFake(() => {
+      const ready = expressB.on.calls
+        .allArgs()
+        .find((args: unknown[]) => args[0] === 'ready')?.[1] as
+        | ((event: { availablePaymentMethods?: unknown }) => void)
+        | undefined;
+      ready?.({ availablePaymentMethods: { applePay: true } });
+    });
+    let createCount = 0;
+    elements.create.and.callFake(() => {
+      createCount += 1;
+      return createCount === 1 ? expressCheckout : expressB;
+    });
+
+    await adapter.mountExpressCheckout(
+      hostA,
+      {
+        product,
+        theme: 'light',
+        onSuccess: () => undefined,
+        onCancel: () => undefined,
+        onError: () => undefined,
+      },
+      idA,
+    );
+    await adapter.mountExpressCheckout(
+      hostB,
+      {
+        product: { ...product, id: 'other-plan' },
+        theme: 'light',
+        onSuccess: () => undefined,
+        onCancel: () => undefined,
+        onError: () => undefined,
+      },
+      idB,
+    );
+
+    expect(adapter.getActiveEceMountCount()).toBe(2);
+    expect(expressCheckout.mount).toHaveBeenCalledWith(hostA);
+    expect(expressB.mount).toHaveBeenCalledWith(hostB);
+
+    adapter.unmountExpressCheckout({ preserveAvailability: true, mountId: idA });
+    expect(expressCheckout.unmount).toHaveBeenCalled();
+    expect(expressB.unmount).not.toHaveBeenCalled();
+    expect(adapter.getActiveEceMountCount()).toBe(1);
+
+    adapter.unmountExpressCheckout({ mountId: idB });
+    expect(expressB.unmount).toHaveBeenCalled();
+    expect(adapter.getActiveEceMountCount()).toBe(0);
+  });
 });
 
 describe('Apple Pay / Google Pay coexistence (capability flags)', () => {

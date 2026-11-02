@@ -1,0 +1,394 @@
+:host {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent !important;
+  color: var(--ep-text, #0f172a);
+  font-family: var(
+    --ep-font-family,
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif
+  );
+
+  --ep-surface: #ffffff;
+  --ep-text: #0f172a;
+  --ep-text-secondary: #64748b;
+  --ep-border: #e2e8f0;
+  --ep-border-strong: #cbd5e1;
+  --ep-accent: #2563eb;
+  --ep-accent-soft: #eff6ff;
+  --ep-focus: #2563eb;
+  --ep-radius: 12px;
+  --ep-radius-md: calc(var(--ep-radius) * 0.625);
+  --ep-spacing: 12px;
+  --ep-cta-bg: #0f172a;
+  --ep-cta-bg-hover: #1e293b;
+  --ep-cta-text: #f8fafc;
+  --ep-success: #15803d;
+  --ep-danger: #b91c1c;
+  --ep-demo-bg: #f1f5f9;
+  --ep-demo-text: #64748b;
+
+  --ep-buttons-gap: 8px;
+  --ep-buttons-padding: 0px;
+  --ep-buttons-height: 40px;
+  --ep-buttons-min-width: 100px;
+  --ep-buttons-width: auto;
+  --ep-buttons-slot-width: 160px;
+  --ep-buttons-radius: var(--ep-radius-md, 10px);
+  --ep-buttons-border-width: 1px;
+  --ep-buttons-border-color: var(--ep-border, #e2e8f0);
+  --ep-buttons-separator-color: var(--ep-border, #e2e8f0);
+  --ep-buttons-strip-bg: transparent;
+}
+
+:host(.ep-theme-dark) {
+  --ep-surface: #111827;
+  --ep-text: #f8fafc;
+  --ep-text-secondary: #94a3b8;
+  --ep-border: #243044;
+  --ep-border-strong: #334155;
+  --ep-accent: #60a5fa;
+  --ep-accent-soft: rgba(96, 165, 250, 0.12);
+  --ep-focus: #93c5fd;
+  /*
+    Primary CTAs follow accent hue (tracks [visualStyle].accentColor) but are
+    deepened for hierarchy. Pale #f8fafc + disabled opacity washed out
+    "Pay with card" against dark Stripe Element panels.
+  */
+  --ep-cta-bg: color-mix(in srgb, var(--ep-accent, #60a5fa) 42%, #0b3a82);
+  --ep-cta-bg-hover: color-mix(in srgb, var(--ep-accent, #60a5fa) 55%, #1d4ed8);
+  --ep-cta-text: #f8fafc;
+  --ep-demo-bg: #1e293b;
+  --ep-demo-text: #94a3b8;
+  --ep-buttons-border-color: var(--ep-border, #243044);
+  --ep-buttons-separator-color: var(--ep-border, #243044);
+}
+
+.ep-payment-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ep-buttons-gap, 8px);
+  width: 100%;
+  margin: 0;
+  padding: var(--ep-buttons-padding, 0);
+  background: var(--ep-buttons-strip-bg, transparent);
+  border: 0;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.ep-payment-buttons__demo-notice {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ep-text-secondary, #64748b);
+}
+
+.ep-payment-buttons__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ep-text-secondary, #64748b);
+}
+
+.ep-payment-buttons__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--ep-buttons-gap, 8px);
+  width: 100%;
+  position: relative;
+  container-type: inline-size;
+  background: transparent;
+  /* Center — do not stretch library selectors to match taller SDK buttons. */
+  align-items: center;
+}
+
+.ep-payment-buttons--vertical .ep-payment-buttons__list {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ep-payment-buttons--horizontal .ep-payment-buttons__list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ep-payment-buttons__item {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 0;
+}
+
+/*
+ * Every horizontal slot — library selector or official SDK button — gets the
+ * same fixed width and never grows, so a short last row cannot stretch one
+ * method (e.g. Klarna/Affirm) across the strip.
+ */
+.ep-payment-buttons--horizontal .ep-payment-buttons__item {
+  flex: 0 1 var(--ep-buttons-slot-width, 160px);
+  max-width: 100%;
+}
+
+/* PayPal Smart Buttons do not render below 150px wide. */
+.ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='paypal-express'] {
+  min-width: min(100%, 150px);
+}
+
+/* Narrow containers: two equal columns while PayPal still fits, then one. */
+@container (min-width: 308px) and (max-width: 359px) {
+  .ep-payment-buttons--horizontal .ep-payment-buttons__item {
+    flex-basis: calc((100% - var(--ep-buttons-gap, 8px)) / 2);
+  }
+}
+
+@container (max-width: 307px) {
+  .ep-payment-buttons--horizontal .ep-payment-buttons__item {
+    flex-basis: 100%;
+  }
+}
+
+/*
+ * Unavailable methods take no space and are hidden from assistive tech. Kept in
+ * the DOM at slot width (not display:none) so a Stripe Express Checkout Element
+ * can stay mounted and report a later eligibility change.
+ */
+.ep-payment-buttons__item--collapsed {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  width: var(--ep-buttons-slot-width, 160px);
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ep-payment-buttons--vertical .ep-payment-buttons__item {
+  width: 100%;
+}
+
+.ep-payment-buttons__separator {
+  flex: 0 0 auto;
+  align-self: stretch;
+  background: var(--ep-buttons-separator-color, var(--ep-border, #e2e8f0));
+  pointer-events: none;
+}
+
+.ep-payment-buttons--horizontal .ep-payment-buttons__separator {
+  width: 1px;
+  min-height: calc(var(--ep-buttons-height, 40px) * 0.5);
+  align-self: center;
+}
+
+.ep-payment-buttons--vertical .ep-payment-buttons__separator {
+  width: 100%;
+  height: 1px;
+}
+
+.ep-payment-buttons__selector,
+.ep-payment-buttons__placeholder {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: var(--ep-buttons-width, 100%);
+  min-width: var(--ep-buttons-min-width, 100px);
+  height: var(--ep-buttons-height, 40px);
+  min-height: var(--ep-buttons-height, 40px);
+  padding: 0 10px;
+  border-radius: var(--ep-buttons-radius, var(--ep-radius-md, 10px));
+  background: var(--ep-surface, #fff);
+  color: var(--ep-text, #0f172a);
+  font: inherit;
+}
+
+.ep-payment-buttons__selector--labeled {
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.ep-payment-buttons__placeholder {
+  border: var(--ep-buttons-border-width, 1px) dashed
+    var(--ep-buttons-border-color, var(--ep-border, #e2e8f0));
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ep-payment-buttons--borderless .ep-payment-buttons__selector,
+.ep-payment-buttons--borderless .ep-payment-buttons__placeholder {
+  border-width: 0;
+  box-shadow: none;
+}
+
+.ep-payment-buttons__placeholder--loading {
+  opacity: 0.4;
+}
+
+.ep-payment-buttons__placeholder--unavailable {
+  opacity: 0.35;
+}
+
+.ep-payment-buttons__selector {
+  border: var(--ep-buttons-border-width, 1px) solid
+    var(--ep-buttons-border-color, var(--ep-border, #e2e8f0));
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ep-payment-buttons__selector:hover:not(:disabled) {
+  border-color: var(--ep-border-strong, #cbd5e1);
+}
+
+/*
+ * Selected fill must be opaque: a translucent accent (e.g. the dark theme's
+ * rgba accent-soft) composites with whatever sits behind the strip, which on a
+ * light page turned dark-theme text (#f8fafc) nearly invisible.
+ */
+.ep-payment-buttons__selector--selected {
+  border-color: var(--ep-accent, #2563eb);
+  background: color-mix(in srgb, var(--ep-accent, #2563eb) 12%, var(--ep-surface, #fff));
+  color: var(--ep-text, #0f172a);
+  box-shadow: 0 0 0 1px var(--ep-accent, #2563eb);
+}
+
+.ep-payment-buttons__selector:focus-visible {
+  outline: 2px solid var(--ep-focus, #2563eb);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+}
+
+.ep-payment-buttons__selector:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-payment-buttons__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  max-height: 24px;
+  max-width: 100%;
+  line-height: 0;
+  color: inherit;
+}
+
+.ep-payment-buttons__mark ::ng-deep img,
+.ep-payment-buttons__mark ::ng-deep svg {
+  max-height: 22px;
+  width: auto;
+  display: block;
+}
+
+/* Generic card glyph — raise opacity so it remains visible on selected surfaces. */
+.ep-payment-buttons__mark ::ng-deep .ep-mark__generic rect[opacity='0.12'] {
+  opacity: 0.22;
+}
+
+.ep-payment-buttons__mark ::ng-deep .ep-mark__generic rect[opacity='0.35'] {
+  opacity: 0.55;
+}
+
+.ep-payment-buttons__mark ::ng-deep .ep-mark__generic rect[opacity='0.55'] {
+  opacity: 0.78;
+}
+
+.ep-payment-buttons__label {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.ep-payment-buttons__selector--selected .ep-payment-buttons__label {
+  font-weight: 700;
+}
+
+.ep-payment-buttons__express,
+.ep-payment-buttons__mock {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  min-height: var(--ep-buttons-height, 40px);
+  /* Allow official SDK chrome to size naturally — never clip branding. */
+  overflow: visible;
+}
+
+/*
+ * Express wrappers are layout hosts, not focusable controls. Prevent accidental
+ * host outlines if a child iframe steals focus (:focus-within). Official SDK
+ * buttons keep their own keyboard focus chrome inside the iframe.
+ */
+.ep-payment-buttons__express:focus,
+.ep-payment-buttons__express:focus-visible,
+.ep-payment-buttons__express:focus-within,
+.ep-payment-buttons__item[data-kind='paypal-express']:focus-within {
+  outline: none;
+  box-shadow: none;
+}
+
+/*
+ * Host-page only: pierce to PayPal-injected iframe / wrapper nodes so Chromium
+ * does not paint a second outer focus ring around the official button. Never
+ * attempts to restyle cross-origin iframe document contents.
+ */
+.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe,
+.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe:focus,
+.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe:focus-visible,
+.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep .paypal-buttons:focus,
+.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep .paypal-buttons:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Keep the PayPal express slot height stable even if SDK chrome changes. */
+.ep-payment-buttons__item[data-kind='paypal-express'] .ep-payment-buttons__express {
+  height: var(--ep-buttons-height, 40px);
+  min-height: var(--ep-buttons-height, 40px);
+  align-items: stretch;
+}
+
+.ep-payment-buttons__express ::ng-deep .ep-paypal,
+.ep-payment-buttons__express ::ng-deep .ep-gpay,
+.ep-payment-buttons__express ::ng-deep .ep-apay {
+  width: 100%;
+}
+
+.ep-payment-buttons__panel {
+  width: 100%;
+  margin: 0;
+  padding: 10px 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ep-border, #e2e8f0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-payment-buttons__selector {
+    transition: none;
+  }
+}

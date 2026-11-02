@@ -1,0 +1,302 @@
+<div
+  class="ep-payment-buttons"
+  [class.ep-payment-buttons--horizontal]="layout() === 'horizontal'"
+  [class.ep-payment-buttons--vertical]="layout() === 'vertical'"
+  [class.ep-payment-buttons--separators]="separatorsEnabled()"
+  [class.ep-payment-buttons--borderless]="borderlessSelectors()"
+  data-testid="easy-payment-buttons-root"
+>
+  @if (showDemoModeNotice()) {
+    <p class="ep-payment-buttons__demo-notice" role="status" data-testid="easy-payment-buttons-demo-notice">
+      {{ msgs().buttonsDemoModeNotice }}
+    </p>
+  }
+
+  @if (noMethodsAvailable()) {
+    <p class="ep-payment-buttons__empty" role="status" data-testid="easy-payment-buttons-empty">
+      {{ msgs().noPaymentMethodsAvailable }}
+    </p>
+  }
+
+  <div
+    class="ep-payment-buttons__list"
+    role="group"
+    [attr.aria-label]="regionAriaLabel()"
+  >
+    @for (slot of methodSlots(); track slot.method) {
+      <!--
+        Unavailable slots collapse instead of unmounting: Apple Pay's Stripe
+        Express Checkout Element must stay mounted to report eligibility.
+      -->
+      <div
+        class="ep-payment-buttons__item"
+        [class.ep-payment-buttons__item--collapsed]="slot.state === 'unavailable'"
+        [attr.aria-hidden]="slot.state === 'unavailable' ? 'true' : null"
+        [attr.data-method]="slot.method"
+        [attr.data-state]="slot.state"
+        [attr.data-kind]="slot.kind"
+        [attr.data-interactive]="slot.interactive ? 'true' : 'false'"
+        [attr.data-mock]="slot.isMock ? 'true' : null"
+      >
+        @if (
+          slot.kind === 'card-selector' ||
+          slot.kind === 'klarna-selector' ||
+          slot.kind === 'affirm-selector'
+        ) {
+          <button
+            type="button"
+            class="ep-payment-buttons__selector"
+            [class.ep-payment-buttons__selector--selected]="selectedMethod() === slot.method"
+            [class.ep-payment-buttons__selector--mock]="slot.isMock"
+            [class.ep-payment-buttons__selector--labeled]="slot.showVisibleLabel"
+            [attr.aria-pressed]="selectedMethod() === slot.method"
+            [attr.aria-label]="slotAriaLabel(slot)"
+            [disabled]="methodsLocked()"
+            (click)="selectMethod(slot.method)"
+          >
+            <span class="ep-payment-buttons__mark" aria-hidden="true">
+              <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+            </span>
+            @if (slot.showVisibleLabel) {
+              <span class="ep-payment-buttons__label">{{ slot.label }}</span>
+            }
+          </button>
+        } @else if (slot.kind === 'paypal-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-paypal-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-paypal-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onPayPalStarted()"
+              (busyChange)="onPayPalBusy($event)"
+              (success)="onPayPalSuccess($event)"
+              (cancel)="onPayPalCancel($event)"
+              (error)="onPayPalError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'paypal-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-paypal-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="paypal"
+              presentation="strip"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'paypal'"
+              (pay)="onMockPayPalPay()"
+            />
+          </div>
+        } @else if (slot.kind === 'google-pay-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-google-pay-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-google-pay-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onGooglePayStarted()"
+              (busyChange)="onGooglePayBusy($event)"
+              (success)="onGooglePaySuccess($event)"
+              (cancel)="onGooglePayCancel($event)"
+              (error)="onGooglePayError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'google-pay-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-google-pay-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="google-pay"
+              presentation="strip"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'google-pay'"
+              (pay)="onMockGooglePayPay()"
+            />
+          </div>
+        } @else if (slot.kind === 'apple-pay-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-apple-pay-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-apple-pay-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              (started)="onApplePayStarted()"
+              (busyChange)="onApplePayBusy($event)"
+              (success)="onApplePaySuccess($event)"
+              (cancel)="onApplePayCancel($event)"
+              (error)="onApplePayError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'apple-pay-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-apple-pay-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="apple-pay"
+              presentation="strip"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'apple-pay'"
+              (pay)="onMockApplePayPay()"
+            />
+          </div>
+        } @else {
+          <div
+            class="ep-payment-buttons__placeholder"
+            [class.ep-payment-buttons__placeholder--loading]="slot.state === 'loading'"
+            [class.ep-payment-buttons__placeholder--unavailable]="slot.state === 'unavailable'"
+            [class.ep-payment-buttons__placeholder--mock]="slot.isMock"
+            role="status"
+            aria-disabled="true"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <span class="ep-payment-buttons__mark" aria-hidden="true">
+              <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+            </span>
+          </div>
+        }
+      </div>
+      @if (separatorsEnabled() && separatorAfter().has(slot.method)) {
+        <div class="ep-payment-buttons__separator" aria-hidden="true"></div>
+      }
+    }
+  </div>
+
+  @if (showStripeCardPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-card-panel"
+      [attr.aria-label]="msgs().cardPaymentRegionAria"
+    >
+      <easy-stripe-card-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        [cardButtonAppearance]="cardButtonAppearance()"
+        chrome="minimal"
+        (started)="onCardStarted()"
+        (busyChange)="onCardBusy($event)"
+        (success)="onCardSuccess($event)"
+        (cancel)="onCardCancel($event)"
+        (error)="onCardError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockCardPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-card-mock-panel"
+      [attr.aria-label]="msgs().cardPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="card"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'card'"
+        (pay)="onMockCardPay()"
+      />
+    </section>
+  }
+
+  @if (showKlarnaPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-klarna-panel"
+      [attr.aria-label]="msgs().klarnaPaymentRegionAria"
+    >
+      <easy-klarna-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onKlarnaStarted()"
+        (busyChange)="onKlarnaBusy($event)"
+        (success)="onKlarnaSuccess($event)"
+        (cancel)="onKlarnaCancel($event)"
+        (error)="onKlarnaError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockKlarnaPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-klarna-mock-panel"
+      [attr.aria-label]="msgs().klarnaPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="klarna"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'klarna'"
+        (pay)="onMockKlarnaPay()"
+      />
+    </section>
+  }
+
+  @if (showAffirmPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-affirm-panel"
+      [attr.aria-label]="msgs().affirmPaymentRegionAria"
+    >
+      <easy-affirm-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onAffirmStarted()"
+        (busyChange)="onAffirmBusy($event)"
+        (success)="onAffirmSuccess($event)"
+        (cancel)="onAffirmCancel($event)"
+        (error)="onAffirmError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockAffirmPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-affirm-mock-panel"
+      [attr.aria-label]="msgs().affirmPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="affirm"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'affirm'"
+        (pay)="onMockAffirmPay()"
+      />
+    </section>
+  }
+</div>

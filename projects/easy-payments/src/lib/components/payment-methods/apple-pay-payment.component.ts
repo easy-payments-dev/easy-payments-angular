@@ -47,11 +47,12 @@ import {
         </div>
       }
 
-      @if (uiState() === 'initializing') {
+      <!-- Compact (Buttons Only): the strip host owns loading/unavailable presentation. -->
+      @if (uiState() === 'initializing' && !compact()) {
         <p class="ep-apay__status" role="status">{{ msgs().preparingApplePay }}</p>
       }
 
-      @if (uiState() === 'unavailable') {
+      @if (uiState() === 'unavailable' && !compact()) {
         <p class="ep-apay__status" role="status">
           {{ msgs().applePayUnavailable }}
         </p>
@@ -221,6 +222,8 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
   private lastLocale: string | null = null;
   private renderGeneration = 0;
   private emittedSuccess = false;
+  /** Ownership token for this host's ECE mount on the shared ApplePayAdapter. */
+  private eceMountId: string | null = null;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -268,14 +271,24 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
-    // Keep the availability decided by `ready`: a full destroy resets it to `idle`
-    // and the Apple Pay tile would vanish from the list on method switch.
-    this.applePayAdapter.unmountExpressCheckout({ preserveAvailability: true });
+    const mountId = this.eceMountId;
+    this.eceMountId = null;
+    // Ownership-scoped unmount — do not tear down sibling ECE mounts.
+    // Keep the availability decided by `ready` so checkout tiles survive method switches.
+    if (mountId) {
+      this.applePayAdapter.unmountExpressCheckout({
+        preserveAvailability: true,
+        mountId,
+      });
+    }
   }
 
   isBusy(): boolean {
     const state = this.uiState();
-    return state === 'processing' || this.applePayAdapter.isProcessing();
+    return (
+      state === 'processing' ||
+      (this.eceMountId !== null && this.applePayAdapter.isProcessing(this.eceMountId))
+    );
   }
 
   private async ensureButton(
@@ -319,7 +332,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
     // Availability was already proven by the bootstrap `ready`; don't fall back to
     // "Preparing Apple Pay…" while the button re-renders in this panel.
     this.uiState.set(
-      this.applePayAdapter.getAvailabilityStatus() === 'available' ? 'ready' : 'initializing',
+      this.applePayAdapter.getAvailabilityStatus(product) === 'available' ? 'ready' : 'initializing',
     );
     this.inlineError.set(null);
 
@@ -331,42 +344,56 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       }
 
       const host = this.host().nativeElement;
-      await this.applePayAdapter.mountExpressCheckout(host, {
-        product,
-        checkout,
-        theme,
-        locale: elementsLocale,
-        onSuccess: (result) => this.onPaymentSuccess(result, generation),
-        onCancel: () => this.onPaymentCancel(generation),
-        onError: (err) => this.onPaymentError(err, generation),
-        onAttempt: () => {
-          if (generation === this.renderGeneration) {
-            this.started.emit();
-          }
+      if (!this.eceMountId) {
+        this.eceMountId = this.applePayAdapter.createMountId();
+      }
+      const mountId = await this.applePayAdapter.mountExpressCheckout(
+        host,
+        {
+          product,
+          checkout,
+          theme,
+          locale: elementsLocale,
+          onSuccess: (result) => this.onPaymentSuccess(result, generation),
+          onCancel: () => this.onPaymentCancel(generation),
+          onError: (err) => this.onPaymentError(err, generation),
+          onAttempt: () => {
+            if (generation === this.renderGeneration) {
+              this.started.emit();
+            }
+          },
+          onReady: () => {
+            if (generation === this.renderGeneration) {
+              this.uiState.set('ready');
+            }
+          },
+          onUnavailable: () => {
+            if (generation === this.renderGeneration) {
+              this.uiState.set('unavailable');
+            }
+          },
         },
-        onReady: () => {
-          if (generation === this.renderGeneration) {
-            this.uiState.set('ready');
-          }
-        },
-        onUnavailable: () => {
-          if (generation === this.renderGeneration) {
-            this.uiState.set('unavailable');
-          }
-        },
-      });
+        this.eceMountId,
+      );
 
       if (generation !== this.renderGeneration) {
+        this.applePayAdapter.unmountExpressCheckout({
+          preserveAvailability: true,
+          mountId,
+        });
+        if (this.eceMountId === mountId) {
+          this.eceMountId = null;
+        }
         return;
       }
 
+      this.eceMountId = mountId;
+
       // Stay initializing until ready fires (or unavailable/error).
-      if (this.applePayAdapter.getAvailabilityStatus() === 'available') {
+      const status = this.applePayAdapter.getAvailabilityStatus(product);
+      if (status === 'available') {
         this.uiState.set('ready');
-      } else if (
-        this.applePayAdapter.getAvailabilityStatus() === 'unavailable' ||
-        this.applePayAdapter.getAvailabilityStatus() === 'error'
-      ) {
+      } else if (status === 'unavailable' || status === 'error') {
         this.uiState.set('unavailable');
       }
     } catch (err) {
@@ -386,7 +413,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
     this.emittedSuccess = true;
-    this.uiState.set('success');
+    this.uiState.set(result.status === 'processing' ? 'processing' : 'success');
     this.success.emit(result);
   }
 

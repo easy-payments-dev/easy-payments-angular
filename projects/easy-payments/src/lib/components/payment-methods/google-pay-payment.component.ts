@@ -22,6 +22,7 @@ import {
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import { buildGooglePayRenderKey, GooglePayUiState } from '../../adapters/google-pay/google-pay.types';
 import { mapGooglePayError } from '../../adapters/google-pay/google-pay-error.mapper';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
@@ -40,11 +41,13 @@ import {
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-gpay" [attr.data-state]="uiState()">
-      <div class="ep-gpay__header">
-        <h3 class="ep-gpay__title">{{ msgs().payWithGooglePay }}</h3>
-        <easy-checkout-security-message [message]="msgs().secureCheckoutGooglePay" />
-      </div>
+    <div class="ep-gpay" [class.ep-gpay--compact]="compact()" [attr.data-state]="uiState()">
+      @if (!compact()) {
+        <div class="ep-gpay__header">
+          <h3 class="ep-gpay__title">{{ msgs().payWithGooglePay }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutGooglePay" />
+        </div>
+      }
 
       @if (uiState() === 'initializing') {
         <p class="ep-gpay__status" role="status">{{ msgs().preparingGooglePay }}</p>
@@ -56,15 +59,15 @@ import {
         </p>
       }
 
-      @if (uiState() === 'creating-session') {
+      @if (uiState() === 'creating-session' && !compact()) {
         <p class="ep-gpay__status" role="status">{{ msgs().preparingSecurePayment }}</p>
       }
 
-      @if (uiState() === 'awaiting-sheet') {
+      @if (uiState() === 'awaiting-sheet' && !compact()) {
         <p class="ep-gpay__status" role="status">{{ msgs().waitingGooglePay }}</p>
       }
 
-      @if (uiState() === 'processing') {
+      @if (uiState() === 'processing' && !compact()) {
         <p class="ep-gpay__status" role="status">{{ msgs().processingGooglePay }}</p>
       }
 
@@ -72,17 +75,20 @@ import {
         #googlePayButtonHost
         class="ep-gpay__button"
         [class.ep-gpay__button--busy]="isBusy()"
+        [class.ep-gpay__button--hidden]="uiState() === 'unavailable'"
         [attr.aria-busy]="isBusy()"
         [attr.aria-label]="msgs().googlePayCheckoutAria"
       ></div>
 
-      <p class="ep-gpay__amount" aria-live="polite">{{ totalLabel() }}</p>
+      @if (!compact()) {
+        <p class="ep-gpay__amount" aria-live="polite">{{ totalLabel() }}</p>
+      }
 
       @if (inlineError()) {
         <p class="ep-gpay__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      @if (uiState() === 'success' && !compact()) {
         <p class="ep-gpay__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
     </div>
@@ -99,6 +105,10 @@ import {
         display: flex;
         flex-direction: column;
         gap: 14px;
+      }
+
+      .ep-gpay--compact {
+        gap: 8px;
       }
 
       .ep-gpay__header {
@@ -120,14 +130,35 @@ import {
         color: var(--ep-text-secondary, #64748b);
       }
 
+      .ep-gpay--compact .ep-gpay__status,
+      .ep-gpay--compact .ep-gpay__error {
+        font-size: 12px;
+      }
+
       .ep-gpay__button {
         min-height: 48px;
         width: 100%;
       }
 
+      .ep-gpay--compact .ep-gpay__button {
+        min-height: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+      }
+
+      .ep-gpay--compact .ep-gpay__button > * {
+        width: 100%;
+        max-width: 100%;
+      }
+
       .ep-gpay__button--busy {
         pointer-events: none;
         opacity: 0.65;
+      }
+
+      .ep-gpay__button--hidden {
+        display: none;
       }
 
       .ep-gpay__amount {
@@ -161,6 +192,11 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   readonly product = input.required<PaymentProduct>();
   readonly checkout = input<CheckoutOptions>();
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * Compact in-list / Payment Buttons Only mount: official Google Pay button without
+   * checkout panel chrome (title, security blurb, amount row, verbose status).
+   */
+  readonly compact = input(false);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -180,6 +216,10 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   private lastTheme: ResolvedPaymentTheme | null = null;
   private lastButtonLocale: string | null = null;
   private renderGeneration = 0;
+  /** Ownership token for this host's button mount on the shared GooglePayAdapter. */
+  private buttonMountId: string | null = null;
+  /** Ownership token for this host's in-flight Google Pay attempt. */
+  private readonly payOwnerId = createPaymentOwnerId('google-pay');
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -207,12 +247,13 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       const checkout = this.checkout();
       const theme = this.resolvedTheme();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const compact = this.compact();
       const ready = this.viewReady();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButton(product, checkout, theme, locale);
+        void this.ensureButton(product, checkout, theme, locale, compact);
       });
     });
 
@@ -229,7 +270,13 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
-    void this.googlePayAdapter.destroy();
+    const mountId = this.buttonMountId;
+    this.buttonMountId = null;
+    // Ownership-scoped cleanup only — do not call adapter.destroy(), which would
+    // clear sibling Google Pay mounts and the shared processing flag.
+    if (mountId) {
+      this.googlePayAdapter.destroyButtonMount(mountId);
+    }
   }
 
   isBusy(): boolean {
@@ -238,7 +285,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       state === 'creating-session' ||
       state === 'awaiting-sheet' ||
       state === 'processing' ||
-      this.googlePayAdapter.isProcessing()
+      this.googlePayAdapter.isProcessing(this.payOwnerId)
     );
   }
 
@@ -247,6 +294,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     checkout: CheckoutOptions | undefined,
     theme: ResolvedPaymentTheme,
     locale: EasyPaymentsResolvedLocale,
+    compact = false,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -263,7 +311,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     const buttonLocale = toGooglePayButtonLocale(locale);
-    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}`;
+    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}|compact:${compact ? 1 : 0}`;
     const themeChanged = this.lastTheme !== theme;
     const localeChanged = this.lastButtonLocale !== buttonLocale;
     if (nextKey === this.renderKey && !themeChanged && !localeChanged && this.uiState() === 'ready') {
@@ -289,21 +337,34 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
 
       if (!available) {
         this.uiState.set('unavailable');
-        this.googlePayAdapter.clearButtonHost();
+        if (this.buttonMountId) {
+          this.googlePayAdapter.destroyButtonMount(this.buttonMountId);
+          this.buttonMountId = null;
+        }
         return;
       }
 
       const host = this.host().nativeElement;
-      await this.googlePayAdapter.renderOfficialButton(host, {
-        theme,
-        buttonLocale,
-        onClick: () => this.onGooglePayClick(product, checkout, generation),
-      });
+      const mountId = await this.googlePayAdapter.renderOfficialButton(
+        host,
+        {
+          theme,
+          buttonLocale,
+          compact,
+          onClick: () => this.onGooglePayClick(product, checkout, generation),
+        },
+        this.buttonMountId ?? undefined,
+      );
 
       if (generation !== this.renderGeneration) {
+        this.googlePayAdapter.destroyButtonMount(mountId);
+        if (this.buttonMountId === mountId) {
+          this.buttonMountId = null;
+        }
         return;
       }
 
+      this.buttonMountId = mountId;
       this.uiState.set('ready');
     } catch (err) {
       if (generation !== this.renderGeneration) {
@@ -333,13 +394,23 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     try {
       // Intermediate UI while PaymentIntent is created, then sheet opens.
       this.uiState.set('awaiting-sheet');
-      const result = await this.googlePayAdapter.payWithGooglePay(product, checkout);
+      const result = await this.googlePayAdapter.payWithGooglePay(
+        product,
+        checkout,
+        this.payOwnerId,
+      );
       if (generation !== this.renderGeneration) {
         return;
       }
 
       if (result.status === 'success') {
         this.uiState.set('success');
+        this.success.emit(result);
+        return;
+      }
+
+      if (result.status === 'processing') {
+        this.uiState.set('processing');
         this.success.emit(result);
         return;
       }

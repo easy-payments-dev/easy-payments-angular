@@ -104,6 +104,73 @@ Transparent shell + custom surface example (parent shows through; tiles stay rea
 
 Each `<easy-payments>` instance resolves its own `theme` (component-scoped theme service). `[visualStyle]` overrides are always instance-local.
 
+---
+
+## Stripe Card button appearance
+
+Optional `[cardButtonAppearance]` styles the Easy Payments–owned Stripe Card **confirm** button shared by Full Checkout and Buttons Only. It does not change Stripe Elements, PayPal, Google Pay, or Apple Pay SDK UI.
+
+```ts
+import type { EasyPaymentsCardButtonAppearance } from '@easy-payments/angular';
+
+cardButtonAppearance: EasyPaymentsCardButtonAppearance = {
+  label: 'Complete card payment',
+  backgroundColor: '#0b6e4f',
+  textColor: '#f8fafc',
+  fontFamily: 'Georgia, serif',
+  fontSize: '16px',
+  fontWeight: 700,
+  textAlign: 'center',
+  border: 'none',
+  borderRadius: '10px',
+  minHeight: '48px',
+  width: '100%',
+  padding: '10px 18px',
+  hoverBackgroundColor: '#095c42',
+  hoverTextColor: '#ffffff',
+  disabledBackgroundColor: '#4b5563',
+  disabledTextColor: '#d1d5db',
+  loadingBackgroundColor: '#1f2937',
+  loadingTextColor: '#f9fafb',
+  focusOutlineColor: '#22c55e',
+  focusOutlineWidth: '2px',
+  focusOutlineOffset: '2px',
+};
+```
+
+```html
+<!-- Full Checkout -->
+<easy-payments
+  [product]="product"
+  [methods]="methods"
+  theme="system"
+  [cardButtonAppearance]="cardButtonAppearance"
+/>
+
+<!-- Buttons Only -->
+<easy-payment-buttons
+  [product]="product"
+  [methods]="methods"
+  [cardButtonAppearance]="cardButtonAppearance"
+/>
+```
+
+### Behavior notes
+
+| Topic | Detail |
+|-------|--------|
+| Default look | Unset → theme `--ep-cta-*` (light slate CTA; dark accent-mixed high-contrast CTA; system follows resolved theme). |
+| Label | Valid plain-text `label` replaces idle i18n only. Markup rejected. Loading text stays `processingPayment`. |
+| Borders | `border: 'none'` removes the border. Or set `borderWidth` / `borderStyle` / `borderColor`. |
+| Typography / align | `fontFamily`, `fontSize`, `fontWeight`, `textAlign`. |
+| Hover / disabled / loading | Optional dedicated colors; otherwise theme hover and muted color-mix defaults. |
+| Focus | Optional `focusOutline*` for `:focus-visible`; defaults to `--ep-focus` / accent. |
+| Accent | Without CTA color overrides, dark-theme CTA still derives from merchant `--ep-accent` via `--ep-cta-bg`. Explicit `backgroundColor` replaces that fallback. |
+| Contrast | Prefer readable pairs. Dev-mode contrast warnings apply to EP-owned pairs where evaluated; EP does not silently rewrite merchant colors. |
+| Isolation | Per-instance CSS variables on `easy-stripe-card-payment`; multiple checkouts do not share overrides. |
+
+Invalid optional values are ignored. Payment flow, keyboard access, `disabled`, and `aria-busy` are unchanged.
+
 ### Public CSS token contract (EP-owned)
 
 **Supported customization points** (via `[visualStyle]` and/or CSS on `<easy-payments>`):

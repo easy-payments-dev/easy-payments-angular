@@ -3,6 +3,20 @@
  */
 
 export { EasyPaymentsComponent } from './lib/components/payments/easy-payments.component';
+export { EasyPaymentButtonsComponent } from './lib/components/payment-buttons/easy-payment-buttons.component';
+export type {
+  EasyPaymentButtonSlot,
+  EasyPaymentButtonSlotKind,
+  EasyPaymentButtonSlotState,
+} from './lib/components/payment-buttons/easy-payment-buttons.component';
+export type { EasyPaymentButtonsLayout } from './lib/models/easy-payment-buttons-layout.model';
+export type { EasyPaymentButtonsAppearance } from './lib/models/easy-payment-buttons-appearance.model';
+export type { EasyPaymentsCardButtonAppearance } from './lib/models/easy-payments-card-button-appearance.model';
+export {
+  resolveCardButtonAppearance,
+  type CardButtonAppearanceCssVars,
+  type ResolvedCardButtonAppearance,
+} from './lib/themes/resolve-card-button-appearance';
 
 export { provideEasyPayments } from './lib/config/provide-easy-payments';
 export { EasyPaymentsConfigService } from './lib/config/easy-payments-config.service';

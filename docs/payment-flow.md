@@ -2,7 +2,9 @@
 
 What customers see when paying with Easy Payments — from method selection through the final outcome.
 
-Easy Payments normalizes provider-specific journeys into one consistent checkout experience and a small set of customer-facing screens.
+Easy Payments normalizes provider-specific journeys into one consistent checkout experience and a small set of customer-facing screens for **`<easy-payments>` (Full Checkout)**.
+
+**`<easy-payment-buttons>` is event-driven:** it keeps payment-form UI (Stripe validation, confirm CTAs, loading/retry) but does **not** render application-level success / error / cancel / pending banners. The host application presents those outcomes from the public events (`started`, `methodChange`, `success`, `cancel`, `error`, `pending`). See [api.md — Buttons Only](./api.md#component-easy-payment-buttons).
 
 ---
 

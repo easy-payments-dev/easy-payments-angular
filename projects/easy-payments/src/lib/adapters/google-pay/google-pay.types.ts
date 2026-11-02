@@ -85,7 +85,20 @@ export interface GooglePaymentData {
 export interface GooglePayButtonOptions {
   onClick: (event: Event) => void;
   buttonColor?: 'default' | 'black' | 'white';
-  buttonType?: 'book' | 'buy' | 'checkout' | 'donate' | 'order' | 'pay' | 'plain' | 'subscribe';
+  /**
+   * `short` is Google's legacy alias that renders the same logo-only button as `plain`.
+   * pay.js still accepts it and never applies the signed-in "dynamic" card-info variant to it.
+   */
+  buttonType?:
+    | 'book'
+    | 'buy'
+    | 'checkout'
+    | 'donate'
+    | 'order'
+    | 'pay'
+    | 'plain'
+    | 'short'
+    | 'subscribe';
   buttonSizeMode?: 'static' | 'fill';
   buttonLocale?: string;
 }

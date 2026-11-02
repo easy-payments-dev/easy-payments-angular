@@ -16,9 +16,15 @@ async function bootstrap() {
   // Bound JSON bodies for payment + webhook endpoints (default Express limit is larger).
   app.useBodyParser('json', { limit: '256kb' });
 
-  const frontendOrigin = config.get<string>('FRONTEND_ORIGIN')?.trim() || 'http://localhost:4200';
+  // Comma-separated list supported for local DX (localhost + 127.0.0.1).
+  // Production typically sets a single https origin.
+  const frontendOrigins = (config.get<string>('FRONTEND_ORIGIN')?.trim() || 'http://localhost:4200')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const corsOrigin = frontendOrigins.length === 1 ? frontendOrigins[0] : frontendOrigins;
   app.enableCors({
-    origin: frontendOrigin,
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature'],
   });
@@ -32,12 +38,13 @@ async function bootstrap() {
     }),
   );
 
-  const port = Number(config.get<string>('PORT') ?? 3000);
+  // Local default 3001 avoids clashing with other apps on 3000. Override via PORT.
+  const port = Number(config.get<string>('PORT') ?? 3001);
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`easy-payments demo server listening on http://localhost:${port}`);
   // eslint-disable-next-line no-console
-  console.log(`CORS origin: ${frontendOrigin}`);
+  console.log(`CORS origin: ${frontendOrigins.join(', ')}`);
   // eslint-disable-next-line no-console
   console.log(`Stripe: POST http://localhost:${port}/api/payments/create`);
   // eslint-disable-next-line no-console

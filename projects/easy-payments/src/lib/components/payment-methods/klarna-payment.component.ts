@@ -23,12 +23,16 @@ import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { buildKlarnaSessionKey, KlarnaUiState } from '../../adapters/klarna/klarna.types';
+import { isKlarnaReturnAttempt } from '../../adapters/klarna/klarna-return';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import {
-  buildKlarnaReturnUrl,
-  clearKlarnaPendingReturn,
-  isKlarnaReturnAttempt,
-  markKlarnaPendingReturn,
-} from '../../adapters/klarna/klarna-return';
+  buildStripeReturnUrl,
+  clearStripePendingReturnFor,
+  createStripeReturnAttemptId,
+  markStripePendingReturn,
+} from '../../adapters/stripe/stripe-redirect-return';
+import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
+import { CheckoutHostContext, type StripeReturnPhase } from '../../services/checkout-host-context';
 import { formatMoney } from '../../utils/format-money';
 import {
   EasyPaymentsI18nService,
@@ -47,11 +51,20 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-klarna" [attr.data-state]="uiState()">
-      <div class="ep-klarna__header">
-        <h3 class="ep-klarna__title">{{ msgs().payWithKlarna }}</h3>
+    <div
+      class="ep-klarna"
+      [class.ep-klarna--minimal]="chrome() === 'minimal'"
+      [attr.data-state]="uiState()"
+      [attr.data-chrome]="chrome()"
+    >
+      @if (chrome() === 'full') {
+        <div class="ep-klarna__header">
+          <h3 class="ep-klarna__title">{{ msgs().payWithKlarna }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutKlarna" />
+        </div>
+      } @else {
         <easy-checkout-security-message [message]="msgs().secureCheckoutKlarna" />
-      </div>
+      }
 
       @if (uiState() === 'initializing' || uiState() === 'loading-session') {
         <p class="ep-klarna__status" role="status">{{ msgs().preparingKlarna }}</p>
@@ -75,7 +88,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-klarna__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      <!--
+        Full Checkout may show an in-panel completion banner.
+        Buttons Only (chrome=minimal) is event-driven — the host owns outcome UI.
+      -->
+      @if (uiState() === 'success' && chrome() !== 'minimal') {
         <p class="ep-klarna__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
@@ -169,6 +186,15 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       .ep-klarna__pay:focus-visible {
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+      }
+
+      .ep-klarna--minimal .ep-klarna__pay {
+        min-height: 44px;
+        align-self: flex-start;
+        min-width: min(100%, 200px);
+        padding: 0 20px;
+        font-size: 14px;
       }
 
       .ep-klarna__pay:disabled {
@@ -187,14 +213,23 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
 })
 export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   private readonly klarnaAdapter = inject(KlarnaAdapter);
+  private readonly confirmationGate = inject(StripeConfirmationGate);
   private readonly configService = inject(EasyPaymentsConfigService);
   private readonly i18n = inject(EasyPaymentsI18nService, { optional: true });
+  private readonly hostContext = inject(CheckoutHostContext, { optional: true });
+  /** This panel's Payment Element session on the shared KlarnaAdapter. */
+  private readonly ownerId = createPaymentOwnerId('klarna');
 
   readonly msgs = computed(() => this.i18n?.messages() ?? EN_TRANSLATIONS);
 
   readonly product = input.required<PaymentProduct>();
   readonly checkout = input<CheckoutOptions>();
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * `full` — checkout chrome (title + amount CTA).
+   * `minimal` — Buttons Only expanded panel (security + Element + confirm).
+   */
+  readonly chrome = input<'full' | 'minimal'>('full');
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -224,8 +259,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   private lastAppliedTheme: ResolvedPaymentTheme | null = null;
   /** Ensures success/cancel/error emit at most once per payment attempt (incl. redirect return). */
   private terminalEmitted = false;
-  /** After a redirect return is handled by the parent, never create a new PaymentIntent. */
-  private returnHandled = false;
+  private destroyed = false;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -242,7 +276,9 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
         ),
   );
   readonly payLabel = computed(() =>
-    interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
+    this.chrome() === 'minimal'
+      ? interpolate(this.msgs().continueToMethod, { method: 'Klarna' })
+      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
   );
 
   constructor() {
@@ -253,11 +289,12 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       const checkout = this.checkout();
       const ready = this.viewReady();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const returnPhase = this.resolveReturnPhase();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureSession(product, checkout, locale);
+        void this.ensureSession(product, checkout, locale, returnPhase);
       });
     });
 
@@ -278,38 +315,55 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.initGeneration += 1;
     this.sessionKey = null;
     this.lastClientSecret = null;
     this.lastMountedLocale = null;
-    void this.klarnaAdapter.destroy();
+    void this.klarnaAdapter.destroy(this.ownerId);
   }
 
   canPay(): boolean {
-    return this.uiState() === 'ready' && !this.klarnaAdapter.isConfirming();
+    return this.uiState() === 'ready' && !this.klarnaAdapter.isConfirming(this.ownerId);
   }
 
   async onPay(): Promise<void> {
-    if (!this.canPay() || this.terminalEmitted) {
+    if (!this.canPay()) {
       return;
     }
 
+    // New attempt: a previous cancel/error must not block retry from this panel.
+    this.terminalEmitted = false;
     this.inlineError.set(null);
     this.uiState.set('processing');
     this.started.emit();
     this.busyChange.emit(true);
 
+    const attemptId = createStripeReturnAttemptId();
     try {
-      const product = this.product();
-      markKlarnaPendingReturn(product.id);
-      const returnUrl = buildKlarnaReturnUrl(this.checkout()?.successUrl);
-      const result = await this.klarnaAdapter.confirmPayment(returnUrl);
+      // While another host is confirming, its pending marker must stay intact;
+      // confirmPayment below rejects this attempt before anything reaches Stripe.
+      if (!this.confirmationGate.isHeld()) {
+        markStripePendingReturn(
+          'klarna',
+          this.product().id,
+          undefined,
+          this.hostContext?.describeReturnOrigin(attemptId) ?? { attemptId },
+        );
+      }
+      const returnUrl = buildStripeReturnUrl(
+        'klarna',
+        this.checkout()?.successUrl,
+        undefined,
+        attemptId,
+      );
+      const result = await this.klarnaAdapter.confirmPayment(returnUrl, this.ownerId);
 
       // If Klarna redirected, this page unloads and confirmPayment never settles here.
-      clearKlarnaPendingReturn();
+      clearStripePendingReturnFor(attemptId);
       this.emitTerminal(result);
     } catch (err) {
-      clearKlarnaPendingReturn();
+      clearStripePendingReturnFor(attemptId);
       const paymentError = normalizeError(err, { method: 'klarna', provider: 'klarna' });
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.emitTerminal({
@@ -325,24 +379,35 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.emitErrorOnce(paymentError);
     } finally {
-      this.busyChange.emit(false);
+      if (!this.destroyed) {
+        this.busyChange.emit(false);
+      }
     }
   }
 
   private async applyTheme(theme: ResolvedPaymentTheme): Promise<void> {
-    if (this.lastAppliedTheme === theme && this.klarnaAdapter.hasMountedElement()) {
+    if (this.lastAppliedTheme === theme && this.klarnaAdapter.hasMountedElement(this.ownerId)) {
       return;
     }
     this.lastAppliedTheme = theme;
-    if (this.klarnaAdapter.hasMountedElement()) {
-      await this.klarnaAdapter.updateAppearance(theme);
+    if (this.klarnaAdapter.hasMountedElement(this.ownerId)) {
+      await this.klarnaAdapter.updateAppearance(theme, this.ownerId);
     }
+  }
+
+  /** Host-decided return phase; standalone panels fall back to URL detection. */
+  private resolveReturnPhase(): StripeReturnPhase {
+    if (this.hostContext) {
+      return this.hostContext.returnPhaseFor('klarna');
+    }
+    return isKlarnaReturnAttempt() ? 'owner' : 'none';
   }
 
   private async ensureSession(
     product: PaymentProduct,
     checkout: CheckoutOptions | undefined,
     locale: EasyPaymentsResolvedLocale,
+    returnPhase: StripeReturnPhase,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -358,16 +423,12 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    // Redirect return is owned by EasyPaymentsComponent via KlarnaAdapter.consumeStripeReturn().
-    // Skip creating a new PaymentIntent while return query params are still present.
-    if (!this.returnHandled && isKlarnaReturnAttempt()) {
-      this.returnHandled = true;
-      this.sessionKey = this.buildSessionKey(product, checkout, locale);
+    // Redirect return is recovered by the owning host. While it is pending or owned,
+    // never create a new PaymentIntent; resume normally once the host releases it.
+    if (returnPhase !== 'none') {
+      this.initGeneration += 1;
+      this.sessionKey = null;
       this.uiState.set('processing');
-      return;
-    }
-
-    if (this.returnHandled) {
       return;
     }
 
@@ -380,7 +441,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       if (
         this.lastMountedLocale !== elementsLocale &&
         this.lastClientSecret &&
-        this.klarnaAdapter.hasMountedElement()
+        this.klarnaAdapter.hasMountedElement(this.ownerId)
       ) {
         const host = this.host().nativeElement;
         const theme = untracked(() => this.resolvedTheme());
@@ -389,6 +450,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
           this.lastClientSecret,
           theme,
           elementsLocale,
+          this.ownerId,
         );
         this.lastMountedLocale = elementsLocale;
         this.lastAppliedTheme = theme;
@@ -412,6 +474,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
         product,
         checkout,
         preferredLocale,
+        this.ownerId,
       );
       if (generation !== this.initGeneration) {
         return;
@@ -425,6 +488,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
         session.clientSecret,
         theme,
         elementsLocale,
+        this.ownerId,
       );
       if (generation !== this.initGeneration) {
         return;
@@ -448,13 +512,20 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   }
 
   private emitTerminal(result: PaymentResult): void {
-    if (this.terminalEmitted) {
+    if (this.terminalEmitted || this.destroyed) {
       return;
     }
     this.terminalEmitted = true;
 
     if (result.status === 'success') {
       this.uiState.set('success');
+      this.success.emit(result);
+      return;
+    }
+
+    if (result.status === 'processing') {
+      // Host maps this to the optional `pending` output; panel stays locked.
+      this.uiState.set('processing');
       this.success.emit(result);
       return;
     }
@@ -477,7 +548,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   }
 
   private emitErrorOnce(paymentError: PaymentError): void {
-    if (this.terminalEmitted) {
+    if (this.terminalEmitted || this.destroyed) {
       return;
     }
     this.terminalEmitted = true;

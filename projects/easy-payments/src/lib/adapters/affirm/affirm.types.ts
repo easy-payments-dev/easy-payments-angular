@@ -28,6 +28,7 @@ export const AFFIRM_PAYMENT_ELEMENT_OPTIONS: StripePaymentElementOptions = {
   wallets: {
     applePay: 'never',
     googlePay: 'never',
+    link: 'never',
   },
 };
 

@@ -1,0 +1,96 @@
+<div class="qa">
+  <header class="qa-header">
+    <div>
+      <p class="qa-eyebrow">Development only · not part of the library API</p>
+      <h1>Multi-instance visual QA</h1>
+      <p class="qa-lede">
+        Mock mode by default. Open via <code>?ep_qa=multi</code>. Return to the main playground by
+        removing the query param.
+      </p>
+    </div>
+    <a class="qa-exit" href="/">Exit to playground</a>
+  </header>
+
+  <div class="qa-layout">
+    <aside class="qa-controls" aria-label="QA scenario controls">
+      <h2>Scenarios</h2>
+      <ul class="qa-scenario-list">
+        @for (entry of scenarios; track entry.id) {
+          <li>
+            <button
+              type="button"
+              class="qa-scenario"
+              [class.qa-scenario--active]="scenario() === entry.id"
+              (click)="setScenario(entry.id)"
+            >
+              {{ entry.label }}
+            </button>
+          </li>
+        }
+      </ul>
+
+      <h2>Mock outcome</h2>
+      <div class="qa-actions">
+        <button type="button" (click)="setMockOutcome('success')">Success</button>
+        <button type="button" (click)="setMockOutcome('failed')">Failed</button>
+        <button type="button" (click)="setMockOutcome('cancelled')">Cancelled</button>
+      </div>
+
+      <h2>Lifecycle</h2>
+      <div class="qa-actions">
+        <button type="button" (click)="remount()">Destroy / recreate hosts</button>
+      </div>
+
+      <h2>Event log</h2>
+      <ol class="qa-log" aria-live="polite">
+        @for (line of log(); track $index) {
+          <li>{{ line }}</li>
+        } @empty {
+          <li class="qa-log-empty">No events yet — pay from a host below.</li>
+        }
+      </ol>
+    </aside>
+
+    <main class="qa-stage" aria-label="Multi-instance hosts">
+      <p class="qa-count">{{ hosts().length }} host(s)</p>
+      <div class="qa-grid" [attr.data-count]="hosts().length">
+        @for (host of hosts(); track scenario() + '-' + host.checkoutInstanceId + '-' + remountToken()) {
+          <section class="qa-host" [attr.data-kind]="host.kind" [attr.data-theme]="host.theme">
+            <header class="qa-host__meta">
+              <strong>{{ host.id }}</strong>
+              <span>{{ host.product.name }} · ${{ host.product.amount }}</span>
+              <span class="qa-host__id">id={{ host.checkoutInstanceId }}</span>
+            </header>
+
+            @if (host.kind === 'checkout') {
+              <easy-payments
+                [product]="host.product"
+                [methods]="host.methods"
+                [theme]="host.theme"
+                [checkoutInstanceId]="host.checkoutInstanceId"
+                (success)="onSuccess(host.id, $event)"
+                (pending)="onPending(host.id, $event)"
+                (cancel)="onCancel(host.id, $event)"
+                (error)="onError(host.id, $event)"
+              />
+            } @else {
+              <easy-payment-buttons
+                [product]="host.product"
+                [methods]="host.methods"
+                [theme]="host.theme"
+                [locale]="host.locale ?? 'en'"
+                [layout]="host.layout ?? 'vertical'"
+                [buttonsAppearance]="host.buttonsAppearance ?? null"
+                [checkoutInstanceId]="host.checkoutInstanceId"
+                (success)="onSuccess(host.id, $event)"
+                (pending)="onPending(host.id, $event)"
+                (cancel)="onCancel(host.id, $event)"
+                (error)="onError(host.id, $event)"
+              />
+            }
+          </section>
+        }
+      </div>
+    </main>
+  </div>
+</div>

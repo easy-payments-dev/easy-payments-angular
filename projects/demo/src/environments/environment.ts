@@ -19,14 +19,14 @@ export const environment = {
    * Leave empty to use the absolute URLs below unchanged.
    *
    * Local Angular proxy: '' and paths such as '/api/payments/create'.
-   * NestJS on another port: 'http://localhost:3000' and paths such as '/api/payments/create'.
+   * NestJS on another port: 'http://localhost:3001' and paths such as '/api/payments/create'.
    * Production API: 'https://api.example.com' and paths such as '/api/payments/create'.
    */
   backendBaseUrl: '',
-  createPaymentUrl: 'http://localhost:3000/api/payments/create',
-  paypalCreateOrderUrl: 'http://localhost:3000/api/payments/paypal/create',
-  paypalCaptureOrderUrl: 'http://localhost:3000/api/payments/paypal/capture',
-  klarnaCreatePaymentUrl: 'http://localhost:3000/api/payments/klarna/create',
-  affirmCreatePaymentUrl: 'http://localhost:3000/api/payments/affirm/create',
-  catalogProductUrl: 'http://localhost:3000/api/catalog/products',
+  createPaymentUrl: 'http://localhost:3001/api/payments/create',
+  paypalCreateOrderUrl: 'http://localhost:3001/api/payments/paypal/create',
+  paypalCaptureOrderUrl: 'http://localhost:3001/api/payments/paypal/capture',
+  klarnaCreatePaymentUrl: 'http://localhost:3001/api/payments/klarna/create',
+  affirmCreatePaymentUrl: 'http://localhost:3001/api/payments/affirm/create',
+  catalogProductUrl: 'http://localhost:3001/api/catalog/products',
 };

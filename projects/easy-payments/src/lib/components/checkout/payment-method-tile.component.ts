@@ -90,6 +90,7 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
       .ep-tile:focus-visible {
         outline: 2px solid var(--ep-focus, #2563eb);
         outline-offset: 2px;
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
       }
 
       .ep-tile--selected {

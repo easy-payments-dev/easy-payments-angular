@@ -5,8 +5,23 @@ import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { BackendService } from '../../services/backend.service';
 import { SdkLoaderService } from '../../loaders/sdk-loader.service';
 import { PaymentError } from '../../errors/payment-error';
-import { PayPalAdapter } from './paypal.adapter';
+import { PayPalAdapter, sanitizePayPalButtonStyle } from './paypal.adapter';
 import { PayPalNamespace } from './paypal.types';
+
+describe('sanitizePayPalButtonStyle', () => {
+  it('coerces string height and drops tagline for vertical layout', () => {
+    expect(
+      sanitizePayPalButtonStyle({
+        layout: 'vertical',
+        height: '40px' as unknown as number,
+        tagline: true,
+      }),
+    ).toEqual({
+      layout: 'vertical',
+      height: 40,
+    });
+  });
+});
 
 describe('PayPalAdapter', () => {
   let adapter: PayPalAdapter;
@@ -107,6 +122,35 @@ describe('PayPalAdapter', () => {
     expect(sdkLoader.loadScript.calls.mostRecent().args[0].id).toBe(
       'easy-payments-paypal-sdk-en_US',
     );
+  });
+
+  it('unloads the script and clears load state after SDK load failure', async () => {
+    sdkLoader.loadScript.and.rejectWith(new Error('Failed to load SDK: https://www.paypal.com/sdk/js?client-id=SECRET'));
+
+    await expectAsync(adapter.ensureSdkLoaded()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'SDK_LOAD_FAILED' }),
+    );
+    expect(sdkLoader.unloadScript).toHaveBeenCalledWith('easy-payments-paypal-sdk-en_US');
+
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+    await expectAsync(adapter.ensureSdkLoaded()).toBeResolvedTo(paypalNs);
+  });
+
+  it('maps Buttons create/render failures as PROVIDER_UNAVAILABLE not SDK_LOAD_FAILED', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+    (paypalNs.Buttons as jasmine.Spy).and.throwError('Expected height to be a number');
+
+    await expectAsync(
+      adapter.renderButtons(document.createElement('div'), {
+        createOrder: async () => 'ORDER-1',
+        onApprove: async () => undefined,
+        style: { height: '40px' as unknown as number },
+      }),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: 'PROVIDER_UNAVAILABLE' }));
   });
 
   it('creates an order through the backend without amount or metadata', async () => {
@@ -274,7 +318,7 @@ describe('PayPalAdapter', () => {
     });
 
     const host = document.createElement('div');
-    await adapter.renderButtons(host, {
+    const mountId = await adapter.renderButtons(host, {
       createOrder: async () => 'ORDER-1',
       onApprove: async () => undefined,
       onCancel: () => undefined,
@@ -283,9 +327,106 @@ describe('PayPalAdapter', () => {
 
     expect(paypalNs.Buttons).toHaveBeenCalled();
     expect(renderSpy).toHaveBeenCalledWith(host);
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    await adapter.destroyButtons(mountId);
+    expect(closeSpy).toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
+  });
+
+  it('passes fundingSource through to PayPal Buttons for single-button mounts', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    const host = document.createElement('div');
+    await adapter.renderButtons(host, {
+      fundingSource: 'paypal',
+      style: { height: 40, label: 'paypal' },
+      createOrder: async () => 'ORDER-1',
+      onApprove: async () => undefined,
+    });
+
+    expect(paypalNs.Buttons).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        fundingSource: 'paypal',
+        style: jasmine.objectContaining({
+          height: 40,
+          label: 'paypal',
+          layout: 'vertical',
+        }),
+      }),
+    );
+  });
+
+  it('never sends SDK-invalid style types (string height, vertical tagline)', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    await adapter.renderButtons(document.createElement('div'), {
+      fundingSource: 'paypal',
+      style: { height: 40 },
+      createOrder: async () => 'ORDER-1',
+      onApprove: async () => undefined,
+    });
+
+    const style = (paypalNs.Buttons as jasmine.Spy).calls.mostRecent().args[0].style as Record<
+      string,
+      unknown
+    >;
+    expect(typeof style['height']).toBe('number');
+    expect('tagline' in style).toBeFalse();
+  });
+
+  it('keeps sibling Buttons mounts when one host is destroyed', async () => {
+    const closes: jasmine.Spy[] = [];
+    (paypalNs.Buttons as jasmine.Spy).and.callFake(() => {
+      const close = jasmine.createSpy('close').and.resolveTo();
+      closes.push(close);
+      return { render: renderSpy, close };
+    });
+
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    const mountA = await adapter.renderButtons(hostA, {
+      createOrder: async () => 'ORDER-A',
+      onApprove: async () => undefined,
+    });
+    const mountB = await adapter.renderButtons(hostB, {
+      createOrder: async () => 'ORDER-B',
+      onApprove: async () => undefined,
+    });
+
+    expect(mountA).not.toBe(mountB);
+    expect(adapter.getActiveButtonMountCount()).toBe(2);
+    expect(renderSpy).toHaveBeenCalledWith(hostA);
+    expect(renderSpy).toHaveBeenCalledWith(hostB);
+
+    await adapter.destroyButtons(mountA);
+    expect(closes[0]).toHaveBeenCalled();
+    expect(closes[1]).not.toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
+
+    // Survivor can still be re-rendered under its own mount id.
+    await adapter.renderButtons(
+      hostB,
+      {
+        createOrder: async () => 'ORDER-B2',
+        onApprove: async () => undefined,
+      },
+      'en',
+      mountB,
+    );
+    expect(closes[1]).toHaveBeenCalledTimes(1); // previous B closed on replace
+    expect(adapter.getActiveButtonMountCount()).toBe(1);
 
     await adapter.destroy();
-    expect(closeSpy).toHaveBeenCalled();
+    expect(adapter.getActiveButtonMountCount()).toBe(0);
   });
 
   it('rejects direct createPayment for real PayPal', async () => {

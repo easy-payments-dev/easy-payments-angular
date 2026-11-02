@@ -1,7 +1,16 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { NgComponentOutlet } from '@angular/common';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+  type Type,
+} from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
+  EasyPaymentButtonsComponent,
   EasyPaymentsComponent,
   EasyPaymentsConfigService,
   EasyPaymentsDiagnosticsService,
@@ -17,12 +26,18 @@ import {
   PaymentTheme,
   PAYMENT_METHOD_LABELS,
   isAnyStripeBnplReturnAttempt,
+  type EasyPaymentButtonsAppearance,
+  type EasyPaymentButtonsLayout,
   type EasyPaymentsAppearance,
+  type EasyPaymentsCardButtonAppearance,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
   type EasyPaymentsVisualStyle,
   resolveEffectiveLocale,
 } from '@easy-payments/angular';
+
+/** Main playground: Ready-to-Use Checkout vs Payment Buttons Only. */
+type PlaygroundExperience = 'checkout' | 'buttons';
 import { environment } from '../environments/environment';
 import {
   persistDemoMode,
@@ -30,6 +45,13 @@ import {
   type PersistedDemoMode,
 } from './demo-mode-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
+
+function isMultiInstanceQaQuery(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(window.location.search).get('ep_qa') === 'multi';
+}
 
 interface MethodRow {
   method: PaymentMethod;
@@ -182,12 +204,21 @@ const VISUAL_STYLE_FIELDS: readonly {
 
 @Component({
   selector: 'app-root',
-  imports: [EasyPaymentsComponent],
+  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent, NgComponentOutlet],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
 })
 export class App {
+  /**
+   * Dev-only multi-instance harness. Open `/?ep_qa=multi`.
+   * Loaded via dynamic import so the normal demo stays out of that chunk.
+   * Not part of the published library API.
+   */
+  readonly multiInstanceQa = isMultiInstanceQaQuery();
+  /** Set only when `?ep_qa=multi` — keeps MultiInstanceQaPage out of the initial bundle. */
+  readonly qaPage = signal<Type<unknown> | null>(null);
+
   private readonly mockController = inject(MockPaymentController);
   private readonly configValidator = inject(EasyPaymentsConfigValidator);
   private readonly configService = inject(EasyPaymentsConfigService);
@@ -237,9 +268,304 @@ export class App {
   readonly lastEvent = signal<string>('No payment events yet.');
   /** Newest first. Safe event lines only. */
   readonly paymentEvents = signal<string[]>([]);
+  /**
+   * Demo-application outcome banner for Buttons Only.
+   * Not library UI — shows how a host can react to public events.
+   */
+  readonly buttonsHostOutcome = signal<{
+    kind: 'success' | 'error' | 'cancel' | 'pending';
+    title: string;
+    detail: string;
+  } | null>(null);
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
   readonly switchingMode = signal(false);
+  /** Full Checkout vs Payment Buttons Only playground surface. */
+  readonly playgroundExperience = signal<PlaygroundExperience>('checkout');
+  readonly buttonsLayout = signal<EasyPaymentButtonsLayout>('horizontal');
+  readonly buttonsSeparators = signal<'none' | 'line'>('none');
+  readonly buttonsSeparatorColor = signal('');
+  readonly buttonsBackgroundPreset = signal<'transparent' | 'light' | 'dark' | 'custom'>(
+    'transparent',
+  );
+  readonly buttonsBackgroundCustom = signal('#f8fafc');
+  readonly buttonsBorder = signal<'default' | 'none'>('default');
+  readonly buttonsBorderColor = signal('');
+  readonly buttonsBorderWidth = signal('1px');
+  readonly buttonsBorderRadius = signal(10);
+  readonly buttonsGap = signal(8);
+  readonly buttonsPadding = signal(0);
+  readonly buttonsHeight = signal(40);
+  readonly buttonsMinWidth = signal(100);
+  readonly buttonsWidthMode = signal<'auto' | 'fixed'>('auto');
+  readonly buttonsFixedWidth = signal(160);
+  readonly buttonsCheckoutInstanceId = signal('demo-buttons-1');
+
+  /**
+   * Demo controls for public `[cardButtonAppearance]` — Easy Payments–owned
+   * Stripe Card confirmation CTA (not method tiles / SDK buttons).
+   * Empty fields → `null` (library theme defaults).
+   */
+  readonly cardCtaLabel = signal('');
+  readonly cardCtaBackgroundColor = signal('');
+  readonly cardCtaTextColor = signal('');
+  readonly cardCtaFontFamily = signal('');
+  readonly cardCtaFontSize = signal('');
+  readonly cardCtaFontWeight = signal('');
+  readonly cardCtaTextAlign = signal<'left' | 'center' | 'right' | 'start' | 'end' | ''>(
+    '',
+  );
+  readonly cardCtaBorder = signal<'default' | 'none'>('default');
+  readonly cardCtaBorderWidth = signal('');
+  readonly cardCtaBorderStyle = signal('');
+  readonly cardCtaBorderColor = signal('');
+  readonly cardCtaBorderRadius = signal('');
+  readonly cardCtaMinHeight = signal('');
+  readonly cardCtaWidth = signal('');
+  readonly cardCtaPadding = signal('');
+  readonly cardCtaHoverBackgroundColor = signal('');
+  readonly cardCtaHoverTextColor = signal('');
+  readonly cardCtaDisabledBackgroundColor = signal('');
+  readonly cardCtaDisabledTextColor = signal('');
+  readonly cardCtaLoadingBackgroundColor = signal('');
+  readonly cardCtaLoadingTextColor = signal('');
+  readonly cardCtaFocusOutlineColor = signal('');
+  readonly cardCtaFocusOutlineWidth = signal('');
+  readonly cardCtaFocusOutlineOffset = signal('');
+
+  readonly cardButtonAppearance = computed<EasyPaymentsCardButtonAppearance | null>(() => {
+    const appearance: EasyPaymentsCardButtonAppearance = {};
+    const label = this.cardCtaLabel().trim();
+    if (label) {
+      appearance.label = label;
+    }
+    const backgroundColor = this.cardCtaBackgroundColor().trim();
+    if (backgroundColor) {
+      appearance.backgroundColor = backgroundColor;
+    }
+    const textColor = this.cardCtaTextColor().trim();
+    if (textColor) {
+      appearance.textColor = textColor;
+    }
+    const fontFamily = this.cardCtaFontFamily().trim();
+    if (fontFamily) {
+      appearance.fontFamily = fontFamily;
+    }
+    const fontSize = this.cardCtaFontSize().trim();
+    if (fontSize) {
+      appearance.fontSize = fontSize;
+    }
+    const fontWeightRaw = this.cardCtaFontWeight().trim();
+    if (fontWeightRaw) {
+      const asNum = Number(fontWeightRaw);
+      appearance.fontWeight =
+        Number.isFinite(asNum) && /^-?\d+(\.\d+)?$/.test(fontWeightRaw)
+          ? asNum
+          : fontWeightRaw;
+    }
+    const textAlign = this.cardCtaTextAlign();
+    if (textAlign) {
+      appearance.textAlign = textAlign;
+    }
+    if (this.cardCtaBorder() === 'none') {
+      appearance.border = 'none';
+    }
+    const borderWidth = this.cardCtaBorderWidth().trim();
+    if (borderWidth) {
+      appearance.borderWidth = borderWidth;
+    }
+    const borderStyle = this.cardCtaBorderStyle().trim();
+    if (borderStyle) {
+      appearance.borderStyle = borderStyle;
+    }
+    const borderColor = this.cardCtaBorderColor().trim();
+    if (borderColor) {
+      appearance.borderColor = borderColor;
+    }
+    const borderRadius = this.cardCtaBorderRadius().trim();
+    if (borderRadius) {
+      appearance.borderRadius = borderRadius;
+    }
+    const minHeight = this.cardCtaMinHeight().trim();
+    if (minHeight) {
+      appearance.minHeight = minHeight;
+    }
+    const width = this.cardCtaWidth().trim();
+    if (width) {
+      appearance.width = width;
+    }
+    const padding = this.cardCtaPadding().trim();
+    if (padding) {
+      appearance.padding = padding;
+    }
+    const hoverBackgroundColor = this.cardCtaHoverBackgroundColor().trim();
+    if (hoverBackgroundColor) {
+      appearance.hoverBackgroundColor = hoverBackgroundColor;
+    }
+    const hoverTextColor = this.cardCtaHoverTextColor().trim();
+    if (hoverTextColor) {
+      appearance.hoverTextColor = hoverTextColor;
+    }
+    const disabledBackgroundColor = this.cardCtaDisabledBackgroundColor().trim();
+    if (disabledBackgroundColor) {
+      appearance.disabledBackgroundColor = disabledBackgroundColor;
+    }
+    const disabledTextColor = this.cardCtaDisabledTextColor().trim();
+    if (disabledTextColor) {
+      appearance.disabledTextColor = disabledTextColor;
+    }
+    const loadingBackgroundColor = this.cardCtaLoadingBackgroundColor().trim();
+    if (loadingBackgroundColor) {
+      appearance.loadingBackgroundColor = loadingBackgroundColor;
+    }
+    const loadingTextColor = this.cardCtaLoadingTextColor().trim();
+    if (loadingTextColor) {
+      appearance.loadingTextColor = loadingTextColor;
+    }
+    const focusOutlineColor = this.cardCtaFocusOutlineColor().trim();
+    if (focusOutlineColor) {
+      appearance.focusOutlineColor = focusOutlineColor;
+    }
+    const focusOutlineWidth = this.cardCtaFocusOutlineWidth().trim();
+    if (focusOutlineWidth) {
+      appearance.focusOutlineWidth = focusOutlineWidth;
+    }
+    const focusOutlineOffset = this.cardCtaFocusOutlineOffset().trim();
+    if (focusOutlineOffset) {
+      appearance.focusOutlineOffset = focusOutlineOffset;
+    }
+    return Object.keys(appearance).length === 0 ? null : appearance;
+  });
+
+  readonly cardButtonAppearanceSummary = computed(() => {
+    const style = this.cardButtonAppearance();
+    return style === null ? 'null (theme defaults)' : JSON.stringify(style);
+  });
+
+  readonly buttonsAppearance = computed<EasyPaymentButtonsAppearance>(() => {
+    const bgPreset = this.buttonsBackgroundPreset();
+    let background: EasyPaymentButtonsAppearance['background'] = 'transparent';
+    if (bgPreset === 'light') {
+      background = '#f8fafc';
+    } else if (bgPreset === 'dark') {
+      background = '#0f172a';
+    } else if (bgPreset === 'custom') {
+      background = this.buttonsBackgroundCustom().trim() || 'transparent';
+    }
+
+    const appearance: EasyPaymentButtonsAppearance = {
+      gap: `${this.buttonsGap()}px`,
+      padding: `${this.buttonsPadding()}px`,
+      separators: this.buttonsSeparators(),
+      background,
+      border: this.buttonsBorder(),
+      borderRadius: `${this.buttonsBorderRadius()}px`,
+      buttonHeight: `${this.buttonsHeight()}px`,
+      buttonMinWidth: `${this.buttonsMinWidth()}px`,
+    };
+
+    const sepColor = this.buttonsSeparatorColor().trim();
+    if (sepColor) {
+      appearance.separatorColor = sepColor;
+    }
+    if (this.buttonsBorder() !== 'none') {
+      const borderColor = this.buttonsBorderColor().trim();
+      if (borderColor) {
+        appearance.borderColor = borderColor;
+      }
+      const borderWidth = this.buttonsBorderWidth().trim();
+      if (borderWidth) {
+        appearance.borderWidth = borderWidth;
+      }
+    }
+    if (this.buttonsWidthMode() === 'fixed') {
+      appearance.buttonWidth = `${this.buttonsFixedWidth()}px`;
+    }
+    return appearance;
+  });
+
+  /** Copy-ready Angular example reflecting the current Buttons Only configuration. */
+  readonly buttonsCodeExample = computed(() => {
+    const methods = this.methods();
+    const methodsLiteral = methods.length
+      ? `[${methods.map((m) => `'${m}'`).join(', ')}]`
+      : `['card', 'paypal']`;
+    const appearance = this.buttonsAppearance();
+    const appearanceLines = Object.entries(appearance)
+      .filter(([, value]) => value != null && value !== '')
+      .map(([key, value]) => `  ${key}: ${JSON.stringify(value)},`)
+      .join('\n');
+    const cardAppearance = this.cardButtonAppearance();
+    const cardAppearanceBlock =
+      cardAppearance === null
+        ? ''
+        : `
+readonly cardButtonAppearance: EasyPaymentsCardButtonAppearance = ${JSON.stringify(
+            cardAppearance,
+            null,
+            2,
+          )};
+`;
+    const cardAppearanceBinding =
+      cardAppearance === null ? '' : `\n  [cardButtonAppearance]="cardButtonAppearance"`;
+    const locale = this.locale();
+    const theme = this.theme();
+    const layout = this.buttonsLayout();
+    const instanceId = this.buttonsCheckoutInstanceId().trim() || 'demo-buttons-1';
+
+    return `import { bootstrapApplication } from '@angular/platform-browser';
+import {
+  provideEasyPayments,
+  EasyPaymentButtonsComponent,
+  type EasyPaymentButtonsAppearance,
+  type EasyPaymentsCardButtonAppearance,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+bootstrapApplication(App, {
+  providers: [
+    provideEasyPayments({
+      // Configure providers + backend URLs for live payments.
+      // Demo Mode in this playground uses enableMockMode: true.
+    }),
+  ],
+});
+
+readonly product: PaymentProduct = {
+  id: ${JSON.stringify(this.product().id)},
+  name: ${JSON.stringify(this.product().name)},
+  amount: ${this.product().amount},
+  currency: ${JSON.stringify(this.product().currency)},
+};
+
+readonly methods = ${methodsLiteral} as const;
+
+readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
+${appearanceLines}
+};
+${cardAppearanceBlock}
+// template — Buttons Only is event-driven; host owns outcome UI
+<easy-payment-buttons
+  [product]="product"
+  [methods]="methods"
+  layout="${layout}"
+  theme="${theme}"
+  locale="${locale}"
+  [buttonsAppearance]="buttonsAppearance"${cardAppearanceBinding}
+  checkoutInstanceId="${instanceId}"
+  (started)="onStarted($event)"
+  (methodChange)="onMethodChange($event)"
+  (success)="onSuccess($event)"
+  (cancel)="onCancel($event)"
+  (error)="onError($event)"
+  (pending)="onPending($event)"
+/>
+
+// Host example (not library UI):
+// onSuccess(result) { showToast('Paid ' + result.method); }
+// onPending(result) { showToast('Pending — await webhook'); } // not completed
+`;
+  });
   /**
    * False until persisted/forced mode + provider config are applied.
    * Prevents mounting <easy-payments> in Demo Mode while recovering a real Klarna return.
@@ -307,7 +633,13 @@ export class App {
   constructor() {
     this.mockController.setDelay(350);
     this.applyThemeFromQuery();
-    void this.bootstrapPlaygroundMode();
+    if (this.multiInstanceQa) {
+      void import('./multi-instance-qa/multi-instance-qa.page').then((m) => {
+        this.qaPage.set(m.MultiInstanceQaPage);
+      });
+    } else {
+      void this.bootstrapPlaygroundMode();
+    }
   }
 
   private applyThemeFromQuery(): void {
@@ -424,6 +756,100 @@ export class App {
 
   setShowMultiInstanceQa(enabled: boolean): void {
     this.showMultiInstanceQa.set(enabled);
+  }
+
+  setPlaygroundExperience(experience: PlaygroundExperience): void {
+    this.playgroundExperience.set(experience);
+    this.buttonsHostOutcome.set(null);
+  }
+
+  setButtonsLayout(layout: EasyPaymentButtonsLayout): void {
+    this.buttonsLayout.set(layout);
+  }
+
+  setButtonsSeparators(value: 'none' | 'line'): void {
+    this.buttonsSeparators.set(value);
+  }
+
+  setButtonsBackgroundPreset(value: 'transparent' | 'light' | 'dark' | 'custom'): void {
+    this.buttonsBackgroundPreset.set(value);
+  }
+
+  setButtonsBorder(value: 'default' | 'none'): void {
+    this.buttonsBorder.set(value);
+  }
+
+  setCardCtaBorder(value: 'default' | 'none'): void {
+    this.cardCtaBorder.set(value);
+  }
+
+  setCardCtaTextAlign(value: 'left' | 'center' | 'right' | 'start' | 'end' | ''): void {
+    this.cardCtaTextAlign.set(value);
+  }
+
+  /** Demo helper: sample branded Card CTA (does not change payment behavior). */
+  applyCardCtaSample(): void {
+    this.cardCtaLabel.set('Complete card payment');
+    this.cardCtaBackgroundColor.set('#0b6e4f');
+    this.cardCtaTextColor.set('#f8fafc');
+    this.cardCtaFontFamily.set('Georgia, serif');
+    this.cardCtaFontSize.set('16px');
+    this.cardCtaFontWeight.set('700');
+    this.cardCtaTextAlign.set('center');
+    this.cardCtaBorder.set('none');
+    this.cardCtaBorderWidth.set('');
+    this.cardCtaBorderStyle.set('');
+    this.cardCtaBorderColor.set('');
+    this.cardCtaBorderRadius.set('10px');
+    this.cardCtaMinHeight.set('48px');
+    this.cardCtaWidth.set('100%');
+    this.cardCtaPadding.set('0 20px');
+    this.cardCtaHoverBackgroundColor.set('#095c42');
+    this.cardCtaHoverTextColor.set('#ffffff');
+    this.cardCtaDisabledBackgroundColor.set('#4b5563');
+    this.cardCtaDisabledTextColor.set('#d1d5db');
+    this.cardCtaLoadingBackgroundColor.set('#1f2937');
+    this.cardCtaLoadingTextColor.set('#f9fafb');
+    this.cardCtaFocusOutlineColor.set('#22c55e');
+    this.cardCtaFocusOutlineWidth.set('2px');
+    this.cardCtaFocusOutlineOffset.set('2px');
+  }
+
+  resetCardButtonAppearance(): void {
+    this.cardCtaLabel.set('');
+    this.cardCtaBackgroundColor.set('');
+    this.cardCtaTextColor.set('');
+    this.cardCtaFontFamily.set('');
+    this.cardCtaFontSize.set('');
+    this.cardCtaFontWeight.set('');
+    this.cardCtaTextAlign.set('');
+    this.cardCtaBorder.set('default');
+    this.cardCtaBorderWidth.set('');
+    this.cardCtaBorderStyle.set('');
+    this.cardCtaBorderColor.set('');
+    this.cardCtaBorderRadius.set('');
+    this.cardCtaMinHeight.set('');
+    this.cardCtaWidth.set('');
+    this.cardCtaPadding.set('');
+    this.cardCtaHoverBackgroundColor.set('');
+    this.cardCtaHoverTextColor.set('');
+    this.cardCtaDisabledBackgroundColor.set('');
+    this.cardCtaDisabledTextColor.set('');
+    this.cardCtaLoadingBackgroundColor.set('');
+    this.cardCtaLoadingTextColor.set('');
+    this.cardCtaFocusOutlineColor.set('');
+    this.cardCtaFocusOutlineWidth.set('');
+    this.cardCtaFocusOutlineOffset.set('');
+  }
+
+  async copyButtonsCodeExample(): Promise<void> {
+    const text = this.buttonsCodeExample();
+    try {
+      await navigator.clipboard.writeText(text);
+      this.lastEvent.set('Copied Buttons Only integration example.');
+    } catch {
+      this.lastEvent.set('Could not copy example — select the code block manually.');
+    }
   }
 
   setCheckoutMaxWidth(value: number | string): void {
@@ -597,6 +1023,15 @@ export class App {
   onPaymentSuccess(result: PaymentResult): void {
     const reference = result.transactionId ?? result.sessionId;
     this.recordEvent(`success · ${result.method}${reference ? ` · ${reference}` : ''}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'success',
+        title: 'Payment succeeded',
+        detail: reference
+          ? `${result.method} · ${reference} — fulfill only after backend/webhook verification.`
+          : `${result.method} — fulfill only after backend/webhook verification.`,
+      });
+    }
   }
 
   onSuccessContinue(result: PaymentResult): void {
@@ -608,10 +1043,39 @@ export class App {
 
   onPaymentCancel(result: PaymentResult): void {
     this.recordEvent(`cancel · ${result.method}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'cancel',
+        title: 'Payment cancelled',
+        detail: `${result.method} — the buyer cancelled before confirmation.`,
+      });
+    }
+  }
+
+  onPaymentPending(result: PaymentResult): void {
+    this.recordEvent(`pending · ${result.method} · await webhook`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'pending',
+        title: 'Payment pending',
+        detail: `${result.method} — not completed. Await backend/webhook before fulfillment.`,
+      });
+    }
   }
 
   onPaymentError(error: PaymentError): void {
     this.recordEvent(`error · ${error.method ?? 'unknown'} · ${error.code}`);
+    if (this.playgroundExperience() === 'buttons') {
+      this.buttonsHostOutcome.set({
+        kind: 'error',
+        title: 'Payment failed',
+        detail: `${error.method ?? 'unknown'} · ${error.code}`,
+      });
+    }
+  }
+
+  clearButtonsHostOutcome(): void {
+    this.buttonsHostOutcome.set(null);
   }
 
   private recordEvent(line: string): void {

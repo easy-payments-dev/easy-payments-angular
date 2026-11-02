@@ -35,10 +35,44 @@ export type PayPalUiState =
 export interface PayPalButtonsHandle {
   render(selector: string | HTMLElement): Promise<void>;
   close?: () => Promise<void>;
+  /** Official SDK eligibility probe — prefer checking before `render()`. */
+  isEligible?: () => boolean;
+}
+
+/**
+ * Official PayPal JS SDK funding source identifiers.
+ * When set on Buttons(), the SDK renders only that single funding button.
+ */
+export type PayPalFundingSource =
+  | 'paypal'
+  | 'paylater'
+  | 'card'
+  | 'credit'
+  | 'venmo'
+  | 'sepa'
+  | string;
+
+/**
+ * Subset of the PayPal JS SDK `style` object. The SDK validates types at runtime:
+ * `height` must be a number (25–55) or `Buttons()` throws before rendering.
+ * `tagline` is only valid with `layout: 'horizontal'`.
+ */
+export interface PayPalButtonsStyle {
+  layout?: 'vertical' | 'horizontal';
+  color?: 'gold' | 'blue' | 'silver' | 'white' | 'black';
+  shape?: 'rect' | 'pill' | 'sharp';
+  label?: 'paypal' | 'checkout' | 'buynow' | 'pay';
+  height?: number;
+  tagline?: boolean;
 }
 
 export interface PayPalButtonsOptions {
-  style?: Record<string, string>;
+  style?: PayPalButtonsStyle;
+  /**
+   * When set (e.g. `'paypal'`), renders only that funding button.
+   * Omit to let the SDK show all eligible funding sources (full checkout).
+   */
+  fundingSource?: PayPalFundingSource;
   createOrder: () => Promise<string>;
   onApprove: (data: { orderID: string }) => Promise<void>;
   onCancel?: () => void;
@@ -51,4 +85,12 @@ export interface PayPalButtonsOptions {
 
 export interface PayPalNamespace {
   Buttons(options: PayPalButtonsOptions): PayPalButtonsHandle;
+  FUNDING?: {
+    PAYPAL?: string;
+    PAYLATER?: string;
+    CARD?: string;
+    CREDIT?: string;
+    VENMO?: string;
+    [key: string]: string | undefined;
+  };
 }

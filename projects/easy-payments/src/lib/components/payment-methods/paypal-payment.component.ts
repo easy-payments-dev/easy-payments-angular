@@ -22,6 +22,7 @@ import {
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
 import { buildPayPalRenderKey, PayPalUiState } from '../../adapters/paypal/paypal.types';
 import { mapPayPalError } from '../../adapters/paypal/paypal-error.mapper';
 import {
@@ -32,30 +33,41 @@ import {
 } from '../../i18n';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
 
+/** Matches the default `--ep-buttons-height` of the Buttons Only strip. */
+const PAYPAL_COMPACT_BUTTON_HEIGHT = 40;
+
 @Component({
   selector: 'easy-paypal-payment',
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
   template: `
-    <div class="ep-paypal" [attr.data-state]="uiState()">
-      <div class="ep-paypal__header">
-        <h3 class="ep-paypal__title">{{ msgs().payWithPayPal }}</h3>
-        <easy-checkout-security-message [message]="msgs().secureCheckoutPayPal" />
-      </div>
+    <div
+      class="ep-paypal"
+      [class.ep-paypal--compact]="compact()"
+      [attr.data-state]="uiState()"
+      [attr.data-has-error]="inlineError() ? 'true' : null"
+    >
+      @if (!compact()) {
+        <div class="ep-paypal__header">
+          <h3 class="ep-paypal__title">{{ msgs().payWithPayPal }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutPayPal" />
+        </div>
+      }
 
-      @if (uiState() === 'initializing') {
+      <!-- Compact: no status copy in the strip — it shifts neighboring slots. -->
+      @if (uiState() === 'initializing' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().preparingPayPal }}</p>
       }
 
-      @if (uiState() === 'creating-order') {
+      @if (uiState() === 'creating-order' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().creatingPayPalOrder }}</p>
       }
 
-      @if (uiState() === 'waiting-approval') {
+      @if (uiState() === 'waiting-approval' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().waitingPayPalApproval }}</p>
       }
 
-      @if (uiState() === 'capturing') {
+      @if (uiState() === 'capturing' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().capturingPayPal }}</p>
       }
 
@@ -67,19 +79,26 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         #paypalButtonsHost
         class="ep-paypal__buttons"
         [class.ep-paypal__buttons--pending]="uiState() === 'initializing'"
+        [class.ep-paypal__buttons--unavailable]="compact() && uiState() === 'error'"
         [attr.aria-busy]="isBusyState()"
-        [attr.aria-label]="msgs().paypalCheckoutAria"
+        [attr.aria-label]="compactButtonsAriaLabel()"
+        [attr.aria-invalid]="compact() && inlineError() ? 'true' : null"
       ></div>
 
-      @if (inlineError()) {
+      <!--
+        Full Checkout keeps inline payment/init error alerts.
+        Buttons Only is event-driven: emit error/cancel; do not insert strip banners
+        that move the official PayPal button.
+      -->
+      @if (inlineError() && !compact()) {
         <p class="ep-paypal__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      @if (uiState() === 'success' && !compact()) {
         <p class="ep-paypal__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
-      @if (uiState() === 'cancelled') {
+      @if (uiState() === 'cancelled' && !compact()) {
         <p class="ep-paypal__status" role="status">{{ msgs().paypalCancelled }}</p>
       }
     </div>
@@ -96,6 +115,16 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         display: flex;
         flex-direction: column;
         gap: 14px;
+      }
+
+      /*
+        Compact strip slot: fixed geometry across idle / busy / error / retry.
+        No gap and no in-strip alerts — host apps own outcome UI via events.
+      */
+      .ep-paypal--compact {
+        gap: 0;
+        min-height: ${PAYPAL_COMPACT_BUTTON_HEIGHT}px;
+        height: ${PAYPAL_COMPACT_BUTTON_HEIGHT}px;
       }
 
       .ep-paypal__header {
@@ -119,6 +148,50 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
 
       .ep-paypal__buttons {
         min-height: 48px;
+      }
+
+      .ep-paypal--compact .ep-paypal__buttons {
+        box-sizing: border-box;
+        width: 100%;
+        height: ${PAYPAL_COMPACT_BUTTON_HEIGHT}px;
+        min-height: ${PAYPAL_COMPACT_BUTTON_HEIGHT}px;
+        max-height: ${PAYPAL_COMPACT_BUTTON_HEIGHT}px;
+      }
+
+      .ep-paypal--compact .ep-paypal__buttons--unavailable {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      /*
+        Host-page focus chrome only. The PayPal Buttons iframe is cross-origin —
+        never style its internals. ::ng-deep is required so rules reach SDK-
+        injected iframe / .paypal-buttons nodes (they lack _ngcontent attrs).
+        Suppress Chromium's duplicated outer iframe outline after click/Tab so
+        only the SDK's own in-button focus remains.
+      */
+      :host ::ng-deep .ep-paypal--compact .ep-paypal__buttons,
+      :host ::ng-deep .ep-paypal--compact .ep-paypal__buttons:focus,
+      :host ::ng-deep .ep-paypal--compact .ep-paypal__buttons:focus-visible,
+      :host ::ng-deep .ep-paypal--compact .ep-paypal__buttons:focus-within {
+        outline: none;
+        box-shadow: none;
+      }
+
+      :host ::ng-deep .ep-paypal__buttons iframe,
+      :host ::ng-deep .ep-paypal__buttons iframe:focus,
+      :host ::ng-deep .ep-paypal__buttons iframe:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+
+      /* PayPal injects .paypal-buttons around the iframe on the host page. */
+      :host ::ng-deep .ep-paypal__buttons .paypal-buttons:focus,
+      :host ::ng-deep .ep-paypal__buttons .paypal-buttons:focus-visible,
+      :host ::ng-deep .ep-paypal__buttons .paypal-buttons *:focus,
+      :host ::ng-deep .ep-paypal__buttons .paypal-buttons *:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
       }
 
       .ep-paypal__buttons--pending {
@@ -152,6 +225,11 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   readonly checkout = input<CheckoutOptions>();
   /** Theme is accepted for API symmetry with Stripe; PayPal Buttons use official gold styling. */
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * Compact in-list / Payment Buttons Only mount: official PayPal Buttons without
+   * checkout panel chrome (title, security blurb, verbose status copy).
+   */
+  readonly compact = input(false);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -171,6 +249,12 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   private renderGeneration = 0;
   private attemptAnnounced = false;
   private captureEmitted = false;
+  /** Ownership token for this host's Buttons mount on the shared PayPalAdapter. */
+  private buttonsMountId: string | null = null;
+  /** Owner token for order-create guards on the shared PayPalAdapter. */
+  private readonly orderOwnerId = createPaymentOwnerId('paypal');
+  /** This host's most recent order — never another host's. */
+  private currentOrderId: string | null = null;
 
   constructor() {
     // Product/checkout/locale identity may require re-rendering Buttons (createOrder closure).
@@ -180,13 +264,14 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       const checkout = this.checkout();
       const ready = this.viewReady();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const compact = this.compact();
       // Read theme so Angular tracks it, but do not use it as a render key.
       void this.resolvedTheme();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButtons(product, checkout, locale);
+        void this.ensureButtons(product, checkout, locale, compact);
       });
     });
 
@@ -203,7 +288,13 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
-    void this.paypalAdapter.destroy();
+    const mountId = this.buttonsMountId;
+    this.buttonsMountId = null;
+    // Ownership-scoped cleanup only — do not call adapter.destroy(), which would
+    // close sibling PayPal mounts and clear shared in-flight order flags.
+    if (mountId) {
+      void this.paypalAdapter.destroyButtons(mountId);
+    }
   }
 
   isBusyState(): boolean {
@@ -212,14 +303,34 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       state === 'creating-order' ||
       state === 'waiting-approval' ||
       state === 'capturing' ||
-      this.paypalAdapter.isBusy()
+      this.paypalAdapter.isBusy(this.orderOwnerId, this.currentOrderId)
     );
+  }
+
+  /**
+   * Compact strip ARIA: keep a single accessible name on the mount host.
+   * Transaction/init failures still emit `error`; in-strip banners are omitted.
+   */
+  compactButtonsAriaLabel(): string {
+    const base = this.msgs().paypalCheckoutAria;
+    if (!this.compact()) {
+      return base;
+    }
+    if (this.uiState() === 'initializing') {
+      return `${base}, ${this.msgs().preparingPayPal}`;
+    }
+    const err = this.inlineError();
+    if (err) {
+      return `${base}, ${err}`;
+    }
+    return base;
   }
 
   private async ensureButtons(
     product: PaymentProduct,
     checkout: CheckoutOptions | undefined,
     locale: EasyPaymentsResolvedLocale,
+    compact = false,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -235,7 +346,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const nextKey = `${buildPayPalRenderKey(product, checkout)}|${locale}`;
+    const nextKey = `${buildPayPalRenderKey(product, checkout)}|${locale}|compact:${compact ? 1 : 0}`;
     if (nextKey === this.renderKey) {
       return;
     }
@@ -246,7 +357,24 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
     this.inlineError.set(null);
 
     try {
-      await this.paypalAdapter.ensureSdkLoaded(locale);
+      try {
+        await this.paypalAdapter.ensureSdkLoaded(locale);
+      } catch (err) {
+        if (generation !== this.renderGeneration) {
+          return;
+        }
+        this.renderKey = null;
+        const paymentError = mapPayPalError(
+          err,
+          'SDK_LOAD_FAILED',
+          'PayPal SDK script failed to load.',
+        );
+        this.uiState.set('error');
+        this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
+        this.error.emit(paymentError);
+        return;
+      }
+
       if (generation !== this.renderGeneration) {
         return;
       }
@@ -254,15 +382,32 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       const host = this.host().nativeElement;
       host.replaceChildren();
 
-      await this.paypalAdapter.renderButtons(
+      // Buttons Only: one primary PayPal funding button. Full checkout keeps
+      // SDK-eligible funding sources (Pay Later / card) via omitted fundingSource.
+      const mountId = await this.paypalAdapter.renderButtons(
         host,
         {
+          ...(compact
+            ? {
+                fundingSource: 'paypal',
+                style: {
+                  layout: 'vertical',
+                  color: 'gold',
+                  shape: 'rect',
+                  label: 'paypal',
+                  height: PAYPAL_COMPACT_BUTTON_HEIGHT,
+                },
+              }
+            : {}),
           createOrder: () => this.onCreateOrder(product, checkout, generation),
           onApprove: (data) => this.onApprove(data.orderID, generation),
           onCancel: () => this.onCancel(generation),
           onError: (err) => this.onSdkError(err, generation),
           onClick: async (_data, actions) => {
-            if (this.paypalAdapter.isBusy() || this.uiState() === 'success') {
+            if (
+              this.paypalAdapter.isBusy(this.orderOwnerId, this.currentOrderId) ||
+              this.uiState() === 'success'
+            ) {
               await actions.reject();
               return;
             }
@@ -270,19 +415,30 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
           },
         },
         locale,
+        this.buttonsMountId ?? undefined,
       );
 
       if (generation !== this.renderGeneration) {
+        await this.paypalAdapter.destroyButtons(mountId);
+        if (this.buttonsMountId === mountId) {
+          this.buttonsMountId = null;
+        }
         return;
       }
 
+      this.buttonsMountId = mountId;
       this.uiState.set('ready');
     } catch (err) {
       if (generation !== this.renderGeneration) {
         return;
       }
       this.renderKey = null;
-      const paymentError = mapPayPalError(err, 'SDK_LOAD_FAILED', 'Failed to initialize PayPal.');
+      // SDK script already loaded — classify Buttons create/render separately.
+      const paymentError = mapPayPalError(
+        err,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons failed to initialize.',
+      );
       this.uiState.set('error');
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);
@@ -312,8 +468,9 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     try {
-      const orderId = await this.paypalAdapter.createOrder(product, checkout);
+      const orderId = await this.paypalAdapter.createOrder(product, checkout, this.orderOwnerId);
       if (generation === this.renderGeneration) {
+        this.currentOrderId = orderId;
         this.uiState.set('waiting-approval');
       }
       return orderId;
@@ -408,7 +565,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       method: 'paypal',
       provider: 'paypal',
       message: 'PayPal checkout was cancelled.',
-      sessionId: this.paypalAdapter.getActiveOrderId() ?? undefined,
+      sessionId: this.currentOrderId ?? undefined,
     });
 
     // Allow another attempt without remounting Buttons.

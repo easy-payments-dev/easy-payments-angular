@@ -66,9 +66,10 @@
   --ep-focus: #93c5fd;
   --ep-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
   --ep-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-  --ep-cta-bg: #f8fafc;
-  --ep-cta-bg-hover: #e2e8f0;
-  --ep-cta-text: #0f172a;
+  /* Match Buttons Only: deepened accent CTA (not pale #f8fafc) in dark theme. */
+  --ep-cta-bg: color-mix(in srgb, var(--ep-accent, #60a5fa) 42%, #0b3a82);
+  --ep-cta-bg-hover: color-mix(in srgb, var(--ep-accent, #60a5fa) 55%, #1d4ed8);
+  --ep-cta-text: #f8fafc;
   --ep-demo-bg: #1e293b;
   --ep-demo-text: #94a3b8;
   --ep-success: #4ade80;

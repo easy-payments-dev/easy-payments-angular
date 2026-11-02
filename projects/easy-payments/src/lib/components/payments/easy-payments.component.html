@@ -69,18 +69,24 @@
     so SDKs and Elements are not destroyed mid-flow. Remount via providerMountKey
     only after Continue / Try again / Return to checkout.
   -->
-  <section class="ep-checkout__detail" [attr.aria-hidden]="showOutcome()">
+  <section
+    class="ep-checkout__detail"
+    [attr.aria-hidden]="showOutcome()"
+    [inert]="showOutcome()"
+  >
     @if (showStripePanel()) {
       @for (key of [providerMountKey()]; track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!stripePanelActive()"
           [attr.aria-hidden]="!stripePanelActive()"
+          [inert]="!stripePanelActive()"
         >
           <easy-stripe-card-payment
             [product]="product()"
             [checkout]="checkout()"
             [resolvedTheme]="resolvedTheme()"
+            [cardButtonAppearance]="cardButtonAppearance()"
             (success)="onStripeSuccess($event)"
             (cancel)="onStripeCancel($event)"
             (error)="onStripeError($event)"
@@ -97,6 +103,7 @@
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!paypalPanelActive()"
           [attr.aria-hidden]="!paypalPanelActive()"
+          [inert]="!paypalPanelActive()"
         >
           <easy-paypal-payment
             [product]="product()"
@@ -118,6 +125,7 @@
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!googlePayPanelActive()"
           [attr.aria-hidden]="!googlePayPanelActive()"
+          [inert]="!googlePayPanelActive()"
         >
           <easy-google-pay-payment
             [product]="product()"
@@ -139,6 +147,7 @@
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!applePayPanelActive()"
           [attr.aria-hidden]="!applePayPanelActive()"
+          [inert]="!applePayPanelActive()"
         >
           <easy-apple-pay-payment
             [product]="product()"
@@ -160,6 +169,7 @@
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!klarnaPanelActive()"
           [attr.aria-hidden]="!klarnaPanelActive()"
+          [inert]="!klarnaPanelActive()"
         >
           <easy-klarna-payment
             [product]="product()"
@@ -182,6 +192,7 @@
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!affirmPanelActive()"
           [attr.aria-hidden]="!affirmPanelActive()"
+          [inert]="!affirmPanelActive()"
         >
           <easy-affirm-payment
             [product]="product()"

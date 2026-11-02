@@ -193,6 +193,7 @@ describe('StripeCardAdapter', () => {
         wallets: jasmine.objectContaining({
           applePay: 'never',
           googlePay: 'never',
+          link: 'never',
         }),
       }),
     );

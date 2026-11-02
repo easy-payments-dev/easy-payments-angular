@@ -13,19 +13,19 @@ npm install
 npm run start:dev
 ```
 
-Payment endpoints:
+Listens on `PORT` (default **3001**). Payment endpoints:
 
-- `POST http://localhost:3000/api/payments/create`
-- `POST http://localhost:3000/api/payments/paypal/create`
-- `POST http://localhost:3000/api/payments/paypal/capture`
+- `POST http://localhost:3001/api/payments/create`
+- `POST http://localhost:3001/api/payments/paypal/create`
+- `POST http://localhost:3001/api/payments/paypal/capture`
 
 Webhook reference (optional):
 
-- `POST http://localhost:3000/api/webhooks/stripe`
-- `POST http://localhost:3000/api/webhooks/paypal`
-- `GET http://localhost:3000/api/webhooks/status/stripe/:paymentIntentId`
+- `POST http://localhost:3001/api/webhooks/stripe`
+- `POST http://localhost:3001/api/webhooks/paypal`
+- `GET http://localhost:3001/api/webhooks/status/stripe/:paymentIntentId`
 
-Local Stripe forwarding: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
+Local Stripe forwarding: `stripe listen --forward-to localhost:3001/api/webhooks/stripe`
 
 Never put `sk_test_...`, `sk_live_...`, `whsec_...`, or PayPal client secrets in the Angular app.
 

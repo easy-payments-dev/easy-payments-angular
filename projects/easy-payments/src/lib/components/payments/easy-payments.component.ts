@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   NgZone,
+  PendingTasks,
   computed,
   effect,
   inject,
@@ -26,6 +27,7 @@ import {
   ResolvedPaymentTheme,
 } from '../../models';
 import type { EasyPaymentsAppearance } from '../../models/easy-payments-appearance.model';
+import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import {
@@ -33,7 +35,12 @@ import {
   warnProviderDiagnostic,
 } from '../../diagnostics/provider-diagnostics';
 import { appendMetadataSessionPart } from '../../metadata/merchant-metadata';
-import { PaymentOrchestratorService } from '../../services/payment-orchestrator.service';
+import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
+import { CheckoutHostContext } from '../../services/checkout-host-context';
+import {
+  PaymentOrchestratorService,
+  type AvailablePaymentMethod,
+} from '../../services/payment-orchestrator.service';
 import { ThemeService } from '../../themes/theme.service';
 import { resolveVisualStyleCssVars } from '../../themes/resolve-visual-style';
 import {
@@ -113,9 +120,10 @@ import {
   /**
    * Per-checkout ThemeService so concurrent <easy-payments> instances can use
    * independent light/dark/system themes. PaymentOrchestratorService stays root
-   * and receives the resolved theme explicitly from refreshAvailability calls.
+   * (adapters / processPayment / global diagnostics). Each host owns a local
+   * {@link CheckoutAvailabilitySession} so readiness tiles do not clobber siblings.
    */
-  providers: [EasyPaymentsI18nService, ThemeService],
+  providers: [EasyPaymentsI18nService, ThemeService, CheckoutHostContext],
 })
 export class EasyPaymentsComponent {
   private readonly orchestrator = inject(PaymentOrchestratorService);
@@ -125,10 +133,18 @@ export class EasyPaymentsComponent {
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly ngZone = inject(NgZone);
+  private readonly hostContext = inject(CheckoutHostContext);
+  private readonly pendingTasks = inject(PendingTasks);
   private destroyed = false;
   /** True while this component owns the availability ECE mount (Minimal-style host). */
   private applePayBootstrapOwned = false;
   private applePayBootstrapGeneration = 0;
+  /**
+   * Instance-local availability. Updated from orchestrator.refreshAvailability
+   * return values; stale async completions are ignored via generation counter.
+   */
+  private readonly availabilitySession = new CheckoutAvailabilitySession();
+  private availabilityGeneration = 0;
   /** Per-instance contrast warning dedupe (dev console only; never buyer-facing). */
   private readonly contrastWarnings = new VisualStyleContrastWarningTracker();
 
@@ -138,6 +154,12 @@ export class EasyPaymentsComponent {
   readonly product = input.required<PaymentProduct>();
   readonly methods = input<PaymentMethod[]>(['apple-pay', 'google-pay', 'paypal', 'card']);
   readonly checkout = input<CheckoutOptions>();
+  /**
+   * Optional stable id for this checkout host on pages with several instances.
+   * Used to attribute Stripe Klarna/Affirm redirect returns after reload or reorder.
+   * Omit on single-host pages. Values: 1–64 chars `[a-zA-Z0-9_.:-]`.
+   */
+  readonly checkoutInstanceId = input<string | null>(null);
   readonly theme = input<PaymentTheme>('system');
   /**
    * Outer shell style. `default` draws the built-in card chrome;
@@ -151,6 +173,12 @@ export class EasyPaymentsComponent {
    * official provider SDK buttons or marks.
    */
   readonly visualStyle = input<EasyPaymentsVisualStyle | null>(null);
+  /**
+   * Optional Easy Payments–owned Stripe Card confirmation CTA presentation
+   * (label, colors, typography, border, size, hover/disabled/loading/focus).
+   * Does not restyle the Stripe Payment Element iframe or other providers.
+   */
+  readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
   /**
    * Maximum checkout width in pixels. The component stays fluid (`width: 100%`)
    * up to this cap. Values are clamped to library-safe limits (320–1200).
@@ -178,6 +206,11 @@ export class EasyPaymentsComponent {
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
   readonly error = output<PaymentError>();
+  /**
+   * Fired when a PaymentIntent is still `processing` (not yet succeeded or failed).
+   * Not a success and not a definitive failure. Do not retry; await backend/webhook.
+   */
+  readonly pending = output<PaymentResult>();
   /** Fired when the customer clicks Continue on the built-in success screen. */
   readonly successContinue = output<PaymentResult>();
   /**
@@ -200,7 +233,8 @@ export class EasyPaymentsComponent {
   );
 
   readonly resolvedTheme = this.themeService.resolvedTheme;
-  readonly availableMethods = this.orchestrator.availableMethods;
+  /** Per-instance readiness — not the root orchestrator snapshot. */
+  readonly availableMethods = this.availabilitySession.availableMethods;
   readonly loading = this.orchestrator.loading;
 
   /** Clamped max-width applied to the host (and used by container queries). */
@@ -223,6 +257,11 @@ export class EasyPaymentsComponent {
 
   /** Prevents duplicate Stripe BNPL return recovery / success emits on one page load. */
   private stripeReturnRecoveryStarted = false;
+  /** Method of a Stripe BNPL return seen at construction, until ownership is claimed. */
+  private stripeReturnMethod: StripeRedirectMethod | null = null;
+  private stripeReturnClaimed = false;
+  /** Re-runs default method selection after a non-owned return releases this host. */
+  private readonly selectionRefresh = signal(0);
   private terminalSuccessEmitted = false;
   /** One in-flight attempt. `settled` drops duplicate terminal callbacks until the next attempt. */
   private paymentAttempt: 'idle' | 'active' | 'settled' = 'idle';
@@ -420,13 +459,9 @@ export class EasyPaymentsComponent {
   );
 
   constructor() {
-    this.destroyRef.onDestroy(() => {
-      this.destroyed = true;
-      this.applePayAdapter.setAvailabilityListener(null);
-    });
-
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
-    this.applePayAdapter.setAvailabilityListener(() => {
+    // One listener per host, so concurrent checkouts each refresh their own tiles.
+    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(() => {
       this.ngZone.run(() => {
         if (this.destroyed) {
           return;
@@ -434,26 +469,44 @@ export class EasyPaymentsComponent {
         const product = untracked(() => this.product());
         const methods = untracked(() => this.methods());
         const checkout = untracked(() => this.checkout());
-        void this.orchestrator
-          .refreshAvailability(methods, product, checkout, this.resolvedTheme())
-          .catch(() => {
-            // Availability refresh errors are non-fatal for checkout UI.
-          });
+        void this.refreshInstanceAvailability(
+          methods,
+          product,
+          checkout,
+          this.resolvedTheme(),
+        ).catch(() => {
+          // Availability refresh errors are non-fatal for checkout UI.
+        });
       });
     });
 
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      removeApplePayListener();
+    });
+
     // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm.
-    // Recovery itself is owned here (not only by the BNPL panel), so Processing
-    // always resolves even if the panel has not mounted yet.
+    // Recovery is owned by exactly one host on the page (decided by the recovery
+    // service), so Processing always resolves even if the panel has not mounted yet.
     if (typeof window !== 'undefined' && isStripeReturnAttempt()) {
       const method = detectStripeReturnMethod() ?? 'klarna';
+      this.stripeReturnMethod = method;
+      this.hostContext.setReturnPhase('pending', method);
       this.viewState.set('processing');
       this.updateSelectedMethod(method);
       this.providerBusy.set(true);
-      queueMicrotask(() => {
-        void this.recoverStripeReturn(method);
-      });
     }
+
+    effect(() => {
+      const product = this.product();
+      const methods = this.methods();
+      const checkoutInstanceId = this.checkoutInstanceId();
+      untracked(() => {
+        this.hostContext.setCheckoutInstanceId(checkoutInstanceId);
+        this.hostContext.setProductId(product.id);
+        this.claimStripeReturnOnce(methods);
+      });
+    });
 
     effect(() => {
       this.themeService.setTheme(this.theme());
@@ -477,12 +530,16 @@ export class EasyPaymentsComponent {
       this.i18n.setOverrides(this.translations());
     });
 
-    // Merchant removed apple-pay from allowed methods — drop any preserved ECE ready state.
+    // Merchant removed apple-pay from allowed methods — drop this checkout's preserved
+    // ECE ready state only (sibling hosts keep their own Apple Pay availability).
+    let allowedApplePay = false;
     effect(() => {
       const allowsApplePay = this.methods().includes('apple-pay');
-      if (!allowsApplePay) {
-        untracked(() => this.applePayAdapter.clearAvailability());
+      if (allowedApplePay && !allowsApplePay) {
+        const product = untracked(() => this.product());
+        untracked(() => this.applePayAdapter.clearAvailability(product));
       }
+      allowedApplePay = allowsApplePay;
     });
 
     effect(() => {
@@ -492,16 +549,17 @@ export class EasyPaymentsComponent {
 
       const theme = this.resolvedTheme();
       untracked(() => {
-        void this.orchestrator
-          .refreshAvailability(methods, product, checkout, theme)
-          .catch((err: unknown) => {
+        void this.refreshInstanceAvailability(methods, product, checkout, theme).catch(
+          (err: unknown) => {
             // Config/availability errors emit only — do not take over the checkout UI.
             this.error.emit(normalizeError(err));
-          });
+          },
+        );
       });
     });
 
     effect(() => {
+      this.selectionRefresh();
       const express = this.applePayExpressInList();
       // Express methods own their own button and are never the selected tile.
       const visible = this.visibleMethods().filter(
@@ -590,6 +648,37 @@ export class EasyPaymentsComponent {
   private applePayBootstrapSessionKey: string | null = null;
   private applePayBootstrapHostElement: HTMLElement | null = null;
 
+  /**
+   * Evaluate availability through the root orchestrator (adapters + global diagnostics
+   * projection), then store the returned snapshot on this instance only.
+   */
+  private async refreshInstanceAvailability(
+    methods: PaymentMethod[],
+    product: PaymentProduct,
+    checkout: CheckoutOptions | undefined,
+    theme: ResolvedPaymentTheme,
+  ): Promise<AvailablePaymentMethod[]> {
+    const generation = ++this.availabilityGeneration;
+    try {
+      const results = await this.orchestrator.refreshAvailability(
+        methods,
+        product,
+        checkout,
+        theme,
+      );
+      if (this.destroyed || generation !== this.availabilityGeneration) {
+        return results;
+      }
+      this.availabilitySession.apply(results);
+      return results;
+    } catch (error) {
+      if (!this.destroyed && generation === this.availabilityGeneration) {
+        // Keep prior tiles if any; do not clear on transient failures.
+      }
+      throw error;
+    }
+  }
+
   private async mountApplePayBootstrap(
     host: HTMLElement,
     product: PaymentProduct,
@@ -622,6 +711,41 @@ export class EasyPaymentsComponent {
         this.applePayBootstrapHostElement = null;
       }
     }
+  }
+
+  private claimStripeReturnOnce(methods: readonly PaymentMethod[]): void {
+    const method = this.stripeReturnMethod;
+    if (!method || this.stripeReturnClaimed) {
+      return;
+    }
+    this.stripeReturnClaimed = true;
+    const done = this.pendingTasks.add();
+    void this.stripeRedirectRecovery
+      .claimReturn(this.hostContext, methods)
+      .then(async (claim) => {
+        if (this.destroyed) {
+          return;
+        }
+        if (claim === 'owner') {
+          this.hostContext.setReturnPhase('owner', method);
+          await this.recoverStripeReturn(method);
+        } else {
+          this.releaseStripeReturn();
+        }
+      })
+      .finally(done);
+  }
+
+  /** Another host owns the return (or it was unattributable): show a normal checkout. */
+  private releaseStripeReturn(): void {
+    this.stripeReturnMethod = null;
+    this.hostContext.setReturnPhase('none');
+    this.providerBusy.set(false);
+    this.viewState.set('checkout');
+    // The provisional selection was set before outputs were subscribed; revert it silently
+    // and let default selection run as on a fresh load.
+    this.selectedMethod.set(null);
+    this.selectionRefresh.update((value) => value + 1);
   }
 
   /**
@@ -657,7 +781,7 @@ export class EasyPaymentsComponent {
         return;
       }
 
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
         this.handleCancelled(result);
@@ -687,8 +811,18 @@ export class EasyPaymentsComponent {
         this.handlePaymentError(paymentError);
       }
     } finally {
+      this.stripeReturnMethod = null;
       if (!this.destroyed) {
         this.providerBusy.set(false);
+        // After cancel/error the panel may create a fresh PaymentIntent for retry.
+        // Keep ownership while success or still-processing so panels do not recreate.
+        if (
+          this.viewState() !== 'success' &&
+          this.viewState() !== 'processing' &&
+          !this.terminalSuccessEmitted
+        ) {
+          this.hostContext.setReturnPhase('none');
+        }
       }
     }
   }
@@ -833,7 +967,7 @@ export class EasyPaymentsComponent {
     try {
       const result = await this.orchestrator.processPayment(method, this.product(), this.checkout());
 
-      if (result.status === 'success') {
+      if (result.status === 'success' || result.status === 'processing') {
         this.handleSuccess(result);
       } else if (result.status === 'cancelled') {
         this.handleCancelled(result);
@@ -890,6 +1024,7 @@ export class EasyPaymentsComponent {
     this.providerBusy.set(false);
     this.terminalSuccessEmitted = false;
     this.paymentAttempt = 'idle';
+    this.hostContext.setReturnPhase('none');
     this.providerMountKey.update((value) => value + 1);
   }
 
@@ -942,6 +1077,10 @@ export class EasyPaymentsComponent {
     if (this.destroyed) {
       return;
     }
+    if (result.status === 'processing') {
+      this.handlePending(result);
+      return;
+    }
     if (
       this.terminalSuccessEmitted &&
       (result.method === 'klarna' || result.method === 'affirm')
@@ -965,6 +1104,25 @@ export class EasyPaymentsComponent {
     } else {
       this.viewState.set('checkout');
     }
+  }
+
+  /**
+   * Asynchronous pending PaymentIntent: not success, not failure.
+   * Locks retry (settles the attempt) and keeps the processing screen.
+   */
+  private handlePending(result: PaymentResult): void {
+    if (this.destroyed) {
+      return;
+    }
+    if (!this.acceptTerminalEvent()) {
+      return;
+    }
+    this.pending.emit(result);
+    this.lastResult.set(result);
+    this.lastError.set(null);
+    this.providerBusy.set(false);
+    this.processingMethod.set(result.method);
+    this.viewState.set('processing');
   }
 
   private handleCancelled(result: PaymentResult): void {

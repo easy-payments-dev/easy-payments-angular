@@ -26,14 +26,46 @@ import { mapPayPalError } from './paypal-error.mapper';
 import {
   PayPalButtonsHandle,
   PayPalButtonsOptions,
+  PayPalButtonsStyle,
   PayPalNamespace,
 } from './paypal.types';
+
+/**
+ * PayPal JS SDK rejects non-numeric `height` and `tagline` with vertical layout.
+ * Coerce CSS-like values and drop incompatible fields before `Buttons()`.
+ */
+export function sanitizePayPalButtonStyle(style: PayPalButtonsStyle): PayPalButtonsStyle {
+  const next: PayPalButtonsStyle = { ...style };
+  if ('height' in next) {
+    const raw = next.height as unknown;
+    let height: number | undefined;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      height = raw;
+    } else if (typeof raw === 'string') {
+      const parsed = Number.parseInt(raw, 10);
+      height = Number.isFinite(parsed) ? parsed : undefined;
+    } else {
+      height = undefined;
+    }
+    if (height === undefined) {
+      delete next.height;
+    } else {
+      next.height = Math.min(55, Math.max(25, Math.round(height)));
+    }
+  }
+  if (next.layout !== 'horizontal') {
+    delete next.tagline;
+  }
+  return next;
+}
 
 declare global {
   interface Window {
     paypal?: PayPalNamespace;
   }
 }
+
+const LEGACY_PAYPAL_OWNER = 'paypal-legacy';
 
 @Injectable({ providedIn: 'root' })
 export class PayPalAdapter extends BaseProviderAdapter {
@@ -48,9 +80,14 @@ export class PayPalAdapter extends BaseProviderAdapter {
   private loadPromise: Promise<PayPalNamespace> | null = null;
   /** PayPal SDK locale last successfully loaded (underscore form, e.g. en_US). */
   private loadedSdkLocale: string | null = null;
-  private buttons: PayPalButtonsHandle | null = null;
-  private creatingOrder = false;
-  private capturing = false;
+  /**
+   * Per-host official Buttons mounts. Destroying one host must not close another's.
+   * Keyed by opaque mount ids owned by PayPalPaymentComponent instances.
+   */
+  private readonly buttonMounts = new Map<string, PayPalButtonsHandle>();
+  private nextMountId = 0;
+  private readonly creatingOwners = new Set<string>();
+  private readonly capturingOrders = new Set<string>();
   private activeOrderId: string | null = null;
 
   /**
@@ -137,18 +174,25 @@ export class PayPalAdapter extends BaseProviderAdapter {
         await this.sdkLoader.loadScript({
           id: scriptId,
           src: `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=${encodeURIComponent(intent)}&components=buttons&locale=${encodeURIComponent(paypalLocale)}`,
+          // Surface hangs (adblock / DNS / captive portal) as a timeout instead of spinning forever.
+          timeoutMs: 20_000,
         });
       } catch (error) {
         this.loadPromise = null;
-        throw mapPayPalError(error, 'SDK_LOAD_FAILED', 'PayPal SDK failed to load.');
+        this.loadedSdkLocale = null;
+        this.sdkLoader.unloadScript(scriptId);
+        throw mapPayPalError(error, 'SDK_LOAD_FAILED', 'PayPal SDK script failed to load.');
       }
 
       const paypal = this.browser.getWindow()?.paypal;
       if (!paypal?.Buttons) {
         this.loadPromise = null;
+        this.loadedSdkLocale = null;
+        this.sdkLoader.unloadScript(scriptId);
         throw new PaymentError({
           code: 'SDK_LOAD_FAILED',
-          message: 'PayPal SDK loaded but window.paypal.Buttons is unavailable.',
+          message:
+            'PayPal SDK script finished loading but window.paypal.Buttons is unavailable.',
           method: 'paypal',
           provider: 'paypal',
         });
@@ -171,8 +215,16 @@ export class PayPalAdapter extends BaseProviderAdapter {
     this.sdkLoader.unloadScript('easy-payments-paypal-sdk');
   }
 
-  async createOrder(product: PaymentProduct, _checkout?: CheckoutOptions): Promise<string> {
-    if (this.creatingOrder) {
+  /**
+   * Creates a PayPal order for one host. Concurrent creates are rejected per
+   * `ownerId` only, so sibling hosts on the same page are independent.
+   */
+  async createOrder(
+    product: PaymentProduct,
+    _checkout?: CheckoutOptions,
+    ownerId: string = LEGACY_PAYPAL_OWNER,
+  ): Promise<string> {
+    if (this.creatingOwners.has(ownerId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A PayPal order is already being created.',
@@ -181,7 +233,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.creatingOrder = true;
+    this.creatingOwners.add(ownerId);
     try {
       const metadata = assertMerchantMetadata(product.metadata, 'paypal', 'paypal');
       const orderId = metadata?.[PAYPAL_ORDER_REFERENCE_KEY];
@@ -198,12 +250,13 @@ export class PayPalAdapter extends BaseProviderAdapter {
     } catch (error) {
       throw mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create PayPal order.');
     } finally {
-      this.creatingOrder = false;
+      this.creatingOwners.delete(ownerId);
     }
   }
 
+  /** Captures one order. A second capture of the same order id is rejected (never double-captured). */
   async captureOrder(orderId: string): Promise<PaymentResult> {
-    if (this.capturing) {
+    if (this.capturingOrders.has(orderId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A PayPal capture is already in progress.',
@@ -212,7 +265,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       });
     }
 
-    this.capturing = true;
+    this.capturingOrders.add(orderId);
     try {
       const response = await this.backend.capturePayPalOrder(orderId);
       return normalizePaymentResult({
@@ -229,62 +282,151 @@ export class PayPalAdapter extends BaseProviderAdapter {
     } catch (error) {
       throw mapPayPalError(error, 'PAYMENT_FAILED', 'Failed to capture PayPal payment.');
     } finally {
-      this.capturing = false;
+      this.capturingOrders.delete(orderId);
     }
   }
 
+  /**
+   * Renders official PayPal Buttons into `container` under an ownership-scoped mount id.
+   * Re-rendering with the same `mountId` replaces only that mount; other hosts stay intact.
+   * @returns The mount id to pass to {@link destroyButtons} on host teardown.
+   */
   async renderButtons(
     container: HTMLElement,
-    options: Omit<PayPalButtonsOptions, 'style'> & { style?: Record<string, string> },
+    options: PayPalButtonsOptions,
     locale: EasyPaymentsResolvedLocale = 'en',
-  ): Promise<void> {
-    await this.destroyButtons();
+    mountId?: string,
+  ): Promise<string> {
+    const id = mountId ?? this.allocateMountId();
+    // Replace only this owner's previous Buttons instance.
+    await this.destroyButtons(id);
 
     const paypal = await this.ensureSdkLoaded(locale);
-    const buttons = paypal.Buttons({
-      style: {
-        layout: 'vertical',
-        color: 'gold',
-        shape: 'rect',
-        label: 'paypal',
-        ...(options.style ?? {}),
-      },
-      createOrder: options.createOrder,
-      onApprove: options.onApprove,
-      onCancel: options.onCancel,
-      onError: options.onError,
-      onClick: options.onClick,
+    // When fundingSource is set (Buttons Only compact), PayPal renders one button.
+    // Full checkout omits it so eligible Pay Later / card funding can still appear.
+    const resolvedFunding =
+      typeof options.fundingSource === 'string' && options.fundingSource.trim()
+        ? options.fundingSource.trim()
+        : undefined;
+
+    const style = sanitizePayPalButtonStyle({
+      layout: 'vertical',
+      color: 'gold',
+      shape: 'rect',
+      label: 'paypal',
+      ...(options.style ?? {}),
     });
 
-    this.buttons = buttons;
-    await buttons.render(container);
+    let buttons: PayPalButtonsHandle;
+    try {
+      buttons = paypal.Buttons({
+        style,
+        ...(resolvedFunding ? { fundingSource: resolvedFunding } : {}),
+        createOrder: options.createOrder,
+        onApprove: options.onApprove,
+        onCancel: options.onCancel,
+        onError: options.onError,
+        onClick: options.onClick,
+      });
+    } catch (error) {
+      throw mapPayPalError(
+        error,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons could not be created with the current options.',
+      );
+    }
+
+    if (typeof buttons.isEligible === 'function' && !buttons.isEligible()) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'PayPal Buttons are not eligible in this browser or funding configuration.',
+        method: 'paypal',
+        provider: 'paypal',
+      });
+    }
+
+    this.buttonMounts.set(id, buttons);
+    try {
+      await buttons.render(container);
+    } catch (error) {
+      this.buttonMounts.delete(id);
+      throw mapPayPalError(
+        error,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons failed to render.',
+      );
+    }
+    return id;
   }
 
-  async destroyButtons(): Promise<void> {
-    const current = this.buttons;
-    this.buttons = null;
-    if (current?.close) {
-      try {
-        await current.close();
-      } catch {
-        // Ignore close failures during teardown.
-      }
+  /**
+   * Closes one Buttons mount (host teardown) or all mounts when `mountId` is omitted
+   * (adapter-wide destroy / orchestrator re-init).
+   */
+  async destroyButtons(mountId?: string): Promise<void> {
+    if (mountId !== undefined) {
+      const current = this.buttonMounts.get(mountId);
+      this.buttonMounts.delete(mountId);
+      await this.closeButtonsHandle(current);
+      return;
+    }
+
+    const handles = Array.from(this.buttonMounts.values());
+    this.buttonMounts.clear();
+    for (const handle of handles) {
+      await this.closeButtonsHandle(handle);
     }
   }
 
-  isBusy(): boolean {
-    return this.creatingOrder || this.capturing;
+  /** Active ownership-scoped Buttons mounts (test / diagnostics). */
+  getActiveButtonMountCount(): number {
+    return this.buttonMounts.size;
   }
 
+  /**
+   * With `ownerId`: true while that owner is creating an order or `orderId` is capturing.
+   * Without arguments: true while any order is being created or captured (legacy).
+   */
+  isBusy(ownerId?: string, orderId?: string | null): boolean {
+    if (ownerId === undefined && orderId === undefined) {
+      return this.creatingOwners.size > 0 || this.capturingOrders.size > 0;
+    }
+    return (
+      (ownerId !== undefined && this.creatingOwners.has(ownerId)) ||
+      (!!orderId && this.capturingOrders.has(orderId))
+    );
+  }
+
+  /** Most recent order created on the page (any host). Hosts should track their own order id. */
   getActiveOrderId(): string | null {
     return this.activeOrderId;
   }
 
+  /**
+   * Full adapter reset: closes every Buttons mount and clears in-flight order flags.
+   * Prefer {@link destroyButtons}(mountId) from individual payment hosts.
+   */
   async destroy(): Promise<void> {
     await this.destroyButtons();
     this.activeOrderId = null;
-    this.creatingOrder = false;
-    this.capturing = false;
+    this.creatingOwners.clear();
+    this.capturingOrders.clear();
+  }
+
+  private allocateMountId(): string {
+    this.nextMountId += 1;
+    return `paypal-buttons-${this.nextMountId}`;
+  }
+
+  private async closeButtonsHandle(handle: PayPalButtonsHandle | undefined): Promise<void> {
+    if (!handle?.close) {
+      return;
+    }
+    try {
+      await handle.close();
+    } catch {
+      // Ignore close failures during teardown.
+    }
   }
 }
 

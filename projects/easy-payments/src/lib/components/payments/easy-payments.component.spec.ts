@@ -9,15 +9,28 @@ import { PaymentError } from '../../errors/payment-error';
 import { PaymentMethodChangeEvent, PaymentResult, PaymentStartedEvent } from '../../models';
 import { EasyPaymentsDiagnosticsService } from '../../diagnostics/easy-payments-diagnostics.service';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
-import { PaymentOrchestratorService } from '../../services/payment-orchestrator.service';
+import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { resetProviderDiagnosticsForTests } from '../../diagnostics/provider-diagnostics';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { EasyPaymentsComponent } from './easy-payments.component';
 
 async function render(fixture: ComponentFixture<EasyPaymentsComponent>): Promise<void> {
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
+}
+
+/** Apply a local readiness snapshot (tiles read the instance session, not root orchestrator). */
+function applyInstanceAvailability(
+  fixture: ComponentFixture<EasyPaymentsComponent>,
+  results: AvailablePaymentMethod[],
+): void {
+  (
+    fixture.componentInstance as unknown as {
+      availabilitySession: { apply: (value: readonly AvailablePaymentMethod[]) => void };
+    }
+  ).availabilitySession.apply(results);
 }
 
 function tileLabels(fixture: ComponentFixture<EasyPaymentsComponent>): string[] {
@@ -126,6 +139,27 @@ describe('EasyPaymentsComponent', () => {
     expect(fixture.nativeElement.querySelector('easy-mock-method-panel')).toBeTruthy();
   });
 
+  it('keeps method tiles keyboard-focusable inside a radiogroup', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+
+    const group = fixture.nativeElement.querySelector('[role="radiogroup"]') as HTMLElement;
+    const tiles = Array.from(
+      fixture.nativeElement.querySelectorAll('button.ep-tile'),
+    ) as HTMLButtonElement[];
+    expect(group).toBeTruthy();
+    expect(tiles.length).toBe(2);
+    expect(tiles[0].type).toBe('button');
+
+    tiles[1].focus();
+    expect(document.activeElement).toBe(tiles[1]);
+
+    const pay = payCta(fixture);
+    expect(pay).toBeTruthy();
+    pay!.focus();
+    expect(document.activeElement).toBe(pay);
+  });
+
   it('exposes radiogroup accessibility attributes on the selector', async () => {
     fixture.componentRef.setInput('methods', ['card', 'paypal']);
     await render(fixture);
@@ -187,18 +221,15 @@ describe('EasyPaymentsComponent', () => {
       configurable: true,
       get: () => configured.asReadonly(),
     });
-    spyOn(applePay, 'mountExpressCheckout').and.returnValue(Promise.resolve());
+    spyOn(applePay, 'mountExpressCheckout').and.returnValue(
+      Promise.resolve('legacy-singleton'),
+    );
     spyOn(applePay, 'unmountExpressCheckout');
 
     fixture.componentRef.setInput('methods', ['card', 'apple-pay']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: false, status: 'checking' },
     ]);
@@ -220,12 +251,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'apple-pay', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -262,12 +288,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'apple-pay', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: false, status: 'unavailable' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -287,12 +308,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['card', 'paypal']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
       { method: 'paypal', isMock: true, available: true, status: 'available' },
@@ -309,12 +325,7 @@ describe('EasyPaymentsComponent', () => {
     fixture.componentRef.setInput('methods', ['paypal', 'card', 'apple-pay', 'klarna']);
     await render(fixture);
 
-    const orchestrator = TestBed.inject(PaymentOrchestratorService);
-    (
-      orchestrator as unknown as {
-        _availableMethods: { set: (value: unknown) => void };
-      }
-    )._availableMethods.set([
+    applyInstanceAvailability(fixture, [
       { method: 'paypal', isMock: true, available: true, status: 'available' },
       { method: 'card', isMock: true, available: true, status: 'available' },
       { method: 'apple-pay', isMock: false, available: true, status: 'available' },
@@ -436,6 +447,50 @@ describe('EasyPaymentsComponent', () => {
     expect(host.style.getPropertyValue('--ep-accent')).toBe('');
     expect(host.style.getPropertyValue('--ep-radius')).toBe('');
     expect(getComputedStyle(host).getPropertyValue('--ep-font-family').trim()).toContain('Segoe UI');
+  });
+
+  it('accepts optional cardButtonAppearance without changing mock CTA chrome', async () => {
+    fixture.componentRef.setInput('methods', ['card']);
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    await render(fixture);
+
+    expect(fixture.componentInstance.cardButtonAppearance()).toEqual({
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    expect(fixture.nativeElement.querySelector('easy-stripe-card-payment')).toBeNull();
+    expect(payCta(fixture)?.textContent?.trim()).toMatch(/^Pay \$/);
+  });
+
+  it('keeps independent cardButtonAppearance inputs per Full Checkout instance', async () => {
+    fixture.componentRef.setInput('methods', ['card']);
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance A',
+      backgroundColor: '#aa0000',
+    });
+    await render(fixture);
+
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixtureB.componentRef.setInput('methods', ['card']);
+    fixtureB.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance B',
+      backgroundColor: '#00aa00',
+    });
+    await render(fixtureB);
+
+    expect(fixture.componentInstance.cardButtonAppearance()?.label).toBe('Instance A');
+    expect(fixtureB.componentInstance.cardButtonAppearance()?.label).toBe('Instance B');
+    expect(fixture.componentInstance.cardButtonAppearance()?.backgroundColor).toBe('#aa0000');
+    expect(fixtureB.componentInstance.cardButtonAppearance()?.backgroundColor).toBe('#00aa00');
+    fixtureB.destroy();
   });
 
   it('applies valid visualStyle overrides as host CSS variables', async () => {
@@ -858,6 +913,106 @@ describe('EasyPaymentsComponent', () => {
     expect(fixtureB.componentInstance.resolvedTheme()).toBe('dark');
     expect(hostA.style.getPropertyValue('--ep-accent').trim()).toBe('#1111aa');
     expect(hostB.style.getPropertyValue('--ep-accent').trim()).toBe('#11aa11');
+  });
+
+  it('keeps independent method allow-lists for concurrent checkout instances', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna', 'affirm']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Card',
+      'PayPal',
+    ]);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Klarna',
+      'Affirm',
+    ]);
+    expect(fixture.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'card',
+      'paypal',
+    ]);
+    expect(fixtureB.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'klarna',
+      'affirm',
+    ]);
+  });
+
+  it('keeps independent method order for concurrent checkout instances', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['paypal', 'card']);
+    fixtureB.componentRef.setInput('methods', ['card', 'paypal']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'PayPal',
+      'Card',
+    ]);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual([
+      'Card',
+      'PayPal',
+    ]);
+  });
+
+  it('does not clobber a sibling checkout when one instance refreshes methods', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    fixture.componentRef.setInput('methods', ['paypal']);
+    await render(fixture);
+    fixtureB.detectChanges();
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual(['PayPal']);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual(['Klarna']);
+    expect(fixtureB.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'klarna',
+    ]);
+  });
+
+  it('isolates a mock provider failure to the affected checkout methods only', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    TestBed.inject(MockPaymentController).setUnavailableMethods(['paypal']);
+
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['paypal', 'klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    expect(tileLabels(fixture).map((label) => label.replace(/,.*/, ''))).toEqual(['Card']);
+    expect(tileLabels(fixtureB).map((label) => label.replace(/,.*/, ''))).toEqual(['Klarna']);
+    expect(fixture.componentInstance.availableMethods().find((e) => e.method === 'paypal')?.available).toBeFalse();
+    expect(fixtureB.componentInstance.availableMethods().find((e) => e.method === 'paypal')?.available).toBeFalse();
+    expect(fixtureB.componentInstance.availableMethods().find((e) => e.method === 'klarna')?.available).toBeTrue();
+  });
+
+  it('keeps EasyPaymentsDiagnosticsService as a global last-refresh projection', async () => {
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    const diagnostics = TestBed.inject(EasyPaymentsDiagnosticsService);
+
+    fixture.componentRef.setInput('methods', ['card', 'paypal']);
+    fixtureB.componentRef.setInput('methods', ['klarna']);
+    await render(fixture);
+    await render(fixtureB);
+
+    // Root diagnostics reflect the latest orchestrator refresh (fixtureB), not a merge of both.
+    expect(diagnostics.snapshot().published).toBeTrue();
+    expect(diagnostics.snapshot().methods.map((entry) => entry.method)).toEqual(['klarna']);
+    // Instance tiles remain independent of that global projection.
+    expect(fixture.componentInstance.availableMethods().map((entry) => entry.method)).toEqual([
+      'card',
+      'paypal',
+    ]);
   });
 
   it('preserves transparent shell painting rules with optional background/surface overrides', async () => {
@@ -1906,5 +2061,114 @@ describe('EasyPaymentsComponent', () => {
       expect(card?.readiness).toBe('ready');
       expect(card?.code).toBeUndefined();
     });
+  });
+});
+
+describe('EasyPaymentsComponent real Stripe Card CTA appearance', () => {
+  let fixture: ComponentFixture<EasyPaymentsComponent>;
+  let adapter: jasmine.SpyObj<StripeCardAdapter>;
+
+  beforeEach(async () => {
+    adapter = jasmine.createSpyObj<StripeCardAdapter>(
+      'StripeCardAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'isConfirming',
+        'hasMountedElement',
+      ],
+      {
+        provider: 'stripe',
+        isMock: false,
+      },
+    );
+
+    adapter.initialize.and.resolveTo();
+    adapter.isAvailable.and.resolveTo(true);
+    adapter.ensureStripeLoaded.and.resolveTo({} as never);
+    adapter.createPaymentSession.and.resolveTo({ clientSecret: 'pi_secret_checkout_cta' });
+    adapter.mountPaymentElement.and.resolveTo();
+    adapter.updateAppearance.and.resolveTo();
+    adapter.destroy.and.resolveTo();
+    adapter.isConfirming.and.returnValue(false);
+    adapter.hasMountedElement.and.returnValue(true);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_checkout_card_cta' } },
+          backend: { createPaymentUrl: '/api/payments/create' },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: StripeCardAdapter, useValue: adapter },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card']);
+  });
+
+  it('forwards cardButtonAppearance onto the Stripe Card CTA', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    await render(fixture);
+
+    const cardHost = fixture.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    expect(cardHost).toBeTruthy();
+    const cta = cardHost.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement;
+    expect(cta.textContent?.trim()).toBe('Checkout with card');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#111827');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-text').trim()).toBe('#f8fafc');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-radius').trim()).toBe('6px');
+    expect(adapter.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps independent cardButtonAppearance per Full Checkout instance', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance A',
+      backgroundColor: '#aa0000',
+    });
+    await render(fixture);
+
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixtureB.componentRef.setInput('methods', ['card']);
+    fixtureB.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance B',
+      backgroundColor: '#00aa00',
+    });
+    await render(fixtureB);
+
+    const hostA = fixture.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    const hostB = fixtureB.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    expect(hostA.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#aa0000');
+    expect(hostB.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#00aa00');
+    expect(hostA.querySelector('button.ep-stripe-card__pay')?.textContent?.trim()).toBe(
+      'Instance A',
+    );
+    expect(hostB.querySelector('button.ep-stripe-card__pay')?.textContent?.trim()).toBe(
+      'Instance B',
+    );
+    fixtureB.destroy();
   });
 });
