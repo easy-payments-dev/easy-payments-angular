@@ -29,6 +29,7 @@ import {
   type EasyPaymentButtonsAppearance,
   type EasyPaymentButtonsLayout,
   type EasyPaymentsAppearance,
+  type EasyPaymentsCardButtonAppearance,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
   type EasyPaymentsVisualStyle,
@@ -300,6 +301,147 @@ export class App {
   readonly buttonsFixedWidth = signal(160);
   readonly buttonsCheckoutInstanceId = signal('demo-buttons-1');
 
+  /**
+   * Demo controls for public `[cardButtonAppearance]` — Easy Payments–owned
+   * Stripe Card confirmation CTA (not method tiles / SDK buttons).
+   * Empty fields → `null` (library theme defaults).
+   */
+  readonly cardCtaLabel = signal('');
+  readonly cardCtaBackgroundColor = signal('');
+  readonly cardCtaTextColor = signal('');
+  readonly cardCtaFontFamily = signal('');
+  readonly cardCtaFontSize = signal('');
+  readonly cardCtaFontWeight = signal('');
+  readonly cardCtaTextAlign = signal<'left' | 'center' | 'right' | 'start' | 'end' | ''>(
+    '',
+  );
+  readonly cardCtaBorder = signal<'default' | 'none'>('default');
+  readonly cardCtaBorderWidth = signal('');
+  readonly cardCtaBorderStyle = signal('');
+  readonly cardCtaBorderColor = signal('');
+  readonly cardCtaBorderRadius = signal('');
+  readonly cardCtaMinHeight = signal('');
+  readonly cardCtaWidth = signal('');
+  readonly cardCtaPadding = signal('');
+  readonly cardCtaHoverBackgroundColor = signal('');
+  readonly cardCtaHoverTextColor = signal('');
+  readonly cardCtaDisabledBackgroundColor = signal('');
+  readonly cardCtaDisabledTextColor = signal('');
+  readonly cardCtaLoadingBackgroundColor = signal('');
+  readonly cardCtaLoadingTextColor = signal('');
+  readonly cardCtaFocusOutlineColor = signal('');
+  readonly cardCtaFocusOutlineWidth = signal('');
+  readonly cardCtaFocusOutlineOffset = signal('');
+
+  readonly cardButtonAppearance = computed<EasyPaymentsCardButtonAppearance | null>(() => {
+    const appearance: EasyPaymentsCardButtonAppearance = {};
+    const label = this.cardCtaLabel().trim();
+    if (label) {
+      appearance.label = label;
+    }
+    const backgroundColor = this.cardCtaBackgroundColor().trim();
+    if (backgroundColor) {
+      appearance.backgroundColor = backgroundColor;
+    }
+    const textColor = this.cardCtaTextColor().trim();
+    if (textColor) {
+      appearance.textColor = textColor;
+    }
+    const fontFamily = this.cardCtaFontFamily().trim();
+    if (fontFamily) {
+      appearance.fontFamily = fontFamily;
+    }
+    const fontSize = this.cardCtaFontSize().trim();
+    if (fontSize) {
+      appearance.fontSize = fontSize;
+    }
+    const fontWeightRaw = this.cardCtaFontWeight().trim();
+    if (fontWeightRaw) {
+      const asNum = Number(fontWeightRaw);
+      appearance.fontWeight =
+        Number.isFinite(asNum) && /^-?\d+(\.\d+)?$/.test(fontWeightRaw)
+          ? asNum
+          : fontWeightRaw;
+    }
+    const textAlign = this.cardCtaTextAlign();
+    if (textAlign) {
+      appearance.textAlign = textAlign;
+    }
+    if (this.cardCtaBorder() === 'none') {
+      appearance.border = 'none';
+    }
+    const borderWidth = this.cardCtaBorderWidth().trim();
+    if (borderWidth) {
+      appearance.borderWidth = borderWidth;
+    }
+    const borderStyle = this.cardCtaBorderStyle().trim();
+    if (borderStyle) {
+      appearance.borderStyle = borderStyle;
+    }
+    const borderColor = this.cardCtaBorderColor().trim();
+    if (borderColor) {
+      appearance.borderColor = borderColor;
+    }
+    const borderRadius = this.cardCtaBorderRadius().trim();
+    if (borderRadius) {
+      appearance.borderRadius = borderRadius;
+    }
+    const minHeight = this.cardCtaMinHeight().trim();
+    if (minHeight) {
+      appearance.minHeight = minHeight;
+    }
+    const width = this.cardCtaWidth().trim();
+    if (width) {
+      appearance.width = width;
+    }
+    const padding = this.cardCtaPadding().trim();
+    if (padding) {
+      appearance.padding = padding;
+    }
+    const hoverBackgroundColor = this.cardCtaHoverBackgroundColor().trim();
+    if (hoverBackgroundColor) {
+      appearance.hoverBackgroundColor = hoverBackgroundColor;
+    }
+    const hoverTextColor = this.cardCtaHoverTextColor().trim();
+    if (hoverTextColor) {
+      appearance.hoverTextColor = hoverTextColor;
+    }
+    const disabledBackgroundColor = this.cardCtaDisabledBackgroundColor().trim();
+    if (disabledBackgroundColor) {
+      appearance.disabledBackgroundColor = disabledBackgroundColor;
+    }
+    const disabledTextColor = this.cardCtaDisabledTextColor().trim();
+    if (disabledTextColor) {
+      appearance.disabledTextColor = disabledTextColor;
+    }
+    const loadingBackgroundColor = this.cardCtaLoadingBackgroundColor().trim();
+    if (loadingBackgroundColor) {
+      appearance.loadingBackgroundColor = loadingBackgroundColor;
+    }
+    const loadingTextColor = this.cardCtaLoadingTextColor().trim();
+    if (loadingTextColor) {
+      appearance.loadingTextColor = loadingTextColor;
+    }
+    const focusOutlineColor = this.cardCtaFocusOutlineColor().trim();
+    if (focusOutlineColor) {
+      appearance.focusOutlineColor = focusOutlineColor;
+    }
+    const focusOutlineWidth = this.cardCtaFocusOutlineWidth().trim();
+    if (focusOutlineWidth) {
+      appearance.focusOutlineWidth = focusOutlineWidth;
+    }
+    const focusOutlineOffset = this.cardCtaFocusOutlineOffset().trim();
+    if (focusOutlineOffset) {
+      appearance.focusOutlineOffset = focusOutlineOffset;
+    }
+    return Object.keys(appearance).length === 0 ? null : appearance;
+  });
+
+  readonly cardButtonAppearanceSummary = computed(() => {
+    const style = this.cardButtonAppearance();
+    return style === null ? 'null (theme defaults)' : JSON.stringify(style);
+  });
+
   readonly buttonsAppearance = computed<EasyPaymentButtonsAppearance>(() => {
     const bgPreset = this.buttonsBackgroundPreset();
     let background: EasyPaymentButtonsAppearance['background'] = 'transparent';
@@ -353,6 +495,19 @@ export class App {
       .filter(([, value]) => value != null && value !== '')
       .map(([key, value]) => `  ${key}: ${JSON.stringify(value)},`)
       .join('\n');
+    const cardAppearance = this.cardButtonAppearance();
+    const cardAppearanceBlock =
+      cardAppearance === null
+        ? ''
+        : `
+readonly cardButtonAppearance: EasyPaymentsCardButtonAppearance = ${JSON.stringify(
+            cardAppearance,
+            null,
+            2,
+          )};
+`;
+    const cardAppearanceBinding =
+      cardAppearance === null ? '' : `\n  [cardButtonAppearance]="cardButtonAppearance"`;
     const locale = this.locale();
     const theme = this.theme();
     const layout = this.buttonsLayout();
@@ -363,6 +518,7 @@ import {
   provideEasyPayments,
   EasyPaymentButtonsComponent,
   type EasyPaymentButtonsAppearance,
+  type EasyPaymentsCardButtonAppearance,
   type PaymentProduct,
 } from '@easy-payments/angular';
 
@@ -387,7 +543,7 @@ readonly methods = ${methodsLiteral} as const;
 readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
 ${appearanceLines}
 };
-
+${cardAppearanceBlock}
 // template — Buttons Only is event-driven; host owns outcome UI
 <easy-payment-buttons
   [product]="product"
@@ -395,7 +551,7 @@ ${appearanceLines}
   layout="${layout}"
   theme="${theme}"
   locale="${locale}"
-  [buttonsAppearance]="buttonsAppearance"
+  [buttonsAppearance]="buttonsAppearance"${cardAppearanceBinding}
   checkoutInstanceId="${instanceId}"
   (started)="onStarted($event)"
   (methodChange)="onMethodChange($event)"
@@ -621,6 +777,69 @@ ${appearanceLines}
 
   setButtonsBorder(value: 'default' | 'none'): void {
     this.buttonsBorder.set(value);
+  }
+
+  setCardCtaBorder(value: 'default' | 'none'): void {
+    this.cardCtaBorder.set(value);
+  }
+
+  setCardCtaTextAlign(value: 'left' | 'center' | 'right' | 'start' | 'end' | ''): void {
+    this.cardCtaTextAlign.set(value);
+  }
+
+  /** Demo helper: sample branded Card CTA (does not change payment behavior). */
+  applyCardCtaSample(): void {
+    this.cardCtaLabel.set('Complete card payment');
+    this.cardCtaBackgroundColor.set('#0b6e4f');
+    this.cardCtaTextColor.set('#f8fafc');
+    this.cardCtaFontFamily.set('Georgia, serif');
+    this.cardCtaFontSize.set('16px');
+    this.cardCtaFontWeight.set('700');
+    this.cardCtaTextAlign.set('center');
+    this.cardCtaBorder.set('none');
+    this.cardCtaBorderWidth.set('');
+    this.cardCtaBorderStyle.set('');
+    this.cardCtaBorderColor.set('');
+    this.cardCtaBorderRadius.set('10px');
+    this.cardCtaMinHeight.set('48px');
+    this.cardCtaWidth.set('100%');
+    this.cardCtaPadding.set('0 20px');
+    this.cardCtaHoverBackgroundColor.set('#095c42');
+    this.cardCtaHoverTextColor.set('#ffffff');
+    this.cardCtaDisabledBackgroundColor.set('#4b5563');
+    this.cardCtaDisabledTextColor.set('#d1d5db');
+    this.cardCtaLoadingBackgroundColor.set('#1f2937');
+    this.cardCtaLoadingTextColor.set('#f9fafb');
+    this.cardCtaFocusOutlineColor.set('#22c55e');
+    this.cardCtaFocusOutlineWidth.set('2px');
+    this.cardCtaFocusOutlineOffset.set('2px');
+  }
+
+  resetCardButtonAppearance(): void {
+    this.cardCtaLabel.set('');
+    this.cardCtaBackgroundColor.set('');
+    this.cardCtaTextColor.set('');
+    this.cardCtaFontFamily.set('');
+    this.cardCtaFontSize.set('');
+    this.cardCtaFontWeight.set('');
+    this.cardCtaTextAlign.set('');
+    this.cardCtaBorder.set('default');
+    this.cardCtaBorderWidth.set('');
+    this.cardCtaBorderStyle.set('');
+    this.cardCtaBorderColor.set('');
+    this.cardCtaBorderRadius.set('');
+    this.cardCtaMinHeight.set('');
+    this.cardCtaWidth.set('');
+    this.cardCtaPadding.set('');
+    this.cardCtaHoverBackgroundColor.set('');
+    this.cardCtaHoverTextColor.set('');
+    this.cardCtaDisabledBackgroundColor.set('');
+    this.cardCtaDisabledTextColor.set('');
+    this.cardCtaLoadingBackgroundColor.set('');
+    this.cardCtaLoadingTextColor.set('');
+    this.cardCtaFocusOutlineColor.set('');
+    this.cardCtaFocusOutlineWidth.set('');
+    this.cardCtaFocusOutlineOffset.set('');
   }
 
   async copyButtonsCodeExample(): Promise<void> {

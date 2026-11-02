@@ -363,6 +363,89 @@ describe('App', () => {
     expect(host.style.maxWidth).toBe('1100px');
   });
 
+  it('organizes playground controls into labeled collapsible sections', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    const root = fixture.nativeElement as HTMLElement;
+    const sectionIds = [
+      'config-section-experience',
+      'config-section-providers',
+      'config-section-checkout-product',
+      'config-section-payment-methods',
+      'config-section-card-cta',
+      'config-section-theme',
+      'config-section-locale',
+      'config-section-testing',
+    ];
+    for (const id of sectionIds) {
+      expect(root.querySelector(`[data-testid="${id}"]`)).toBeTruthy();
+    }
+
+    const cardCta = root.querySelector(
+      '[data-testid="config-section-card-cta"]',
+    ) as HTMLDetailsElement;
+    expect(cardCta.open).toBeFalse();
+    expect(cardCta.textContent).toContain('Stripe Card payment button appearance');
+    expect(cardCta.textContent).toContain('Both components');
+    expect(cardCta.textContent).toContain('confirmation');
+
+    const methods = root.querySelector(
+      '[data-testid="config-section-payment-methods"]',
+    ) as HTMLDetailsElement;
+    expect(methods.open).toBeTrue();
+    expect(methods.textContent).toContain('not the Card confirmation CTA');
+
+    cardCta.open = true;
+    fixture.detectChanges();
+    expect(cardCta.open).toBeTrue();
+    expect(root.querySelector('[data-testid="card-cta-label"]')).toBeTruthy();
+
+    expect(root.querySelector('[data-testid="config-section-buttons-appearance"]')).toBeNull();
+    fixture.componentInstance.setPlaygroundExperience('buttons');
+    fixture.detectChanges();
+    const buttonsSection = root.querySelector(
+      '[data-testid="config-section-buttons-appearance"]',
+    ) as HTMLDetailsElement;
+    expect(buttonsSection).toBeTruthy();
+    expect(buttonsSection.open).toBeTrue();
+    expect(buttonsSection.textContent).toContain('Payment method buttons appearance');
+    expect(buttonsSection.textContent).toContain('not the Stripe Card');
+  });
+
+  it('applies and resets Stripe Card CTA appearance for both hosts', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+
+    expect(app.cardButtonAppearance()).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="card-cta-active"]')
+        ?.textContent,
+    ).toContain('null (theme defaults)');
+
+    app.applyCardCtaSample();
+    fixture.detectChanges();
+    expect(app.cardButtonAppearance()?.label).toBe('Complete card payment');
+    expect(app.cardButtonAppearance()?.backgroundColor).toBe('#0b6e4f');
+    expect(app.cardButtonAppearance()?.border).toBe('none');
+
+    const checkout = fixture.nativeElement.querySelector('easy-payments') as HTMLElement;
+    expect(checkout).toBeTruthy();
+
+    app.setPlaygroundExperience('buttons');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('easy-payment-buttons')).toBeTruthy();
+    expect(app.buttonsCodeExample()).toContain('cardButtonAppearance');
+    expect(app.buttonsCodeExample()).toContain('Complete card payment');
+
+    app.resetCardButtonAppearance();
+    fixture.detectChanges();
+    expect(app.cardButtonAppearance()).toBeNull();
+  });
+
   it('exposes Phase 3 visualStyle QA controls and applies presets live', async () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;

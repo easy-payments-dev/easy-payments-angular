@@ -12,6 +12,7 @@
       <h1>Payment playground</h1>
       <p class="lede">
         Configure the library on the left. Preview Full Checkout or Payment Buttons Only on the right.
+        Sections are grouped by what they change — method tiles are separate from the Stripe Card confirm button.
       </p>
     </div>
     @if (mode() === 'demo') {
@@ -24,774 +25,1187 @@
   <div class="demo-layout">
     <aside class="panel" aria-label="Developer playground controls">
       <p class="panel-kicker">Developer controls</p>
+      <p class="panel-intro">
+        Each section lists which surface it affects:
+        <code>&lt;easy-payments&gt;</code> (Full Checkout),
+        <code>&lt;easy-payment-buttons&gt;</code> (Buttons Only), both, or demo-only.
+      </p>
 
-      <section>
-        <h2>Experience</h2>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Playground experience</legend>
-          <label class="choice">
-            <input
-              type="radio"
-              name="playgroundExperience"
-              value="checkout"
-              [checked]="playgroundExperience() === 'checkout'"
-              (change)="setPlaygroundExperience('checkout')"
-            />
-            <span>Full Checkout</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="playgroundExperience"
-              value="buttons"
-              [checked]="playgroundExperience() === 'buttons'"
-              (change)="setPlaygroundExperience('buttons')"
-            />
-            <span>Payment Buttons Only</span>
-          </label>
-        </fieldset>
-        <p class="hint">
-          Full Checkout is <code>&lt;easy-payments&gt;</code>. Buttons Only is
-          <code>&lt;easy-payment-buttons&gt;</code> — a compact strip for your own checkout UI.
-        </p>
-      </section>
-
-      <section>
-        <h2>Mode</h2>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Payment mode</legend>
-          <label class="choice">
-            <input
-              type="radio"
-              name="mode"
-              value="demo"
-              [checked]="mode() === 'demo'"
-              [disabled]="switchingMode()"
-              (change)="setMode('demo')"
-            />
-            <span>Demo Mode</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="mode"
-              value="real"
-              [checked]="mode() === 'real'"
-              [disabled]="switchingMode()"
-              (change)="setMode('real')"
-            />
-            <span>Real / Test Providers</span>
-          </label>
-        </fieldset>
-        <p class="hint">
-          Configured providers become real (Stripe TEST / PayPal Sandbox / Google Pay TEST / Klarna & Affirm via Stripe).
-          Unconfigured methods stay unavailable. Set keys in <code>environment.ts</code> and
-          secrets in <code>server/.env</code>.
-        </p>
-        @if (!realProvidersReady()) {
+      <!-- 1. Experience -->
+      <details class="config-section" open data-testid="config-section-experience">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Experience</span>
+            <span class="config-section__scope">Demo preview</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
           <p class="hint">
-            Add at least one of: Stripe <code>pk_test_...</code> or PayPal Sandbox Client ID.
+            Switches the live preview between Full Checkout and Buttons Only. Does not change provider
+            credentials.
           </p>
-        } @else {
-          <ul class="status-list">
-            <li>Stripe: {{ stripeConfigReady() ? 'ready' : 'not configured' }}</li>
-            <li>PayPal: {{ paypalConfigReady() ? 'ready' : 'not configured' }}</li>
-            <li>
-              Google Pay:
-              {{ stripeConfigReady() ? 'configured (availability via isReadyToPay)' : 'needs Stripe' }}
-            </li>
-            <li>
-              Klarna:
-              {{ stripeConfigReady() ? 'configured via Stripe' : 'needs Stripe' }}
-            </li>
-            <li>
-              Affirm:
-              {{ stripeConfigReady() ? 'configured via Stripe' : 'needs Stripe' }}
-            </li>
-            <li>
-              Apple Pay:
-              {{ stripeConfigReady() ? 'configured via Stripe (tile only if ECE available)' : 'needs Stripe' }}
-            </li>
-          </ul>
-        }
-        @if (modeMessage()) {
-          <p class="mode-warning" role="alert">{{ modeMessage() }}</p>
-        }
-      </section>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Playground experience</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="playgroundExperience"
+                value="checkout"
+                [checked]="playgroundExperience() === 'checkout'"
+                (change)="setPlaygroundExperience('checkout')"
+              />
+              <span>Full Checkout</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="playgroundExperience"
+                value="buttons"
+                [checked]="playgroundExperience() === 'buttons'"
+                (change)="setPlaygroundExperience('buttons')"
+              />
+              <span>Payment Buttons Only</span>
+            </label>
+          </fieldset>
+          <p class="hint">
+            Full Checkout is <code>&lt;easy-payments&gt;</code>. Buttons Only is
+            <code>&lt;easy-payment-buttons&gt;</code> — a compact strip for your own checkout UI.
+          </p>
+        </div>
+      </details>
 
-      <section aria-label="Merchant metadata example" data-testid="merchant-metadata-example">
-        <h2>Merchant metadata</h2>
-        <p class="hint">
-          Optional product metadata for this checkout:
-          orderId ORDER-12345, customerReference CUSTOMER-789.
-          Reference data only. Do not put card numbers, secrets, or personal data here.
-        </p>
-      </section>
-
-      <section aria-label="Developer diagnostics" data-testid="developer-diagnostics">
-        <h2>Diagnostics</h2>
-        <p class="hint">
-          Developer readiness for the current checkout. Customer-facing payment errors stay inside the form.
-        </p>
-        @if (!paymentDiagnostics().published) {
-          <p class="hint">Waiting for checkout availability.</p>
-        } @else if (paymentDiagnostics().methods.length === 0) {
-          <p class="hint">No payment methods are included in this checkout.</p>
-        } @else {
-          <ul class="status-list">
-            @for (entry of paymentDiagnostics().methods; track entry.method) {
+      <!-- 2. Mode & providers -->
+      <details class="config-section" open data-testid="config-section-providers">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Provider &amp; integration</span>
+            <span class="config-section__scope">Both components</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Demo Mode uses mock payments. Real / Test Providers uses configured Stripe TEST / PayPal
+            Sandbox (and related wallets). Keys live in <code>environment.ts</code> and
+            <code>server/.env</code> — not in this panel.
+          </p>
+          <h3 class="subheading">Mode</h3>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Payment mode</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="mode"
+                value="demo"
+                [checked]="mode() === 'demo'"
+                [disabled]="switchingMode()"
+                (change)="setMode('demo')"
+              />
+              <span>Demo Mode</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="mode"
+                value="real"
+                [checked]="mode() === 'real'"
+                [disabled]="switchingMode()"
+                (change)="setMode('real')"
+              />
+              <span>Real / Test Providers</span>
+            </label>
+          </fieldset>
+          @if (!realProvidersReady()) {
+            <p class="hint">
+              Add at least one of: Stripe <code>pk_test_...</code> or PayPal Sandbox Client ID.
+            </p>
+          } @else {
+            <ul class="status-list">
+              <li>Stripe: {{ stripeConfigReady() ? 'ready' : 'not configured' }}</li>
+              <li>PayPal: {{ paypalConfigReady() ? 'ready' : 'not configured' }}</li>
               <li>
-                {{ entry.method }} · {{ entry.provider }} · {{ entry.readiness }}
-                @if (entry.code) {
-                  · {{ entry.code }}
-                }
+                Google Pay:
+                {{ stripeConfigReady() ? 'configured (availability via isReadyToPay)' : 'needs Stripe' }}
+              </li>
+              <li>
+                Klarna:
+                {{ stripeConfigReady() ? 'configured via Stripe' : 'needs Stripe' }}
+              </li>
+              <li>
+                Affirm:
+                {{ stripeConfigReady() ? 'configured via Stripe' : 'needs Stripe' }}
+              </li>
+              <li>
+                Apple Pay:
+                {{ stripeConfigReady() ? 'configured via Stripe (tile only if ECE available)' : 'needs Stripe' }}
+              </li>
+            </ul>
+          }
+          @if (modeMessage()) {
+            <p class="mode-warning" role="alert">{{ modeMessage() }}</p>
+          }
+
+          <h3 class="subheading">Provider status</h3>
+          <p class="hint">Library validator summary for the enabled methods.</p>
+          <ul class="status-list">
+            @for (line of configStatus(); track line) {
+              <li>{{ line }}</li>
+            }
+          </ul>
+        </div>
+      </details>
+
+      <!-- 3. Checkout & Product -->
+      <details class="config-section" open data-testid="config-section-checkout-product">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Checkout &amp; product</span>
+            <span class="config-section__scope">Both · width: Full Checkout</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Product fields feed <code>[product]</code> on both components. Checkout width
+            (<code>[maxWidth]</code>) applies to Full Checkout only.
+          </p>
+
+          <section aria-label="Merchant metadata example" data-testid="merchant-metadata-example">
+            <h3 class="subheading">Merchant metadata</h3>
+            <p class="hint">
+              Optional product metadata for this checkout:
+              orderId ORDER-12345, customerReference CUSTOMER-789.
+              Reference data only. Do not put card numbers, secrets, or personal data here.
+            </p>
+          </section>
+
+          <h3 class="subheading">Product</h3>
+          <p class="hint">
+            Editable in every mode. In Real / Test Providers the NestJS catalog seeds these fields
+            (<code>premium-plan</code> → $99.00 USD) and the amount you set here is what the backend
+            charges for Stripe flows (card, Apple Pay, Google Pay). PayPal, Klarna and Affirm always
+            use the catalog price, since the library never sends them a browser amount.
+            Affirm also requires a checkout total of at least ~$35 before its tile appears.
+          </p>
+          <label class="field">
+            <span>Name</span>
+            <input
+              type="text"
+              [value]="productName()"
+              [disabled]="productFieldsLocked()"
+              (input)="productName.set($any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Description</span>
+            <input
+              type="text"
+              [value]="productDescription()"
+              [disabled]="productFieldsLocked()"
+              (input)="productDescription.set($any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Amount</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              [value]="productAmount()"
+              [disabled]="productFieldsLocked()"
+              (input)="productAmount.set($any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Currency</span>
+            <input
+              type="text"
+              maxlength="3"
+              [value]="productCurrency()"
+              [disabled]="productFieldsLocked()"
+              (input)="productCurrency.set($any($event.target).value)"
+            />
+          </label>
+          <label class="field">
+            <span>Quantity</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              [value]="productQuantity()"
+              (input)="productQuantity.set($any($event.target).value)"
+            />
+          </label>
+
+          @if (playgroundExperience() === 'checkout') {
+            <h3 class="subheading">Checkout width</h3>
+            <p class="hint">
+              Public <code>[maxWidth]</code> input. The library clamps 320–1200 and reflows the
+              payment grid from the component container width.
+            </p>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Checkout width preset</legend>
+              @for (
+                preset of [
+                  { label: 'Default — 640', value: 640 },
+                  { label: 'Wide — 900', value: 900 },
+                  { label: 'Extra Wide — 1100', value: 1100 }
+                ];
+                track preset.value
+              ) {
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="checkout-width"
+                    [value]="preset.value"
+                    [checked]="checkoutMaxWidth() === preset.value"
+                    (change)="setCheckoutMaxWidth(preset.value)"
+                  />
+                  <span>{{ preset.label }}</span>
+                </label>
+              }
+            </fieldset>
+            <label class="field">
+              <span>maxWidth ({{ checkoutMaxWidth() }} px)</span>
+              <input
+                type="range"
+                min="320"
+                max="1200"
+                step="20"
+                [value]="checkoutMaxWidth()"
+                (input)="setCheckoutMaxWidth($any($event.target).value)"
+              />
+            </label>
+          }
+        </div>
+      </details>
+
+      <!-- 4. Payment methods -->
+      <details class="config-section" open data-testid="config-section-payment-methods">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Payment methods</span>
+            <span class="config-section__scope">Both components</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Enable, disable, and reorder methods via <code>[methods]</code>. Array order is the
+            visual order of method tiles / strip buttons — not the Card confirmation CTA.
+          </p>
+          <ul class="method-list">
+            @for (row of methodRows(); track row.method; let i = $index) {
+              <li>
+                <label>
+                  <input
+                    type="checkbox"
+                    [checked]="row.enabled"
+                    (change)="toggleMethod(row.method, $any($event.target).checked)"
+                  />
+                  <span>{{ methodLabel(row.method) }}</span>
+                </label>
+                <span class="reorder">
+                  <button
+                    type="button"
+                    [disabled]="i === 0"
+                    (click)="moveMethod(i, -1)"
+                    [attr.aria-label]="'Move ' + methodLabel(row.method) + ' up'"
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    [disabled]="i === methodRows().length - 1"
+                    (click)="moveMethod(i, 1)"
+                    [attr.aria-label]="'Move ' + methodLabel(row.method) + ' down'"
+                  >
+                    Down
+                  </button>
+                </span>
               </li>
             }
           </ul>
-        }
-      </section>
-
-      <section>
-        <h2>Product</h2>
-        <p class="hint">
-          Editable in every mode. In Real / Test Providers the NestJS catalog seeds these fields
-          (<code>premium-plan</code> → $99.00 USD) and the amount you set here is what the backend
-          charges for Stripe flows (card, Apple Pay, Google Pay). PayPal, Klarna and Affirm always
-          use the catalog price, since the library never sends them a browser amount.
-          Affirm also requires a checkout total of at least ~$35 before its tile appears.
-        </p>
-        <label class="field">
-          <span>Name</span>
-          <input
-            type="text"
-            [value]="productName()"
-            [disabled]="productFieldsLocked()"
-            (input)="productName.set($any($event.target).value)"
-          />
-        </label>
-        <label class="field">
-          <span>Description</span>
-          <input
-            type="text"
-            [value]="productDescription()"
-            [disabled]="productFieldsLocked()"
-            (input)="productDescription.set($any($event.target).value)"
-          />
-        </label>
-        <label class="field">
-          <span>Amount</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            [value]="productAmount()"
-            [disabled]="productFieldsLocked()"
-            (input)="productAmount.set($any($event.target).value)"
-          />
-        </label>
-        <label class="field">
-          <span>Currency</span>
-          <input
-            type="text"
-            maxlength="3"
-            [value]="productCurrency()"
-            [disabled]="productFieldsLocked()"
-            (input)="productCurrency.set($any($event.target).value)"
-          />
-        </label>
-        <label class="field">
-          <span>Quantity</span>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            [value]="productQuantity()"
-            (input)="productQuantity.set($any($event.target).value)"
-          />
-        </label>
-      </section>
-
-      <section>
-        <h2>Theme</h2>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Theme</legend>
-          @for (option of ['light', 'dark', 'system']; track option) {
-            <label class="choice">
-              <input
-                type="radio"
-                name="theme"
-                [value]="option"
-                [checked]="theme() === option"
-                (change)="setTheme($any($event.target).value)"
-              />
-              <span>{{ option }}</span>
-            </label>
-          }
-        </fieldset>
-      </section>
-
-      <section>
-        <h2>Locale</h2>
-        <p class="hint">
-          Public <code>[locale]</code> input. Auto uses the browser language
-          (<code>es-*</code> → Spanish, <code>pt-*</code> → Portuguese, otherwise English).
-        </p>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Locale</legend>
-          <label class="choice">
-            <input
-              type="radio"
-              name="locale"
-              value="auto"
-              [checked]="locale() === 'auto'"
-              (change)="setLocale('auto')"
-            />
-            <span>Auto</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="locale"
-              value="en"
-              [checked]="locale() === 'en'"
-              (change)="setLocale('en')"
-            />
-            <span>English</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="locale"
-              value="es"
-              [checked]="locale() === 'es'"
-              (change)="setLocale('es')"
-            />
-            <span>Español</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="locale"
-              value="pt"
-              [checked]="locale() === 'pt'"
-              (change)="setLocale('pt')"
-            />
-            <span>Português</span>
-          </label>
-        </fieldset>
-        <p class="hint">
-          Requested: <code>{{ locale() }}</code> · Effective:
-          <code>{{ effectiveLocale() }}</code>
-        </p>
-      </section>
-
-      @if (playgroundExperience() === 'checkout') {
-      <section>
-        <h2>Appearance</h2>
-        <p class="hint">
-          Public <code>[appearance]</code> input. Transparent removes the built-in checkout shell
-          so a merchant parent background can show through.
-        </p>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Appearance</legend>
-          <label class="choice">
-            <input
-              type="radio"
-              name="appearance"
-              value="default"
-              [checked]="appearance() === 'default'"
-              (change)="setAppearance('default')"
-            />
-            <span>Default</span>
-          </label>
-          <label class="choice">
-            <input
-              type="radio"
-              name="appearance"
-              value="transparent"
-              [checked]="appearance() === 'transparent'"
-              (change)="setAppearance('transparent')"
-            />
-            <span>Transparent</span>
-          </label>
-        </fieldset>
-        @if (appearance() === 'transparent') {
-          <p class="hint">Preview parent background (demo only):</p>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Transparent preview backdrop</legend>
-            <label class="choice">
-              <input
-                type="radio"
-                name="transparent-backdrop"
-                value="light"
-                [checked]="transparentPreviewBackdrop() === 'light'"
-                (change)="setTransparentPreviewBackdrop('light')"
-              />
-              <span>Light gradient</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="transparent-backdrop"
-                value="dark"
-                [checked]="transparentPreviewBackdrop() === 'dark'"
-                (change)="setTransparentPreviewBackdrop('dark')"
-              />
-              <span>Dark gradient</span>
-            </label>
-          </fieldset>
-        }
-      </section>
-
-      <section data-testid="phase3-visual-qa" aria-label="Phase 3 visual customization QA">
-        <h2>Visual style (Phase 3 QA)</h2>
-        <p class="hint">
-          Demo-only harness for <code>[visualStyle]</code>. Live-updates the checkout on the right.
-          See <code>docs/phase-3-visual-qa.md</code> for the manual checklist.
-        </p>
-
-        <h3 class="subheading">Presets</h3>
-        <fieldset class="choice-group choice-group--stack">
-          <legend class="visually-hidden">Visual style presets</legend>
-          @for (preset of visualQaPresets; track preset.id) {
-            <label class="choice">
-              <input
-                type="radio"
-                name="visual-qa-preset"
-                [value]="preset.id"
-                [checked]="visualQaPresetId() === preset.id"
-                (change)="applyVisualQaPreset(preset.id)"
-              />
-              <span>
-                {{ preset.label }}
-                <span class="choice-note">{{ preset.description }}</span>
-              </span>
-            </label>
-          }
-        </fieldset>
-        @if (visualQaPresetId() === 'custom') {
-          <p class="hint">Custom edits — preset selection cleared.</p>
-        }
-        @if (visualQaPresetId() === 'low-contrast') {
-          <p class="mode-warning" role="status">
-            Low-contrast preset: open DevTools → Console. Expect developer-only
-            <code>[Easy Payments] Low contrast…</code> warnings in <code>ng serve</code>
-            (Angular dev mode). Nothing is shown inside the buyer checkout UI.
-          </p>
-        }
-
-        <h3 class="subheading">Fields</h3>
-        @for (field of visualStyleFields; track field.key) {
-          <label class="field">
-            <span>{{ field.label }}</span>
-            <input
-              type="text"
-              [attr.data-testid]="'visual-style-' + field.key"
-              [placeholder]="field.placeholder"
-              [value]="visualStyleFieldValue(field.key)"
-              (input)="updateVisualStyleField(field.key, $any($event.target).value)"
-            />
-          </label>
-        }
-        <div class="action-row">
-          <button
-            type="button"
-            class="demo-action"
-            data-testid="visual-style-reset"
-            (click)="resetVisualStyle()"
-          >
-            Reset to Defaults
-          </button>
         </div>
-        <p class="hint">
-          Active style:
-          <code data-testid="visual-style-active">{{ visualStyleSummary() }}</code>
-        </p>
+      </details>
 
-        <h3 class="subheading">Multi-instance theme check</h3>
-        <p class="hint">
-          Off by default. When enabled, mounts a second pair of checkouts (light + dark) below
-          the primary preview. Themes should stay independent; payment sessions share one
-          orchestrator — use Demo Mode only for this check.
-        </p>
-        <label class="choice">
-          <input
-            type="checkbox"
-            data-testid="multi-instance-qa-toggle"
-            [checked]="showMultiInstanceQa()"
-            (change)="setShowMultiInstanceQa($any($event.target).checked)"
-          />
-          <span>Show dual-instance theme QA</span>
-        </label>
-      </section>
+      <!-- 5. Payment method buttons appearance (Buttons Only) -->
+      @if (playgroundExperience() === 'buttons') {
+        <details class="config-section" open data-testid="config-section-buttons-appearance">
+          <summary class="config-section__summary">
+            <span class="config-section__heading">
+              <span class="config-section__title">Payment method buttons appearance</span>
+              <span class="config-section__scope">Buttons Only</span>
+            </span>
+          </summary>
+          <div class="config-section__body">
+            <p class="hint">
+              Styles the payment-method <strong>strip</strong>
+              (<code>[layout]</code> + <code>[buttonsAppearance]</code>): gaps, separators, selector
+              borders, and sizes. This is <em>not</em> the Stripe Card “Pay with card” confirmation
+              button — that lives in the Card CTA section below. Official PayPal / Google Pay /
+              Apple Pay SDK chrome stays provider-branded.
+            </p>
 
-      <section>
-        <h2>Checkout width</h2>
-        <p class="hint">
-          Public <code>[maxWidth]</code> input. The library clamps 320–1200 and reflows the
-          payment grid from the component container width.
-        </p>
-        <fieldset class="choice-group">
-          <legend class="visually-hidden">Checkout width preset</legend>
-          @for (
-            preset of [
-              { label: 'Default — 640', value: 640 },
-              { label: 'Wide — 900', value: 900 },
-              { label: 'Extra Wide — 1100', value: 1100 }
-            ];
-            track preset.value
-          ) {
-            <label class="choice">
-              <input
-                type="radio"
-                name="checkout-width"
-                [value]="preset.value"
-                [checked]="checkoutMaxWidth() === preset.value"
-                (change)="setCheckoutMaxWidth(preset.value)"
-              />
-              <span>{{ preset.label }}</span>
-            </label>
-          }
-        </fieldset>
-        <label class="field">
-          <span>maxWidth ({{ checkoutMaxWidth() }} px)</span>
-          <input
-            type="range"
-            min="320"
-            max="1200"
-            step="20"
-            [value]="checkoutMaxWidth()"
-            (input)="setCheckoutMaxWidth($any($event.target).value)"
-          />
-        </label>
-      </section>
-      }
-
-      @if (mode() === 'demo') {
-        <section>
-          <h2>Next mock payment</h2>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Mock payment outcome</legend>
-            @for (option of ['success', 'cancelled', 'failed']; track option) {
+            <h3 class="subheading">Layout</h3>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Buttons layout</legend>
               <label class="choice">
                 <input
                   type="radio"
-                  name="mock-outcome"
-                  [value]="option"
-                  [checked]="mockOutcome() === option"
-                  (change)="setMockOutcome($any($event.target).value)"
+                  name="buttonsLayout"
+                  value="horizontal"
+                  [checked]="buttonsLayout() === 'horizontal'"
+                  (change)="setButtonsLayout('horizontal')"
                 />
-                <span>{{ option }}</span>
+                <span>Horizontal</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsLayout"
+                  value="vertical"
+                  [checked]="buttonsLayout() === 'vertical'"
+                  (change)="setButtonsLayout('vertical')"
+                />
+                <span>Vertical</span>
+              </label>
+            </fieldset>
+
+            <h3 class="subheading">Separators</h3>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Separators</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsSeparators"
+                  value="none"
+                  [checked]="buttonsSeparators() === 'none'"
+                  (change)="setButtonsSeparators('none')"
+                />
+                <span>None</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsSeparators"
+                  value="line"
+                  [checked]="buttonsSeparators() === 'line'"
+                  (change)="setButtonsSeparators('line')"
+                />
+                <span>Line</span>
+              </label>
+            </fieldset>
+            @if (buttonsSeparators() === 'line') {
+              <label class="field">
+                <span>Separator color</span>
+                <input
+                  type="text"
+                  [value]="buttonsSeparatorColor()"
+                  (input)="buttonsSeparatorColor.set($any($event.target).value)"
+                  placeholder="#e2e8f0"
+                />
+              </label>
+            }
+
+            <h3 class="subheading">Strip background</h3>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Strip background</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBg"
+                  value="transparent"
+                  [checked]="buttonsBackgroundPreset() === 'transparent'"
+                  (change)="setButtonsBackgroundPreset('transparent')"
+                />
+                <span>Transparent</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBg"
+                  value="light"
+                  [checked]="buttonsBackgroundPreset() === 'light'"
+                  (change)="setButtonsBackgroundPreset('light')"
+                />
+                <span>Light</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBg"
+                  value="dark"
+                  [checked]="buttonsBackgroundPreset() === 'dark'"
+                  (change)="setButtonsBackgroundPreset('dark')"
+                />
+                <span>Dark</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBg"
+                  value="custom"
+                  [checked]="buttonsBackgroundPreset() === 'custom'"
+                  (change)="setButtonsBackgroundPreset('custom')"
+                />
+                <span>Custom</span>
+              </label>
+            </fieldset>
+            @if (buttonsBackgroundPreset() === 'custom') {
+              <label class="field">
+                <span>Custom background</span>
+                <input
+                  type="text"
+                  [value]="buttonsBackgroundCustom()"
+                  (input)="buttonsBackgroundCustom.set($any($event.target).value)"
+                  placeholder="#f8fafc"
+                />
+              </label>
+            }
+
+            <h3 class="subheading">Selector borders</h3>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Selector borders</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBorder"
+                  value="default"
+                  [checked]="buttonsBorder() === 'default'"
+                  (change)="setButtonsBorder('default')"
+                />
+                <span>Default</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBorder"
+                  value="none"
+                  [checked]="buttonsBorder() === 'none'"
+                  (change)="setButtonsBorder('none')"
+                />
+                <span>None</span>
+              </label>
+            </fieldset>
+            @if (buttonsBorder() === 'default') {
+              <label class="field">
+                <span>Border color</span>
+                <input
+                  type="text"
+                  [value]="buttonsBorderColor()"
+                  (input)="buttonsBorderColor.set($any($event.target).value)"
+                  placeholder="#e2e8f0"
+                />
+              </label>
+              <label class="field">
+                <span>Border width</span>
+                <input
+                  type="text"
+                  [value]="buttonsBorderWidth()"
+                  (input)="buttonsBorderWidth.set($any($event.target).value)"
+                  placeholder="1px"
+                />
+              </label>
+            }
+
+            <h3 class="subheading">Radius &amp; spacing</h3>
+            <label class="field">
+              <span>Border radius ({{ buttonsBorderRadius() }}px)</span>
+              <input
+                type="range"
+                min="0"
+                max="24"
+                [value]="buttonsBorderRadius()"
+                (input)="buttonsBorderRadius.set(+$any($event.target).value)"
+              />
+            </label>
+            <label class="field">
+              <span>Gap ({{ buttonsGap() }}px)</span>
+              <input
+                type="range"
+                min="0"
+                max="32"
+                [value]="buttonsGap()"
+                (input)="buttonsGap.set(+$any($event.target).value)"
+              />
+            </label>
+            <label class="field">
+              <span>Outer padding ({{ buttonsPadding() }}px)</span>
+              <input
+                type="range"
+                min="0"
+                max="32"
+                [value]="buttonsPadding()"
+                (input)="buttonsPadding.set(+$any($event.target).value)"
+              />
+            </label>
+
+            <h3 class="subheading">Button size</h3>
+            <label class="field">
+              <span>Height ({{ buttonsHeight() }}px)</span>
+              <input
+                type="range"
+                min="32"
+                max="56"
+                [value]="buttonsHeight()"
+                (input)="buttonsHeight.set(+$any($event.target).value)"
+              />
+            </label>
+            <label class="field">
+              <span>Min width ({{ buttonsMinWidth() }}px)</span>
+              <input
+                type="range"
+                min="72"
+                max="220"
+                [value]="buttonsMinWidth()"
+                (input)="buttonsMinWidth.set(+$any($event.target).value)"
+              />
+            </label>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Button width mode</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsWidthMode"
+                  value="auto"
+                  [checked]="buttonsWidthMode() === 'auto'"
+                  (change)="buttonsWidthMode.set('auto')"
+                />
+                <span>Fluid width</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsWidthMode"
+                  value="fixed"
+                  [checked]="buttonsWidthMode() === 'fixed'"
+                  (change)="buttonsWidthMode.set('fixed')"
+                />
+                <span>Fixed width</span>
+              </label>
+            </fieldset>
+            @if (buttonsWidthMode() === 'fixed') {
+              <label class="field">
+                <span>Fixed width ({{ buttonsFixedWidth() }}px)</span>
+                <input
+                  type="range"
+                  min="100"
+                  max="280"
+                  [value]="buttonsFixedWidth()"
+                  (input)="buttonsFixedWidth.set(+$any($event.target).value)"
+                />
+              </label>
+            }
+
+            <h3 class="subheading">Redirect ownership</h3>
+            <label class="field">
+              <span>checkoutInstanceId</span>
+              <input
+                type="text"
+                [value]="buttonsCheckoutInstanceId()"
+                (input)="buttonsCheckoutInstanceId.set($any($event.target).value)"
+              />
+            </label>
+          </div>
+        </details>
+      }
+
+      <!-- 6. Stripe Card CTA appearance -->
+      <details class="config-section" data-testid="config-section-card-cta">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Stripe Card payment button appearance</span>
+            <span class="config-section__scope">Both components</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Public <code>[cardButtonAppearance]</code> for the Easy Payments–owned Card
+            <strong>confirmation</strong> button (Full Checkout: “Pay amount”; Buttons Only:
+            “Pay with card”). Does <em>not</em> restyle the Stripe Payment Element iframe or
+            PayPal / Google Pay / Apple Pay SDK buttons. Empty fields keep theme defaults
+            (light slate CTA / dark accent-mixed CTA).
+          </p>
+          <div class="action-row">
+            <button
+              type="button"
+              class="demo-action"
+              data-testid="card-cta-apply-sample"
+              (click)="applyCardCtaSample()"
+            >
+              Apply sample style
+            </button>
+            <button
+              type="button"
+              class="demo-action"
+              data-testid="card-cta-reset"
+              (click)="resetCardButtonAppearance()"
+            >
+              Reset to defaults
+            </button>
+          </div>
+          <p class="hint">
+            Active:
+            <code data-testid="card-cta-active">{{ cardButtonAppearanceSummary() }}</code>
+          </p>
+
+          <h3 class="subheading">Label</h3>
+          <label class="field">
+            <span>Idle label override (plain text)</span>
+            <input
+              type="text"
+              data-testid="card-cta-label"
+              [value]="cardCtaLabel()"
+              (input)="cardCtaLabel.set($any($event.target).value)"
+              placeholder="Leave empty for localized default"
+            />
+          </label>
+
+          <h3 class="subheading">Colors</h3>
+          <label class="field">
+            <span>Background</span>
+            <input
+              type="text"
+              data-testid="card-cta-background"
+              [value]="cardCtaBackgroundColor()"
+              (input)="cardCtaBackgroundColor.set($any($event.target).value)"
+              placeholder="#0f172a"
+            />
+          </label>
+          <label class="field">
+            <span>Text</span>
+            <input
+              type="text"
+              [value]="cardCtaTextColor()"
+              (input)="cardCtaTextColor.set($any($event.target).value)"
+              placeholder="#f8fafc"
+            />
+          </label>
+
+          <h3 class="subheading">Typography</h3>
+          <label class="field">
+            <span>Font family</span>
+            <input
+              type="text"
+              [value]="cardCtaFontFamily()"
+              (input)="cardCtaFontFamily.set($any($event.target).value)"
+              placeholder="Georgia, serif"
+            />
+          </label>
+          <label class="field">
+            <span>Font size</span>
+            <input
+              type="text"
+              [value]="cardCtaFontSize()"
+              (input)="cardCtaFontSize.set($any($event.target).value)"
+              placeholder="16px"
+            />
+          </label>
+          <label class="field">
+            <span>Font weight</span>
+            <input
+              type="text"
+              [value]="cardCtaFontWeight()"
+              (input)="cardCtaFontWeight.set($any($event.target).value)"
+              placeholder="700"
+            />
+          </label>
+          <fieldset class="choice-group">
+            <legend class="field-legend">Text align</legend>
+            @for (align of ['', 'left', 'center', 'right', 'start', 'end']; track align) {
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="cardCtaTextAlign"
+                  [value]="align"
+                  [checked]="cardCtaTextAlign() === align"
+                  (change)="setCardCtaTextAlign($any($event.target).value)"
+                />
+                <span>{{ align || 'default' }}</span>
               </label>
             }
           </fieldset>
-        </section>
-      }
 
-      <section>
-        <h2>Payment methods</h2>
-        <p class="hint">Enable, disable, and reorder. The array order is the visual order.</p>
-        <ul class="method-list">
-          @for (row of methodRows(); track row.method; let i = $index) {
-            <li>
-              <label>
-                <input
-                  type="checkbox"
-                  [checked]="row.enabled"
-                  (change)="toggleMethod(row.method, $any($event.target).checked)"
-                />
-                <span>{{ methodLabel(row.method) }}</span>
-              </label>
-              <span class="reorder">
-                <button type="button" [disabled]="i === 0" (click)="moveMethod(i, -1)" [attr.aria-label]="'Move ' + methodLabel(row.method) + ' up'">
-                  Up
-                </button>
-                <button
-                  type="button"
-                  [disabled]="i === methodRows().length - 1"
-                  (click)="moveMethod(i, 1)"
-                  [attr.aria-label]="'Move ' + methodLabel(row.method) + ' down'"
-                >
-                  Down
-                </button>
-              </span>
-            </li>
-          }
-        </ul>
-      </section>
-
-      @if (playgroundExperience() === 'buttons') {
-        <section class="buttons-config" aria-label="Buttons Only appearance">
-          <h2>Buttons layout</h2>
+          <h3 class="subheading">Border &amp; size</h3>
           <fieldset class="choice-group">
-            <legend class="visually-hidden">Buttons layout</legend>
+            <legend class="visually-hidden">Card CTA border</legend>
             <label class="choice">
               <input
                 type="radio"
-                name="buttonsLayout"
-                value="horizontal"
-                [checked]="buttonsLayout() === 'horizontal'"
-                (change)="setButtonsLayout('horizontal')"
-              />
-              <span>Horizontal</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsLayout"
-                value="vertical"
-                [checked]="buttonsLayout() === 'vertical'"
-                (change)="setButtonsLayout('vertical')"
-              />
-              <span>Vertical</span>
-            </label>
-          </fieldset>
-
-          <h2>Separators</h2>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Separators</legend>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsSeparators"
-                value="none"
-                [checked]="buttonsSeparators() === 'none'"
-                (change)="setButtonsSeparators('none')"
-              />
-              <span>None</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsSeparators"
-                value="line"
-                [checked]="buttonsSeparators() === 'line'"
-                (change)="setButtonsSeparators('line')"
-              />
-              <span>Line</span>
-            </label>
-          </fieldset>
-          @if (buttonsSeparators() === 'line') {
-            <label class="field">
-              <span>Separator color</span>
-              <input
-                type="text"
-                [value]="buttonsSeparatorColor()"
-                (input)="buttonsSeparatorColor.set($any($event.target).value)"
-                placeholder="#e2e8f0"
-              />
-            </label>
-          }
-
-          <h2>Background</h2>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Strip background</legend>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsBg"
-                value="transparent"
-                [checked]="buttonsBackgroundPreset() === 'transparent'"
-                (change)="setButtonsBackgroundPreset('transparent')"
-              />
-              <span>Transparent</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsBg"
-                value="light"
-                [checked]="buttonsBackgroundPreset() === 'light'"
-                (change)="setButtonsBackgroundPreset('light')"
-              />
-              <span>Light</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsBg"
-                value="dark"
-                [checked]="buttonsBackgroundPreset() === 'dark'"
-                (change)="setButtonsBackgroundPreset('dark')"
-              />
-              <span>Dark</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsBg"
-                value="custom"
-                [checked]="buttonsBackgroundPreset() === 'custom'"
-                (change)="setButtonsBackgroundPreset('custom')"
-              />
-              <span>Custom</span>
-            </label>
-          </fieldset>
-          @if (buttonsBackgroundPreset() === 'custom') {
-            <label class="field">
-              <span>Custom background</span>
-              <input
-                type="text"
-                [value]="buttonsBackgroundCustom()"
-                (input)="buttonsBackgroundCustom.set($any($event.target).value)"
-                placeholder="#f8fafc"
-              />
-            </label>
-          }
-
-          <h2>Borders</h2>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Selector borders</legend>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsBorder"
+                name="cardCtaBorder"
                 value="default"
-                [checked]="buttonsBorder() === 'default'"
-                (change)="setButtonsBorder('default')"
+                [checked]="cardCtaBorder() === 'default'"
+                (change)="setCardCtaBorder('default')"
               />
               <span>Default</span>
             </label>
             <label class="choice">
               <input
                 type="radio"
-                name="buttonsBorder"
+                name="cardCtaBorder"
                 value="none"
-                [checked]="buttonsBorder() === 'none'"
-                (change)="setButtonsBorder('none')"
+                [checked]="cardCtaBorder() === 'none'"
+                (change)="setCardCtaBorder('none')"
               />
               <span>None</span>
             </label>
           </fieldset>
-          @if (buttonsBorder() === 'default') {
-            <label class="field">
-              <span>Border color</span>
-              <input
-                type="text"
-                [value]="buttonsBorderColor()"
-                (input)="buttonsBorderColor.set($any($event.target).value)"
-                placeholder="#e2e8f0"
-              />
-            </label>
+          @if (cardCtaBorder() !== 'none') {
             <label class="field">
               <span>Border width</span>
               <input
                 type="text"
-                [value]="buttonsBorderWidth()"
-                (input)="buttonsBorderWidth.set($any($event.target).value)"
+                [value]="cardCtaBorderWidth()"
+                (input)="cardCtaBorderWidth.set($any($event.target).value)"
                 placeholder="1px"
               />
             </label>
-          }
-
-          <h2>Radius &amp; spacing</h2>
-          <label class="field">
-            <span>Border radius ({{ buttonsBorderRadius() }}px)</span>
-            <input
-              type="range"
-              min="0"
-              max="24"
-              [value]="buttonsBorderRadius()"
-              (input)="buttonsBorderRadius.set(+$any($event.target).value)"
-            />
-          </label>
-          <label class="field">
-            <span>Gap ({{ buttonsGap() }}px)</span>
-            <input
-              type="range"
-              min="0"
-              max="32"
-              [value]="buttonsGap()"
-              (input)="buttonsGap.set(+$any($event.target).value)"
-            />
-          </label>
-          <label class="field">
-            <span>Outer padding ({{ buttonsPadding() }}px)</span>
-            <input
-              type="range"
-              min="0"
-              max="32"
-              [value]="buttonsPadding()"
-              (input)="buttonsPadding.set(+$any($event.target).value)"
-            />
-          </label>
-
-          <h2>Button size</h2>
-          <label class="field">
-            <span>Height ({{ buttonsHeight() }}px)</span>
-            <input
-              type="range"
-              min="32"
-              max="56"
-              [value]="buttonsHeight()"
-              (input)="buttonsHeight.set(+$any($event.target).value)"
-            />
-          </label>
-          <label class="field">
-            <span>Min width ({{ buttonsMinWidth() }}px)</span>
-            <input
-              type="range"
-              min="72"
-              max="220"
-              [value]="buttonsMinWidth()"
-              (input)="buttonsMinWidth.set(+$any($event.target).value)"
-            />
-          </label>
-          <fieldset class="choice-group">
-            <legend class="visually-hidden">Button width mode</legend>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsWidthMode"
-                value="auto"
-                [checked]="buttonsWidthMode() === 'auto'"
-                (change)="buttonsWidthMode.set('auto')"
-              />
-              <span>Fluid width</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="buttonsWidthMode"
-                value="fixed"
-                [checked]="buttonsWidthMode() === 'fixed'"
-                (change)="buttonsWidthMode.set('fixed')"
-              />
-              <span>Fixed width</span>
-            </label>
-          </fieldset>
-          @if (buttonsWidthMode() === 'fixed') {
             <label class="field">
-              <span>Fixed width ({{ buttonsFixedWidth() }}px)</span>
+              <span>Border style</span>
               <input
-                type="range"
-                min="100"
-                max="280"
-                [value]="buttonsFixedWidth()"
-                (input)="buttonsFixedWidth.set(+$any($event.target).value)"
+                type="text"
+                [value]="cardCtaBorderStyle()"
+                (input)="cardCtaBorderStyle.set($any($event.target).value)"
+                placeholder="solid"
+              />
+            </label>
+            <label class="field">
+              <span>Border color</span>
+              <input
+                type="text"
+                [value]="cardCtaBorderColor()"
+                (input)="cardCtaBorderColor.set($any($event.target).value)"
+                placeholder="#e2e8f0"
               />
             </label>
           }
-
           <label class="field">
-            <span>checkoutInstanceId</span>
+            <span>Border radius</span>
             <input
               type="text"
-              [value]="buttonsCheckoutInstanceId()"
-              (input)="buttonsCheckoutInstanceId.set($any($event.target).value)"
+              [value]="cardCtaBorderRadius()"
+              (input)="cardCtaBorderRadius.set($any($event.target).value)"
+              placeholder="10px"
             />
           </label>
-        </section>
-      }
+          <label class="field">
+            <span>Min height</span>
+            <input
+              type="text"
+              [value]="cardCtaMinHeight()"
+              (input)="cardCtaMinHeight.set($any($event.target).value)"
+              placeholder="48px"
+            />
+          </label>
+          <label class="field">
+            <span>Width</span>
+            <input
+              type="text"
+              [value]="cardCtaWidth()"
+              (input)="cardCtaWidth.set($any($event.target).value)"
+              placeholder="100%"
+            />
+          </label>
+          <label class="field">
+            <span>Padding</span>
+            <input
+              type="text"
+              [value]="cardCtaPadding()"
+              (input)="cardCtaPadding.set($any($event.target).value)"
+              placeholder="0 20px"
+            />
+          </label>
 
-      <section>
-        <h2>Provider status</h2>
-        <ul class="status-list">
-          @for (line of configStatus(); track line) {
-            <li>{{ line }}</li>
+          <h3 class="subheading">Hover / disabled / loading</h3>
+          <label class="field">
+            <span>Hover background</span>
+            <input
+              type="text"
+              [value]="cardCtaHoverBackgroundColor()"
+              (input)="cardCtaHoverBackgroundColor.set($any($event.target).value)"
+              placeholder="#1e293b"
+            />
+          </label>
+          <label class="field">
+            <span>Hover text</span>
+            <input
+              type="text"
+              [value]="cardCtaHoverTextColor()"
+              (input)="cardCtaHoverTextColor.set($any($event.target).value)"
+              placeholder="#ffffff"
+            />
+          </label>
+          <label class="field">
+            <span>Disabled background</span>
+            <input
+              type="text"
+              [value]="cardCtaDisabledBackgroundColor()"
+              (input)="cardCtaDisabledBackgroundColor.set($any($event.target).value)"
+              placeholder="#4b5563"
+            />
+          </label>
+          <label class="field">
+            <span>Disabled text</span>
+            <input
+              type="text"
+              [value]="cardCtaDisabledTextColor()"
+              (input)="cardCtaDisabledTextColor.set($any($event.target).value)"
+              placeholder="#d1d5db"
+            />
+          </label>
+          <label class="field">
+            <span>Loading background</span>
+            <input
+              type="text"
+              [value]="cardCtaLoadingBackgroundColor()"
+              (input)="cardCtaLoadingBackgroundColor.set($any($event.target).value)"
+              placeholder="#1f2937"
+            />
+          </label>
+          <label class="field">
+            <span>Loading text</span>
+            <input
+              type="text"
+              [value]="cardCtaLoadingTextColor()"
+              (input)="cardCtaLoadingTextColor.set($any($event.target).value)"
+              placeholder="#f9fafb"
+            />
+          </label>
+
+          <h3 class="subheading">Focus</h3>
+          <label class="field">
+            <span>Focus outline color</span>
+            <input
+              type="text"
+              [value]="cardCtaFocusOutlineColor()"
+              (input)="cardCtaFocusOutlineColor.set($any($event.target).value)"
+              placeholder="#2563eb"
+            />
+          </label>
+          <label class="field">
+            <span>Focus outline width</span>
+            <input
+              type="text"
+              [value]="cardCtaFocusOutlineWidth()"
+              (input)="cardCtaFocusOutlineWidth.set($any($event.target).value)"
+              placeholder="2px"
+            />
+          </label>
+          <label class="field">
+            <span>Focus outline offset</span>
+            <input
+              type="text"
+              [value]="cardCtaFocusOutlineOffset()"
+              (input)="cardCtaFocusOutlineOffset.set($any($event.target).value)"
+              placeholder="2px"
+            />
+          </label>
+        </div>
+      </details>
+
+      <!-- 7. Theme & visual style -->
+      <details class="config-section" open data-testid="config-section-theme">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Theme &amp; visual style</span>
+            <span class="config-section__scope">
+              Theme: both · appearance / visualStyle: Full Checkout
+            </span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            <code>[theme]</code> sets built-in light/dark tokens on both hosts.
+            <code>[appearance]</code> and <code>[visualStyle]</code> in this playground bind to Full
+            Checkout. Theme defaults apply until you set explicit visual overrides. Provider SDK
+            chrome is never restyled by these controls.
+          </p>
+
+          <h3 class="subheading">Theme</h3>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Theme</legend>
+            @for (option of ['light', 'dark', 'system']; track option) {
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="theme"
+                  [value]="option"
+                  [checked]="theme() === option"
+                  (change)="setTheme($any($event.target).value)"
+                />
+                <span>{{ option }}</span>
+              </label>
+            }
+          </fieldset>
+
+          @if (playgroundExperience() === 'checkout') {
+            <h3 class="subheading">Appearance</h3>
+            <p class="hint">
+              Public <code>[appearance]</code> input. Transparent removes the built-in checkout shell
+              so a merchant parent background can show through.
+            </p>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Appearance</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="appearance"
+                  value="default"
+                  [checked]="appearance() === 'default'"
+                  (change)="setAppearance('default')"
+                />
+                <span>Default</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="appearance"
+                  value="transparent"
+                  [checked]="appearance() === 'transparent'"
+                  (change)="setAppearance('transparent')"
+                />
+                <span>Transparent</span>
+              </label>
+            </fieldset>
+            @if (appearance() === 'transparent') {
+              <p class="hint">Preview parent background (demo only):</p>
+              <fieldset class="choice-group">
+                <legend class="visually-hidden">Transparent preview backdrop</legend>
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="transparent-backdrop"
+                    value="light"
+                    [checked]="transparentPreviewBackdrop() === 'light'"
+                    (change)="setTransparentPreviewBackdrop('light')"
+                  />
+                  <span>Light gradient</span>
+                </label>
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="transparent-backdrop"
+                    value="dark"
+                    [checked]="transparentPreviewBackdrop() === 'dark'"
+                    (change)="setTransparentPreviewBackdrop('dark')"
+                  />
+                  <span>Dark gradient</span>
+                </label>
+              </fieldset>
+            }
+
+            <details class="config-section config-section--nested" open data-testid="phase3-visual-qa">
+              <summary class="config-section__summary">
+                <span class="config-section__heading">
+                  <span class="config-section__title">Visual style (Phase 3 QA)</span>
+                  <span class="config-section__scope">Full Checkout · demo harness</span>
+                </span>
+              </summary>
+              <div class="config-section__body">
+                <p class="hint">
+                  Demo-only harness for <code>[visualStyle]</code>. Live-updates the checkout on the
+                  right. See <code>docs/phase-3-visual-qa.md</code> for the manual checklist.
+                </p>
+
+                <h3 class="subheading">Presets</h3>
+                <fieldset class="choice-group choice-group--stack">
+                  <legend class="visually-hidden">Visual style presets</legend>
+                  @for (preset of visualQaPresets; track preset.id) {
+                    <label class="choice">
+                      <input
+                        type="radio"
+                        name="visual-qa-preset"
+                        [value]="preset.id"
+                        [checked]="visualQaPresetId() === preset.id"
+                        (change)="applyVisualQaPreset(preset.id)"
+                      />
+                      <span>
+                        {{ preset.label }}
+                        <span class="choice-note">{{ preset.description }}</span>
+                      </span>
+                    </label>
+                  }
+                </fieldset>
+                @if (visualQaPresetId() === 'custom') {
+                  <p class="hint">Custom edits — preset selection cleared.</p>
+                }
+                @if (visualQaPresetId() === 'low-contrast') {
+                  <p class="mode-warning" role="status">
+                    Low-contrast preset: open DevTools → Console. Expect developer-only
+                    <code>[Easy Payments] Low contrast…</code> warnings in <code>ng serve</code>
+                    (Angular dev mode). Nothing is shown inside the buyer checkout UI.
+                  </p>
+                }
+
+                <h3 class="subheading">Fields</h3>
+                @for (field of visualStyleFields; track field.key) {
+                  <label class="field">
+                    <span>{{ field.label }}</span>
+                    <input
+                      type="text"
+                      [attr.data-testid]="'visual-style-' + field.key"
+                      [placeholder]="field.placeholder"
+                      [value]="visualStyleFieldValue(field.key)"
+                      (input)="updateVisualStyleField(field.key, $any($event.target).value)"
+                    />
+                  </label>
+                }
+                <div class="action-row">
+                  <button
+                    type="button"
+                    class="demo-action"
+                    data-testid="visual-style-reset"
+                    (click)="resetVisualStyle()"
+                  >
+                    Reset to Defaults
+                  </button>
+                </div>
+                <p class="hint">
+                  Active style:
+                  <code data-testid="visual-style-active">{{ visualStyleSummary() }}</code>
+                </p>
+
+                <h3 class="subheading">Multi-instance theme check</h3>
+                <p class="hint">
+                  Off by default. When enabled, mounts a second pair of checkouts (light + dark) below
+                  the primary preview. Themes should stay independent; payment sessions share one
+                  orchestrator — use Demo Mode only for this check.
+                </p>
+                <label class="choice">
+                  <input
+                    type="checkbox"
+                    data-testid="multi-instance-qa-toggle"
+                    [checked]="showMultiInstanceQa()"
+                    (change)="setShowMultiInstanceQa($any($event.target).checked)"
+                  />
+                  <span>Show dual-instance theme QA</span>
+                </label>
+              </div>
+            </details>
           }
-        </ul>
-      </section>
+        </div>
+      </details>
+
+      <!-- 8. Localization -->
+      <details class="config-section" open data-testid="config-section-locale">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Localization</span>
+            <span class="config-section__scope">Both components</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Public <code>[locale]</code> input. Auto uses the browser language
+            (<code>es-*</code> → Spanish, <code>pt-*</code> → Portuguese, otherwise English).
+            A custom Card CTA label overrides the localized idle string when set.
+          </p>
+          <fieldset class="choice-group">
+            <legend class="visually-hidden">Locale</legend>
+            <label class="choice">
+              <input
+                type="radio"
+                name="locale"
+                value="auto"
+                [checked]="locale() === 'auto'"
+                (change)="setLocale('auto')"
+              />
+              <span>Auto</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="locale"
+                value="en"
+                [checked]="locale() === 'en'"
+                (change)="setLocale('en')"
+              />
+              <span>English</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="locale"
+                value="es"
+                [checked]="locale() === 'es'"
+                (change)="setLocale('es')"
+              />
+              <span>Español</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="locale"
+                value="pt"
+                [checked]="locale() === 'pt'"
+                (change)="setLocale('pt')"
+              />
+              <span>Português</span>
+            </label>
+          </fieldset>
+          <p class="hint">
+            Requested: <code>{{ locale() }}</code> · Effective:
+            <code>{{ effectiveLocale() }}</code>
+          </p>
+        </div>
+      </details>
+
+      <!-- 9. Testing & diagnostics -->
+      <details class="config-section" open data-testid="config-section-testing">
+        <summary class="config-section__summary">
+          <span class="config-section__heading">
+            <span class="config-section__title">Testing &amp; diagnostics</span>
+            <span class="config-section__scope">Demo only</span>
+          </span>
+        </summary>
+        <div class="config-section__body">
+          <p class="hint">
+            Developer tools for the playground. Readiness below is not shown to buyers. Event history
+            appears in the preview column.
+          </p>
+
+          @if (mode() === 'demo') {
+            <h3 class="subheading">Next mock payment</h3>
+            <fieldset class="choice-group">
+              <legend class="visually-hidden">Mock payment outcome</legend>
+              @for (option of ['success', 'cancelled', 'failed']; track option) {
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="mock-outcome"
+                    [value]="option"
+                    [checked]="mockOutcome() === option"
+                    (change)="setMockOutcome($any($event.target).value)"
+                  />
+                  <span>{{ option }}</span>
+                </label>
+              }
+            </fieldset>
+          }
+
+          <section aria-label="Developer diagnostics" data-testid="developer-diagnostics">
+            <h3 class="subheading">Diagnostics</h3>
+            <p class="hint">
+              Developer readiness for the current checkout. Customer-facing payment errors stay inside
+              the form.
+            </p>
+            @if (!paymentDiagnostics().published) {
+              <p class="hint">Waiting for checkout availability.</p>
+            } @else if (paymentDiagnostics().methods.length === 0) {
+              <p class="hint">No payment methods are included in this checkout.</p>
+            } @else {
+              <ul class="status-list">
+                @for (entry of paymentDiagnostics().methods; track entry.method) {
+                  <li>
+                    {{ entry.method }} · {{ entry.provider }} · {{ entry.readiness }}
+                    @if (entry.code) {
+                      · {{ entry.code }}
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        </div>
+      </details>
     </aside>
 
     <main class="checkout">
@@ -844,6 +1258,7 @@
               [theme]="theme()"
               [appearance]="appearance()"
               [visualStyle]="visualStyle()"
+              [cardButtonAppearance]="cardButtonAppearance()"
               [maxWidth]="checkoutMaxWidth()"
               [locale]="locale()"
               [translations]="customTranslations()"
@@ -863,6 +1278,7 @@
               [translations]="customTranslations()"
               [layout]="buttonsLayout()"
               [buttonsAppearance]="buttonsAppearance()"
+              [cardButtonAppearance]="cardButtonAppearance()"
               [checkoutInstanceId]="buttonsCheckoutInstanceId()"
               (started)="onPaymentStarted($event)"
               (success)="onPaymentSuccess($event)"
