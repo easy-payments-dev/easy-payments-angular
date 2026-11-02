@@ -1078,6 +1078,44 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
   });
 
+  it('forwards cardButtonAppearance onto the Stripe Card CTA', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Pay securely',
+      backgroundColor: '#0f172a',
+      textColor: '#f8fafc',
+      fontSize: '15px',
+      border: 'none',
+      borderRadius: '8px',
+      minHeight: '48px',
+      padding: '0 20px',
+      textAlign: 'left',
+      hoverBackgroundColor: '#1e293b',
+      disabledBackgroundColor: '#334155',
+    });
+    await render(fixture);
+    slotItem(fixture, 'card')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const cardHost = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="easy-payment-buttons-card-panel"] easy-stripe-card-payment',
+    ) as HTMLElement;
+    const cta = cardHost.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement;
+    expect(cta.textContent?.trim()).toBe('Pay securely');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#0f172a');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-text').trim()).toBe('#f8fafc');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-font-size').trim()).toBe('15px');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-border-style').trim()).toBe('none');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-border-width').trim()).toBe('0px');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-radius').trim()).toBe('8px');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-min-height').trim()).toBe('48px');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-padding').trim()).toBe('0 20px');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-text-align').trim()).toBe('left');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-hover-bg').trim()).toBe('#1e293b');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-disabled-bg').trim()).toBe('#334155');
+  });
+
   it('keeps a high-contrast dark-theme Card CTA when enabled and still readable when disabled', async () => {
     const host = fixture.nativeElement as HTMLElement;
     document.body.appendChild(host);

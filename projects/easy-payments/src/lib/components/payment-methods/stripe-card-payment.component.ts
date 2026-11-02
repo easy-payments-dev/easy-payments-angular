@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import {
   CheckoutOptions,
+  EasyPaymentsCardButtonAppearance,
   PaymentProduct,
   PaymentResult,
   ResolvedPaymentTheme,
@@ -34,12 +35,37 @@ import {
   toStripeElementsLocale,
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
+import { resolveCardButtonAppearance } from '../../themes/resolve-card-button-appearance';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
 
 @Component({
   selector: 'easy-stripe-card-payment',
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
+  host: {
+    '[style.--ep-card-cta-bg]': 'cardButtonCssVars().backgroundColor',
+    '[style.--ep-card-cta-text]': 'cardButtonCssVars().textColor',
+    '[style.--ep-card-cta-font-family]': 'cardButtonCssVars().fontFamily',
+    '[style.--ep-card-cta-font-size]': 'cardButtonCssVars().fontSize',
+    '[style.--ep-card-cta-font-weight]': 'cardButtonCssVars().fontWeight',
+    '[style.--ep-card-cta-text-align]': 'cardButtonCssVars().textAlign',
+    '[style.--ep-card-cta-border-width]': 'cardButtonCssVars().borderWidth',
+    '[style.--ep-card-cta-border-style]': 'cardButtonCssVars().borderStyle',
+    '[style.--ep-card-cta-border-color]': 'cardButtonCssVars().borderColor',
+    '[style.--ep-card-cta-radius]': 'cardButtonCssVars().borderRadius',
+    '[style.--ep-card-cta-min-height]': 'cardButtonCssVars().minHeight',
+    '[style.--ep-card-cta-width]': 'cardButtonCssVars().width',
+    '[style.--ep-card-cta-padding]': 'cardButtonCssVars().padding',
+    '[style.--ep-card-cta-hover-bg]': 'cardButtonCssVars().hoverBackgroundColor',
+    '[style.--ep-card-cta-hover-text]': 'cardButtonCssVars().hoverTextColor',
+    '[style.--ep-card-cta-disabled-bg]': 'cardButtonCssVars().disabledBackgroundColor',
+    '[style.--ep-card-cta-disabled-text]': 'cardButtonCssVars().disabledTextColor',
+    '[style.--ep-card-cta-loading-bg]': 'cardButtonCssVars().loadingBackgroundColor',
+    '[style.--ep-card-cta-loading-text]': 'cardButtonCssVars().loadingTextColor',
+    '[style.--ep-card-cta-focus-color]': 'cardButtonCssVars().focusOutlineColor',
+    '[style.--ep-card-cta-focus-width]': 'cardButtonCssVars().focusOutlineWidth',
+    '[style.--ep-card-cta-focus-offset]': 'cardButtonCssVars().focusOutlineOffset',
+  },
   template: `
     <div
       class="ep-stripe-card"
@@ -170,70 +196,107 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       }
 
       .ep-stripe-card__pay {
-        min-height: 48px;
-        border: 0;
-        border-radius: var(--ep-radius-md, 10px);
-        background: var(--ep-cta-bg, #0f172a);
-        color: var(--ep-cta-text, #f8fafc);
-        font: inherit;
-        font-size: 15px;
-        font-weight: 650;
+        box-sizing: border-box;
+        min-height: var(--ep-card-cta-min-height, 48px);
+        width: var(--ep-card-cta-width, auto);
+        max-width: 100%;
+        padding: var(--ep-card-cta-padding, 0 16px);
+        border-width: var(--ep-card-cta-border-width, 0);
+        border-style: var(--ep-card-cta-border-style, none);
+        border-color: var(--ep-card-cta-border-color, transparent);
+        border-radius: var(--ep-card-cta-radius, var(--ep-radius-md, 10px));
+        background: var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a));
+        color: var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc));
+        font-family: var(--ep-card-cta-font-family, inherit);
+        font-size: var(--ep-card-cta-font-size, 15px);
+        font-weight: var(--ep-card-cta-font-weight, 650);
+        text-align: var(--ep-card-cta-text-align, center);
         cursor: pointer;
         transition:
           background-color 0.15s ease,
           color 0.15s ease,
+          border-color 0.15s ease,
           box-shadow 0.15s ease;
       }
 
       .ep-stripe-card__pay:hover:not(:disabled) {
-        background: var(--ep-cta-bg-hover, #1e293b);
+        background: var(
+          --ep-card-cta-hover-bg,
+          var(--ep-cta-bg-hover, #1e293b)
+        );
+        color: var(
+          --ep-card-cta-hover-text,
+          var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc))
+        );
       }
 
       .ep-stripe-card__pay:active:not(:disabled) {
-        background: var(--ep-cta-bg-hover, #1e293b);
+        background: var(
+          --ep-card-cta-hover-bg,
+          var(--ep-cta-bg-hover, #1e293b)
+        );
         box-shadow: inset 0 1px 0 color-mix(in srgb, #000 18%, transparent);
       }
 
       .ep-stripe-card__pay:focus-visible {
-        outline: 2px solid var(--ep-focus, #2563eb);
-        outline-offset: 2px;
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+        outline: var(--ep-card-cta-focus-width, 2px) solid
+          var(--ep-card-cta-focus-color, var(--ep-focus, #2563eb));
+        outline-offset: var(--ep-card-cta-focus-offset, 2px);
+        box-shadow: 0 0 0 4px
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-focus-color, var(--ep-focus, #2563eb)) 28%,
+            transparent
+          );
       }
 
       .ep-stripe-card--minimal .ep-stripe-card__pay {
-        min-height: 44px;
+        min-height: var(--ep-card-cta-min-height, 44px);
         align-self: flex-start;
         min-width: min(100%, 200px);
-        padding: 0 20px;
-        font-size: 14px;
+        padding: var(--ep-card-cta-padding, 0 20px);
+        font-size: var(--ep-card-cta-font-size, 14px);
       }
 
       /*
         Disabled / loading: keep opaque label contrast. Pure opacity on a pale
         dark-theme CTA made "Pay with card" nearly disappear.
+        Explicit cardButtonAppearance disabled/loading colors win when set.
       */
       .ep-stripe-card__pay:disabled {
         cursor: not-allowed;
         opacity: 1;
-        background: color-mix(
-          in srgb,
-          var(--ep-cta-bg, #0f172a) 42%,
-          var(--ep-surface, #ffffff)
+        background: var(
+          --ep-card-cta-disabled-bg,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a)) 42%,
+            var(--ep-surface, #ffffff)
+          )
         );
-        color: color-mix(
-          in srgb,
-          var(--ep-cta-text, #f8fafc) 72%,
-          var(--ep-text-secondary, #64748b)
+        color: var(
+          --ep-card-cta-disabled-text,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc)) 72%,
+            var(--ep-text-secondary, #64748b)
+          )
         );
       }
 
       .ep-stripe-card__pay[aria-busy='true']:disabled {
-        background: color-mix(
-          in srgb,
-          var(--ep-cta-bg, #0f172a) 58%,
-          var(--ep-surface, #ffffff)
+        background: var(
+          --ep-card-cta-loading-bg,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a)) 58%,
+            var(--ep-surface, #ffffff)
+          )
         );
-        color: var(--ep-cta-text, #f8fafc);
+        color: var(
+          --ep-card-cta-loading-text,
+          var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc))
+        );
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -262,6 +325,11 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
    * `minimal` — Buttons Only expanded panel (security + Element + confirm, no amount).
    */
   readonly chrome = input<'full' | 'minimal'>('full');
+  /**
+   * Optional Easy Payments–owned Card CTA presentation (label + CSS tokens).
+   * Invalid / omitted fields keep theme defaults and localized labels.
+   */
+  readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -285,6 +353,11 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
   private initGeneration = 0;
   private lastAppliedTheme: ResolvedPaymentTheme | null = null;
 
+  readonly resolvedCardButton = computed(() =>
+    resolveCardButtonAppearance(this.cardButtonAppearance()),
+  );
+  readonly cardButtonCssVars = computed(() => this.resolvedCardButton().cssVars);
+
   readonly amountLabel = computed(() =>
     this.i18n
       ? this.i18n.formatMoney(
@@ -299,11 +372,15 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
           'en',
         ),
   );
-  readonly payLabel = computed(() =>
-    this.chrome() === 'minimal'
+  readonly payLabel = computed(() => {
+    const custom = this.resolvedCardButton().label;
+    if (custom) {
+      return custom;
+    }
+    return this.chrome() === 'minimal'
       ? this.msgs().payWithCard
-      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
-  );
+      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() });
+  });
 
   constructor() {
     // Product/checkout changes may require a new PaymentIntent.

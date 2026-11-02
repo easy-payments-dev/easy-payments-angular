@@ -25,6 +25,7 @@ import {
 } from '../../models';
 import type { EasyPaymentButtonsLayout } from '../../models/easy-payment-buttons-layout.model';
 import type { EasyPaymentButtonsAppearance } from '../../models/easy-payment-buttons-appearance.model';
+import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
@@ -230,6 +231,13 @@ export class EasyPaymentButtonsComponent {
    * Defaults to a transparent compact payment strip.
    */
   readonly buttonsAppearance = input<EasyPaymentButtonsAppearance | null>(null);
+  /**
+   * Optional Easy Payments–owned Stripe Card confirmation CTA presentation
+   * (label, colors, typography, border, size, hover/disabled/loading/focus).
+   * Independent of `[buttonsAppearance]` (strip chrome). Does not restyle the
+   * Stripe Payment Element iframe or official wallet SDK buttons.
+   */
+  readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
 
   readonly started = output<PaymentStartedEvent>();
   readonly methodChange = output<PaymentMethodChangeEvent>();

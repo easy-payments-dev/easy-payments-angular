@@ -22,6 +22,7 @@ Standalone component. Selector: `easy-payments`.
 | `theme` | `PaymentTheme` | `'system'` | No | `light`, `dark`, `system` | Color theme. `system` follows `prefers-color-scheme` and updates when the preference changes. |
 | `appearance` | `EasyPaymentsAppearance` | `'default'` | No | `default`, `transparent` | Outer shell. Independent of `theme`. `transparent` removes built-in card chrome. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | see [Visual style](#visual-style) | Optional EP-owned font / color / token overrides. Invalid fields ignored. Does not restyle provider SDK chrome. |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | see [Stripe Card button appearance](#stripe-card-button-appearance) | Optional label + styles for the EP-owned Stripe Card confirm CTA. Does not restyle the Payment Element iframe or wallet SDK buttons. |
 | `maxWidth` | `number \| string \| null \| undefined` | `640` | No | clamped to **320–1200** px | Max checkout width. Component stays `width: 100%` up to this cap. Invalid values fall back to `640`. |
 | `successBehavior` | `CheckoutSuccessBehavior` | `'confirmation'` | No | `confirmation`, `event-only` | Built-in success UI vs emit-only. Overridden by `checkout.successBehavior` when set. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `auto`, `en`, `es`, `pt` | UI locale. `auto` detects from the browser (`es-*`→es, `pt-*`→pt, `en-*`→en, else English). See [localization.md](./localization.md). |
@@ -254,6 +255,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `auto` (same resolver as checkout). French (`fr`) is planned for Phase 5 — not implemented yet. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens. Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button. |
 
 ### Localization notes
 
@@ -624,6 +626,98 @@ These diagnostics never appear in buyer UI, never change colors, and never block
 See [configuration.md](./configuration.md#developer-only-contrast-warnings) for examples and limitations.
 
 See [configuration.md](./configuration.md) for the full public `--ep-*` token table.
+
+### Stripe Card button appearance
+
+Optional `[cardButtonAppearance]` customizes the **Easy Payments–owned** Stripe Card confirmation button (`.ep-stripe-card__pay`) used by both `<easy-payments>` and `<easy-payment-buttons>`. It does **not** restyle the Stripe Payment Element iframe or official PayPal / Google Pay / Apple Pay buttons.
+
+```ts
+interface EasyPaymentsCardButtonAppearance {
+  label?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  fontFamily?: string;
+  fontSize?: string;
+  fontWeight?: string | number;
+  textAlign?: 'left' | 'center' | 'right' | 'start' | 'end';
+  border?: 'default' | 'none';
+  borderWidth?: string;
+  borderStyle?: string;
+  borderColor?: string;
+  borderRadius?: string;
+  minHeight?: string;
+  width?: string;
+  padding?: string;
+  hoverBackgroundColor?: string;
+  hoverTextColor?: string;
+  disabledBackgroundColor?: string;
+  disabledTextColor?: string;
+  loadingBackgroundColor?: string;
+  loadingTextColor?: string;
+  focusOutlineColor?: string;
+  focusOutlineWidth?: string;
+  focusOutlineOffset?: string;
+}
+```
+
+| Field | Maps to | Notes |
+|-------|---------|--------|
+| `label` | (text content) | Plain text only. Overrides idle localized label (`Pay {{amount}}` / `Pay with card`). Processing copy stays i18n. |
+| `backgroundColor` | `--ep-card-cta-bg` | Falls back to theme `--ep-cta-bg`. |
+| `textColor` | `--ep-card-cta-text` | Falls back to `--ep-cta-text`. |
+| `fontFamily` | `--ep-card-cta-font-family` | Stack, `'inherit'`, or `var(--token)`. |
+| `fontSize` | `--ep-card-cta-font-size` | CSS length. |
+| `fontWeight` | `--ep-card-cta-font-weight` | Number or keyword. |
+| `textAlign` | `--ep-card-cta-text-align` | `left` \| `center` \| `right` \| `start` \| `end`. |
+| `border` | (shortcut) | `'none'` forces no border; `'default'` keeps library defaults unless individual border fields are set. |
+| `borderWidth` / `borderStyle` / `borderColor` | `--ep-card-cta-border-*` | Ignored when `border: 'none'`. |
+| `borderRadius` | `--ep-card-cta-radius` | CSS length. |
+| `minHeight` | `--ep-card-cta-min-height` | CSS length. |
+| `width` | `--ep-card-cta-width` | Length or `%`; capped by `max-width: 100%`. |
+| `padding` | `--ep-card-cta-padding` | 1–4 CSS length tokens. |
+| `hoverBackgroundColor` / `hoverTextColor` | `--ep-card-cta-hover-*` | Enabled hover / active. |
+| `disabledBackgroundColor` / `disabledTextColor` | `--ep-card-cta-disabled-*` | Overrides muted color-mix defaults. |
+| `loadingBackgroundColor` / `loadingTextColor` | `--ep-card-cta-loading-*` | While `aria-busy="true"`. |
+| `focusOutlineColor` / `focusOutlineWidth` / `focusOutlineOffset` | `--ep-card-cta-focus-*` | `:focus-visible` outline. |
+
+**Defaults without customization**
+
+- Light: dark slate CTA (`#0f172a` / `#f8fafc`).
+- Dark: accent-mixed high-contrast CTA with light text (`--ep-cta-*` uses `--ep-accent`).
+- System: follows the resolved light/dark theme.
+- Idle labels stay localized until a valid `label` is provided.
+
+**Safety**
+
+- Values are sanitized; invalid / unsafe CSS is ignored (no stylesheet injection).
+- Overrides are host-bound on the Stripe Card instance (multi-instance safe).
+- Payment confirmation, validation, loading/disabled behavior, and events are unchanged.
+
+```html
+<easy-payments
+  [product]="product"
+  [methods]="['card']"
+  theme="dark"
+  [cardButtonAppearance]="{
+    label: 'Pay securely',
+    backgroundColor: '#111827',
+    textColor: '#f8fafc',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: 700
+  }"
+/>
+```
+
+```html
+<easy-payment-buttons
+  [product]="product"
+  [methods]="['card', 'paypal']"
+  [cardButtonAppearance]="cardButtonAppearance"
+/>
+```
+
+See [configuration.md](./configuration.md#stripe-card-button-appearance) for recipes and contrast notes.
 
 Public layout constants:
 

@@ -27,6 +27,7 @@ import {
   ResolvedPaymentTheme,
 } from '../../models';
 import type { EasyPaymentsAppearance } from '../../models/easy-payments-appearance.model';
+import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import {
@@ -172,6 +173,12 @@ export class EasyPaymentsComponent {
    * official provider SDK buttons or marks.
    */
   readonly visualStyle = input<EasyPaymentsVisualStyle | null>(null);
+  /**
+   * Optional Easy Payments–owned Stripe Card confirmation CTA presentation
+   * (label, colors, typography, border, size, hover/disabled/loading/focus).
+   * Does not restyle the Stripe Payment Element iframe or other providers.
+   */
+  readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
   /**
    * Maximum checkout width in pixels. The component stays fluid (`width: 100%`)
    * up to this cap. Values are clamped to library-safe limits (320–1200).

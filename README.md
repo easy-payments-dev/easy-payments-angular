@@ -495,6 +495,7 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 | `theme` | `'light' \| 'dark' \| 'system'` | `'system'` | System follows OS and updates live |
 | `appearance` | `'default' \| 'transparent'` | `'default'` | Independent of theme |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | Optional EP-owned font/color/token overrides |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | Optional Stripe Card CTA label + styles (EP-owned button only) |
 | `maxWidth` | `number \| string \| null` | `640` | Clamped **320–1200** |
 | `successBehavior` | `'confirmation' \| 'event-only'` | `'confirmation'` | Overridable via `checkout` |
 | `locale` | `'auto' \| 'en' \| 'es' \| 'pt'` | `'auto'` | UI locale |
@@ -721,6 +722,90 @@ export class BrandedCheckoutComponent {
 | Reset | Set `[visualStyle]="null"` (or omit) to restore the active theme defaults. |
 
 Interactive playground controls (presets, field editors, dual-instance theme check): run the demo and open **Visual style (Phase 3 QA)**. Checklist: **[docs/phase-3-visual-qa.md](docs/phase-3-visual-qa.md)**. Full token contract: **[docs/configuration.md](docs/configuration.md#visual-style)** · **[docs/api.md](docs/api.md#visual-style)**.
+
+### Stripe Card confirmation button (`cardButtonAppearance`)
+
+The Stripe Card flow uses Stripe’s Payment Element plus an **Easy Payments–owned** confirm button (`.ep-stripe-card__pay` — “Pay {{amount}}” in Full Checkout, “Pay with card” in Buttons Only). Optional `[cardButtonAppearance]` customizes that library button only.
+
+It does **not** restyle the Stripe Payment Element iframe, PayPal Buttons, Google Pay, or Apple Pay SDK chrome.
+
+```ts
+import { Component } from '@angular/core';
+import {
+  EasyPaymentsComponent,
+  EasyPaymentButtonsComponent,
+  type EasyPaymentsCardButtonAppearance,
+  type PaymentMethod,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+@Component({
+  selector: 'app-card-cta-examples',
+  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent],
+  template: `
+    <!-- Full Checkout -->
+    <easy-payments
+      [product]="product"
+      [methods]="methods"
+      theme="system"
+      [cardButtonAppearance]="cardButtonAppearance"
+    />
+
+    <!-- Buttons Only (same input; applies after Card expands) -->
+    <easy-payment-buttons
+      [product]="product"
+      [methods]="methods"
+      theme="dark"
+      [cardButtonAppearance]="cardButtonAppearance"
+    />
+  `,
+})
+export class CardCtaExamplesComponent {
+  readonly product: PaymentProduct = {
+    id: 'premium-plan',
+    name: 'Premium Plan',
+    amount: 49.99,
+    currency: 'USD',
+  };
+
+  readonly methods: PaymentMethod[] = ['card', 'paypal'];
+
+  readonly cardButtonAppearance: EasyPaymentsCardButtonAppearance = {
+    label: 'Complete card payment', // plain text; overrides localized idle label
+    backgroundColor: '#0b6e4f',
+    textColor: '#f8fafc',
+    fontFamily: 'Georgia, serif',
+    fontSize: '16px',
+    fontWeight: 700,
+    textAlign: 'center',
+    border: 'none', // or omit and set borderWidth / borderStyle / borderColor
+    borderRadius: '10px',
+    minHeight: '48px',
+    width: '100%',
+    padding: '0 20px',
+    hoverBackgroundColor: '#095c42',
+    hoverTextColor: '#ffffff',
+    disabledBackgroundColor: '#4b5563',
+    disabledTextColor: '#d1d5db',
+    loadingBackgroundColor: '#1f2937',
+    loadingTextColor: '#f9fafb',
+    focusOutlineColor: '#22c55e',
+    focusOutlineWidth: '2px',
+    focusOutlineOffset: '2px',
+  };
+}
+```
+
+| Concern | Behavior |
+|---------|----------|
+| Defaults | Omit `[cardButtonAppearance]` (or pass `null`) — light uses the dark slate CTA; dark mixes merchant `--ep-accent` into a high-contrast CTA with light text; `system` follows the resolved theme. Localization unchanged. |
+| Label | Optional plain-text `label` replaces the idle localized string only when valid. Processing copy still uses i18n (`processingPayment`). Markup / oversized labels are rejected. |
+| Styles | Valid fields become instance-local `--ep-card-cta-*` custom properties on `easy-stripe-card-payment`, falling back to theme `--ep-cta-*`. Invalid values are ignored (no CSS injection). |
+| Borders | `border: 'none'` forces no border. Otherwise set `borderWidth` / `borderStyle` / `borderColor`. |
+| A11y | Remains a real `<button>` with disabled / `aria-busy` behavior and `:focus-visible` outline. Prefer sufficient contrast when overriding colors; EP does not silently rewrite your colors. |
+| Scope | Shared Stripe Card component for both hosts — one implementation, per-instance isolation. |
+
+Full field table: **[docs/api.md](docs/api.md#stripe-card-button-appearance)** · **[docs/configuration.md](docs/configuration.md#stripe-card-button-appearance)**.
 
 ---
 

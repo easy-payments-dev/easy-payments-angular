@@ -12,6 +12,7 @@ import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { resetProviderDiagnosticsForTests } from '../../diagnostics/provider-diagnostics';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { EasyPaymentsComponent } from './easy-payments.component';
 
 async function render(fixture: ComponentFixture<EasyPaymentsComponent>): Promise<void> {
@@ -446,6 +447,50 @@ describe('EasyPaymentsComponent', () => {
     expect(host.style.getPropertyValue('--ep-accent')).toBe('');
     expect(host.style.getPropertyValue('--ep-radius')).toBe('');
     expect(getComputedStyle(host).getPropertyValue('--ep-font-family').trim()).toContain('Segoe UI');
+  });
+
+  it('accepts optional cardButtonAppearance without changing mock CTA chrome', async () => {
+    fixture.componentRef.setInput('methods', ['card']);
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    await render(fixture);
+
+    expect(fixture.componentInstance.cardButtonAppearance()).toEqual({
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    expect(fixture.nativeElement.querySelector('easy-stripe-card-payment')).toBeNull();
+    expect(payCta(fixture)?.textContent?.trim()).toMatch(/^Pay \$/);
+  });
+
+  it('keeps independent cardButtonAppearance inputs per Full Checkout instance', async () => {
+    fixture.componentRef.setInput('methods', ['card']);
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance A',
+      backgroundColor: '#aa0000',
+    });
+    await render(fixture);
+
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixtureB.componentRef.setInput('methods', ['card']);
+    fixtureB.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance B',
+      backgroundColor: '#00aa00',
+    });
+    await render(fixtureB);
+
+    expect(fixture.componentInstance.cardButtonAppearance()?.label).toBe('Instance A');
+    expect(fixtureB.componentInstance.cardButtonAppearance()?.label).toBe('Instance B');
+    expect(fixture.componentInstance.cardButtonAppearance()?.backgroundColor).toBe('#aa0000');
+    expect(fixtureB.componentInstance.cardButtonAppearance()?.backgroundColor).toBe('#00aa00');
+    fixtureB.destroy();
   });
 
   it('applies valid visualStyle overrides as host CSS variables', async () => {
@@ -2016,5 +2061,114 @@ describe('EasyPaymentsComponent', () => {
       expect(card?.readiness).toBe('ready');
       expect(card?.code).toBeUndefined();
     });
+  });
+});
+
+describe('EasyPaymentsComponent real Stripe Card CTA appearance', () => {
+  let fixture: ComponentFixture<EasyPaymentsComponent>;
+  let adapter: jasmine.SpyObj<StripeCardAdapter>;
+
+  beforeEach(async () => {
+    adapter = jasmine.createSpyObj<StripeCardAdapter>(
+      'StripeCardAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'isConfirming',
+        'hasMountedElement',
+      ],
+      {
+        provider: 'stripe',
+        isMock: false,
+      },
+    );
+
+    adapter.initialize.and.resolveTo();
+    adapter.isAvailable.and.resolveTo(true);
+    adapter.ensureStripeLoaded.and.resolveTo({} as never);
+    adapter.createPaymentSession.and.resolveTo({ clientSecret: 'pi_secret_checkout_cta' });
+    adapter.mountPaymentElement.and.resolveTo();
+    adapter.updateAppearance.and.resolveTo();
+    adapter.destroy.and.resolveTo();
+    adapter.isConfirming.and.returnValue(false);
+    adapter.hasMountedElement.and.returnValue(true);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_checkout_card_cta' } },
+          backend: { createPaymentUrl: '/api/payments/create' },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: StripeCardAdapter, useValue: adapter },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card']);
+  });
+
+  it('forwards cardButtonAppearance onto the Stripe Card CTA', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Checkout with card',
+      backgroundColor: '#111827',
+      textColor: '#f8fafc',
+      borderRadius: '6px',
+    });
+    await render(fixture);
+
+    const cardHost = fixture.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    expect(cardHost).toBeTruthy();
+    const cta = cardHost.querySelector('button.ep-stripe-card__pay') as HTMLButtonElement;
+    expect(cta.textContent?.trim()).toBe('Checkout with card');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#111827');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-text').trim()).toBe('#f8fafc');
+    expect(cardHost.style.getPropertyValue('--ep-card-cta-radius').trim()).toBe('6px');
+    expect(adapter.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps independent cardButtonAppearance per Full Checkout instance', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance A',
+      backgroundColor: '#aa0000',
+    });
+    await render(fixture);
+
+    const fixtureB = TestBed.createComponent(EasyPaymentsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixtureB.componentRef.setInput('methods', ['card']);
+    fixtureB.componentRef.setInput('cardButtonAppearance', {
+      label: 'Instance B',
+      backgroundColor: '#00aa00',
+    });
+    await render(fixtureB);
+
+    const hostA = fixture.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    const hostB = fixtureB.nativeElement.querySelector(
+      'easy-stripe-card-payment',
+    ) as HTMLElement;
+    expect(hostA.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#aa0000');
+    expect(hostB.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#00aa00');
+    expect(hostA.querySelector('button.ep-stripe-card__pay')?.textContent?.trim()).toBe(
+      'Instance A',
+    );
+    expect(hostB.querySelector('button.ep-stripe-card__pay')?.textContent?.trim()).toBe(
+      'Instance B',
+    );
+    fixtureB.destroy();
   });
 });
