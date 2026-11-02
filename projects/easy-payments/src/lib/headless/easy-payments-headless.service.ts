@@ -5,7 +5,10 @@ import { PaymentOrchestratorService } from '../services/payment-orchestrator.ser
 import { BrowserGuard } from '../utils/browser-guard';
 import { createPaymentOwnerId } from '../utils/payment-owner-id';
 import { isValidCheckoutInstanceId } from '../adapters/stripe/stripe-redirect-return';
+import { EasyPaymentsConfigService } from '../config/easy-payments-config.service';
 import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
+import { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
+import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import type { PaymentMethod } from '../models/payment-method.model';
 import { isKnownPaymentMethod } from './headless-method-meta';
 import { HeadlessCheckoutSessionImpl } from './headless-checkout-session';
@@ -18,15 +21,20 @@ import type {
 /**
  * Public factory for Headless Checkout sessions (v1.2.0).
  *
- * H3.1: Stripe Card mount/confirm via the existing StripeCardAdapter.
- * Other providers remain not mountable until later milestones.
+ * H3.1: Stripe Card mount/confirm.
+ * H3.2: Klarna + Affirm mount/confirm via existing Stripe Payment Element adapters.
+ * PayPal / wallets remain not mountable until later milestones.
+ * BNPL full-page redirect recovery is H4 — not claimed here.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsHeadless {
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly registry = inject(HeadlessSessionRegistry);
   private readonly browser = inject(BrowserGuard);
+  private readonly config = inject(EasyPaymentsConfigService);
   private readonly stripeCard = inject(StripeCardAdapter);
+  private readonly klarna = inject(KlarnaAdapter);
+  private readonly affirm = inject(AffirmAdapter);
 
   createSession(options: HeadlessSessionOptions): HeadlessCheckoutSession {
     if (!options || typeof options !== 'object') {
@@ -61,7 +69,10 @@ export class EasyPaymentsHeadless {
         orchestrator: this.orchestrator,
         registry: this.registry,
         browser: this.browser,
+        config: this.config,
         stripeCard: this.stripeCard,
+        klarna: this.klarna,
+        affirm: this.affirm,
       });
     } catch (error) {
       this.registry.release(id);

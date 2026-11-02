@@ -1,7 +1,7 @@
 import { signal, type Signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import type { CheckoutOptions } from '../models/checkout-options.model';
-import type { PaymentMethod } from '../models/payment-method.model';
+import type { PaymentMethod, PaymentProviderName } from '../models/payment-method.model';
 import { PAYMENT_METHOD_PROVIDER_MAP } from '../models/payment-method.model';
 import type {
   PaymentMethodChangeEvent,
@@ -15,9 +15,19 @@ import { validatePaymentProduct } from '../validators/product.validator';
 import { CheckoutAvailabilitySession } from '../services/checkout-availability-session';
 import type { PaymentOrchestratorService } from '../services/payment-orchestrator.service';
 import type { BrowserGuard } from '../utils/browser-guard';
+import type { EasyPaymentsConfigService } from '../config/easy-payments-config.service';
 import type { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
+import type { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
+import type { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
+import {
+  buildStripeReturnUrl,
+  createStripeReturnAttemptId,
+  type StripeRedirectMethod,
+} from '../adapters/stripe/stripe-redirect-return';
 import {
   resolveEffectiveLocale,
+  toAffirmPreferredLocale,
+  toKlarnaPreferredLocale,
   toStripeElementsLocale,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
@@ -33,6 +43,33 @@ import type {
   HeadlessSessionState,
 } from './headless.types';
 
+/** Methods that mount a Stripe Payment Element through existing adapters (H3.1–H3.2). */
+type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm';
+
+function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
+  return method === 'card' || method === 'klarna' || method === 'affirm';
+}
+
+interface StripeElementAdapterApi {
+  createPaymentSession(
+    product: PaymentProduct,
+    checkout?: CheckoutOptions,
+    localeOrOwner?: string,
+    ownerId?: string,
+  ): Promise<{ clientSecret: string }>;
+  mountPaymentElement(
+    container: HTMLElement,
+    clientSecret: string,
+    theme: ReturnType<typeof resolveHeadlessTheme>,
+    locale?: string,
+    ownerId?: string,
+  ): Promise<void>;
+  confirmPayment(returnUrl?: string, ownerId?: string): Promise<PaymentResult>;
+  unmountPaymentElement(ownerId?: string): void;
+  hasMountedElement(ownerId?: string): boolean;
+  destroy(ownerId?: string): Promise<void>;
+}
+
 export interface HeadlessCheckoutSessionDeps {
   id: string;
   product: PaymentProduct;
@@ -44,12 +81,15 @@ export interface HeadlessCheckoutSessionDeps {
   orchestrator: PaymentOrchestratorService;
   registry: HeadlessSessionRegistry;
   browser: BrowserGuard;
+  config: EasyPaymentsConfigService;
   stripeCard: StripeCardAdapter;
+  klarna: KlarnaAdapter;
+  affirm: AffirmAdapter;
 }
 
 /**
  * Independently owned Headless session.
- * H3.1: Stripe Card mount + confirm via existing StripeCardAdapter.
+ * H3.1: Stripe Card. H3.2: Klarna + Affirm (Stripe Payment Element adapters).
  */
 export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   readonly id: string;
@@ -65,7 +105,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private readonly orchestrator: PaymentOrchestratorService;
   private readonly sessionRegistry: HeadlessSessionRegistry;
   private readonly browser: BrowserGuard;
+  private readonly config: EasyPaymentsConfigService;
   private readonly stripeCard: StripeCardAdapter;
+  private readonly klarna: KlarnaAdapter;
+  private readonly affirm: AffirmAdapter;
   private readonly availability = new CheckoutAvailabilitySession();
 
   /** Stripe Element session owner — equals Headless session id for isolation. */
@@ -105,7 +148,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private released = false;
 
   private mountGeneration = 0;
-  private cardMounted = false;
+  private mountedMethod: HeadlessStripeElementMethod | null = null;
   private confirmGeneration = 0;
   private terminalEmittedForConfirm = 0;
 
@@ -121,7 +164,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.orchestrator = deps.orchestrator;
     this.sessionRegistry = deps.registry;
     this.browser = deps.browser;
+    this.config = deps.config;
     this.stripeCard = deps.stripeCard;
+    this.klarna = deps.klarna;
+    this.affirm = deps.affirm;
     void this.translations;
   }
 
@@ -186,7 +232,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         message: 'Call initialize() before refreshAvailability().',
       });
     }
-    if (this._state() === 'error' && !this.cardMounted) {
+    if (this._state() === 'error' && !this.mountedMethod) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: 'Session is in error state. Call initialize() to retry.',
@@ -237,27 +283,27 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'Cannot mount while a payment confirmation is in progress.',
-        method: 'card',
-        provider: 'stripe',
-      });
-    }
-
-    if (method !== 'card') {
-      throw new PaymentError({
-        code: 'PROVIDER_NOT_IMPLEMENTED',
-        message:
-          'Headless mount currently supports only "card". PayPal, wallets, and BNPL arrive in later milestones.',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
     }
 
-    if (!this.methods.includes('card')) {
+    if (!isStripeElementMethod(method)) {
+      throw new PaymentError({
+        code: 'PROVIDER_NOT_IMPLEMENTED',
+        message:
+          'Headless mount currently supports "card", "klarna", and "affirm". PayPal and wallets arrive in later milestones.',
+        method,
+        provider: PAYMENT_METHOD_PROVIDER_MAP[method],
+      });
+    }
+
+    if (!this.methods.includes(method)) {
       throw new PaymentError({
         code: 'CONFIG_INVALID',
-        message: 'Payment method "card" is not configured for this Headless session.',
-        method: 'card',
-        provider: 'stripe',
+        message: `Payment method "${method}" is not configured for this Headless session.`,
+        method,
+        provider: this.providerOf(method),
       });
     }
 
@@ -265,42 +311,41 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       throw new PaymentError({
         code: 'CONFIG_INVALID',
         message: 'mount() requires a valid HTMLElement container.',
-        method: 'card',
-        provider: 'stripe',
+        method,
+        provider: this.providerOf(method),
       });
     }
 
-    const cardStatus = this._availableMethods().find((entry) => entry.method === 'card');
-    if (!cardStatus?.available) {
+    const methodStatus = this._availableMethods().find((entry) => entry.method === method);
+    if (!methodStatus?.available) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
-        message: 'Card is not available for this Headless session configuration.',
-        method: 'card',
-        provider: 'stripe',
+        message: `${methodLabel(method)} is not available for this Headless session configuration.`,
+        method,
+        provider: this.providerOf(method),
       });
     }
 
-    this.applySelection('card');
+    this.applySelection(method);
 
     const mountGen = ++this.mountGeneration;
-    this.cardMounted = false;
-    this.stripeCard.unmountPaymentElement(this.stripeOwnerId);
+    this.mountedMethod = null;
+    this.unmountAllStripeElements();
+
+    const adapter = this.adapterFor(method);
 
     try {
       const prefersDark =
         this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
       const resolvedTheme = resolveHeadlessTheme(this.theme, prefersDark);
-      const elementsLocale = toStripeElementsLocale(resolveEffectiveLocale(this.locale));
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      const elementsLocale = toStripeElementsLocale(effectiveLocale);
 
-      const paymentSession = await this.stripeCard.createPaymentSession(
-        this.product,
-        this.checkout,
-        this.stripeOwnerId,
-      );
+      const paymentSession = await this.createStripeElementSession(method, effectiveLocale);
 
-      this.throwIfDestroyedOrMountStale(mountGen, 'mount');
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', method);
 
-      await this.stripeCard.mountPaymentElement(
+      await adapter.mountPaymentElement(
         container,
         paymentSession.clientSecret,
         resolvedTheme,
@@ -308,38 +353,41 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this.stripeOwnerId,
       );
 
-      this.throwIfDestroyedOrMountStale(mountGen, 'mount');
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', method);
 
-      if (!this.stripeCard.hasMountedElement(this.stripeOwnerId)) {
+      if (!adapter.hasMountedElement(this.stripeOwnerId)) {
         throw new PaymentError({
           code: 'SDK_LOAD_FAILED',
-          message: 'Stripe Payment Element failed to mount.',
-          method: 'card',
-          provider: 'stripe',
+          message: `${methodLabel(method)} Payment Element failed to mount.`,
+          method,
+          provider: this.providerOf(method),
         });
       }
 
-      this.cardMounted = true;
+      this.mountedMethod = method;
       this._lastError.set(null);
       if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
         this._state.set('ready');
       }
 
-      return this.createCardMountHandle(mountGen);
+      return this.createMountHandle(method, mountGen);
     } catch (error) {
       if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
-        this.cardMounted = false;
-        this.stripeCard.unmountPaymentElement(this.stripeOwnerId);
+        this.mountedMethod = null;
+        adapter.unmountPaymentElement(this.stripeOwnerId);
       }
       if (this._state() === 'destroyed') {
         throw new PaymentError({
           code: 'PROVIDER_UNAVAILABLE',
           message: 'Headless checkout session was destroyed during mount().',
-          method: 'card',
-          provider: 'stripe',
+          method,
+          provider: this.providerOf(method),
         });
       }
-      const paymentError = normalizeError(error, { method: 'card', provider: 'stripe' });
+      const paymentError = normalizeError(error, {
+        method,
+        provider: this.providerOf(method),
+      });
       this._lastError.set(paymentError);
       this.emitError(paymentError);
       throw paymentError;
@@ -349,12 +397,17 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   async confirm(): Promise<void> {
     this.assertNotDestroyed('confirm');
 
+    const selected = this._selectedMethod();
+    const selectedMeta = {
+      method: selected ?? undefined,
+      provider: selected ? PAYMENT_METHOD_PROVIDER_MAP[selected] : undefined,
+    };
+
     if (this._state() === 'processing') {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
         message: 'A payment confirmation is already in progress.',
-        method: 'card',
-        provider: 'stripe',
+        ...selectedMeta,
       });
     }
 
@@ -363,36 +416,43 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         code: 'PAYMENT_FAILED',
         message:
           'A payment is already pending. Do not retry — confirm the final status on your backend.',
-        method: 'card',
-        provider: 'stripe',
+        ...selectedMeta,
       });
     }
 
     if (this._state() === 'idle' || this._state() === 'initializing') {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
-        message: 'Call initialize() and mount("card", container) before confirm().',
-        method: 'card',
-        provider: 'stripe',
+        message: 'Call initialize() and mount() before confirm().',
+        ...selectedMeta,
       });
     }
 
-    const selected = this._selectedMethod();
-    if (selected !== 'card') {
+    if (!selected || !isStripeElementMethod(selected)) {
       throw new PaymentError({
         code: 'CONFIG_INVALID',
-        message: 'confirm() requires selectedMethod() to be "card" in H3.1.',
-        method: selected ?? undefined,
-        provider: selected ? PAYMENT_METHOD_PROVIDER_MAP[selected] : undefined,
+        message:
+          'confirm() requires selectedMethod() to be "card", "klarna", or "affirm" with an active mount.',
+        ...selectedMeta,
       });
     }
 
-    if (!this.cardMounted || !this.stripeCard.hasMountedElement(this.stripeOwnerId)) {
+    if (this.mountedMethod !== selected) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
-        message: 'Mount the Stripe Payment Element with mount("card", container) before confirm().',
-        method: 'card',
-        provider: 'stripe',
+        message: `Mount the Payment Element with mount("${selected}", container) before confirm().`,
+        method: selected,
+        provider: this.providerOf(selected),
+      });
+    }
+
+    const adapter = this.adapterFor(selected);
+    if (!adapter.hasMountedElement(this.stripeOwnerId)) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: `Mount the Payment Element with mount("${selected}", container) before confirm().`,
+        method: selected,
+        provider: this.providerOf(selected),
       });
     }
 
@@ -402,33 +462,56 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
 
     this._lastError.set(null);
     this._state.set('processing');
-    this.emitStarted();
+    this.emitStarted(selected);
 
     try {
-      const result = await this.stripeCard.confirmPayment(
-        this.checkout?.successUrl,
-        this.stripeOwnerId,
-      );
+      const returnUrl = this.buildConfirmReturnUrl(selected);
+      const result = await adapter.confirmPayment(returnUrl, this.stripeOwnerId);
 
       if (this.isConfirmStale(mountGen, confirmGen)) {
         return;
       }
 
-      this.applyPaymentResult(result, confirmGen);
+      this.applyPaymentResult(result, confirmGen, selected);
     } catch (error) {
       if (this.isConfirmStale(mountGen, confirmGen)) {
         return;
       }
 
-      const paymentError = normalizeError(error, { method: 'card', provider: 'stripe' });
+      const paymentError = normalizeError(error, {
+        method: selected,
+        provider: this.providerOf(selected),
+      });
+
       if (paymentError.code === 'PAYMENT_CANCELLED') {
-        const cancelled = {
-          status: 'cancelled' as const,
-          method: 'card' as const,
-          provider: 'stripe' as const,
-          message: paymentError.message,
-        };
-        this.applyPaymentResult(cancelled, confirmGen);
+        this.applyPaymentResult(
+          {
+            status: 'cancelled',
+            method: selected,
+            provider: this.providerOf(selected),
+            message: paymentError.message,
+          },
+          confirmGen,
+          selected,
+        );
+        return;
+      }
+
+      // BNPL may still require a redirect / customer action. Do not treat as success.
+      // Headless cannot safely resume after a full-page redirect until H4.
+      if (paymentError.code === 'AUTHENTICATION_REQUIRED') {
+        this.applyPaymentResult(
+          {
+            status: 'processing',
+            method: selected,
+            provider: this.providerOf(selected),
+            message:
+              paymentError.message +
+              ' Headless redirect recovery is not available until H4 — confirm the final status on your backend.',
+          },
+          confirmGen,
+          selected,
+        );
         return;
       }
 
@@ -447,7 +530,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.refreshGeneration += 1;
     this.mountGeneration += 1;
     this.confirmGeneration += 1;
-    this.cardMounted = false;
+    this.mountedMethod = null;
     this._state.set('destroyed');
     this._selectedMethod.set(null);
     this._availableMethods.set([]);
@@ -455,7 +538,11 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.initPromise = null;
 
     try {
-      await this.stripeCard.destroy(this.stripeOwnerId);
+      await Promise.all([
+        this.stripeCard.destroy(this.stripeOwnerId),
+        this.klarna.destroy(this.stripeOwnerId),
+        this.affirm.destroy(this.stripeOwnerId),
+      ]);
     } catch {
       // Ignore teardown failures.
     }
@@ -464,10 +551,13 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.releaseId();
   }
 
-  private createCardMountHandle(mountGen: number): HeadlessMountHandle {
+  private createMountHandle(
+    method: HeadlessStripeElementMethod,
+    mountGen: number,
+  ): HeadlessMountHandle {
     let unmounted = false;
     return {
-      method: 'card',
+      method,
       unmount: () => {
         if (unmounted) {
           return;
@@ -480,13 +570,99 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
           return;
         }
         this.mountGeneration += 1;
-        this.cardMounted = false;
-        this.stripeCard.unmountPaymentElement(this.stripeOwnerId);
+        this.mountedMethod = null;
+        this.adapterFor(method).unmountPaymentElement(this.stripeOwnerId);
       },
     };
   }
 
-  private applyPaymentResult(result: PaymentResult, confirmGen: number): void {
+  private async createStripeElementSession(
+    method: HeadlessStripeElementMethod,
+    effectiveLocale: ReturnType<typeof resolveEffectiveLocale>,
+  ): Promise<{ clientSecret: string }> {
+    if (method === 'card') {
+      return this.stripeCard.createPaymentSession(
+        this.product,
+        this.checkout,
+        this.stripeOwnerId,
+      );
+    }
+
+    const snapshot = this.config.getSnapshot();
+    if (method === 'klarna') {
+      const configured = snapshot.providers?.klarna?.locale?.trim();
+      const preferred =
+        configured ||
+        toKlarnaPreferredLocale(
+          effectiveLocale,
+          snapshot.providers?.klarna?.purchaseCountry ?? 'US',
+        );
+      return this.klarna.createPaymentSession(
+        this.product,
+        this.checkout,
+        preferred,
+        this.stripeOwnerId,
+      );
+    }
+
+    const configured = snapshot.providers?.affirm?.locale?.trim();
+    const preferred =
+      configured ||
+      toAffirmPreferredLocale(
+        effectiveLocale,
+        snapshot.providers?.affirm?.purchaseCountry ?? 'US',
+      );
+    return this.affirm.createPaymentSession(
+      this.product,
+      this.checkout,
+      preferred,
+      this.stripeOwnerId,
+    );
+  }
+
+  /**
+   * Stamp `ep_method` (+ attempt id) on the return URL for future H4 ownership.
+   * Does **not** write a Stripe pending sessionStorage marker: claiming
+   * checkout/buttons ownership would misattribute returns before Headless H4.
+   */
+  private buildConfirmReturnUrl(method: HeadlessStripeElementMethod): string | undefined {
+    const base = this.checkout?.successUrl;
+    if (method === 'card') {
+      return base;
+    }
+    if (!this.browser.isBrowser) {
+      return base;
+    }
+    const attemptId = createStripeReturnAttemptId();
+    return buildStripeReturnUrl(method as StripeRedirectMethod, base, undefined, attemptId);
+  }
+
+  private adapterFor(method: HeadlessStripeElementMethod): StripeElementAdapterApi {
+    switch (method) {
+      case 'card':
+        return this.stripeCard;
+      case 'klarna':
+        return this.klarna;
+      case 'affirm':
+        return this.affirm;
+    }
+  }
+
+  private unmountAllStripeElements(): void {
+    this.stripeCard.unmountPaymentElement(this.stripeOwnerId);
+    this.klarna.unmountPaymentElement(this.stripeOwnerId);
+    this.affirm.unmountPaymentElement(this.stripeOwnerId);
+  }
+
+  private providerOf(method: HeadlessStripeElementMethod): PaymentProviderName {
+    return PAYMENT_METHOD_PROVIDER_MAP[method];
+  }
+
+  private applyPaymentResult(
+    result: PaymentResult,
+    confirmGen: number,
+    method: HeadlessStripeElementMethod,
+  ): void {
     if (confirmGen !== this.confirmGeneration || this._state() === 'destroyed') {
       return;
     }
@@ -514,21 +690,21 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     const paymentError = new PaymentError({
       code: 'PAYMENT_FAILED',
       message: result.message ?? 'Payment failed.',
-      method: 'card',
-      provider: 'stripe',
+      method,
+      provider: this.providerOf(method),
     });
     this._lastError.set(paymentError);
     this._state.set('error');
     this.emitTerminalError(paymentError, confirmGen);
   }
 
-  private emitStarted(): void {
+  private emitStarted(method: HeadlessStripeElementMethod): void {
     if (this.started$.closed) {
       return;
     }
     this.started$.next({
-      method: 'card',
-      provider: 'stripe',
+      method,
+      provider: this.providerOf(method),
       amount: this.product.amount,
       currency: this.product.currency,
     });
@@ -651,21 +827,25 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
   }
 
-  private throwIfDestroyedOrMountStale(mountGen: number, operation: string): void {
+  private throwIfDestroyedOrMountStale(
+    mountGen: number,
+    operation: string,
+    method: HeadlessStripeElementMethod,
+  ): void {
     if (this._state() === 'destroyed') {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: `Headless checkout session was destroyed during ${operation}().`,
-        method: 'card',
-        provider: 'stripe',
+        method,
+        provider: this.providerOf(method),
       });
     }
     if (mountGen !== this.mountGeneration) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: `Headless checkout ${operation}() was superseded by a newer mount/unmount.`,
-        method: 'card',
-        provider: 'stripe',
+        method,
+        provider: this.providerOf(method),
       });
     }
   }
@@ -697,5 +877,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
     this.released = true;
     this.sessionRegistry.release(this.id);
+  }
+}
+
+function methodLabel(method: HeadlessStripeElementMethod): string {
+  switch (method) {
+    case 'card':
+      return 'Card';
+    case 'klarna':
+      return 'Klarna';
+    case 'affirm':
+      return 'Affirm';
   }
 }

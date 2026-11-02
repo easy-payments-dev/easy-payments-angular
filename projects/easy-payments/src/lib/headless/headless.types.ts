@@ -20,7 +20,7 @@ import type {
  * Public Headless Checkout session lifecycle.
  *
  * H2: `idle → initializing → ready | error → destroyed`.
- * H3.1 Card: `ready → processing → success | pending | cancelled | error`.
+ * H3.1–H3.2 (Card / Klarna / Affirm): `ready → processing → success | pending | cancelled | error`.
  */
 export type HeadlessSessionState =
   | 'idle'
@@ -98,7 +98,7 @@ export interface HeadlessMethodStatus {
 }
 
 export interface HeadlessCheckoutEvents {
-  /** Emitted when a payment attempt begins (H3.1: Card confirm). */
+  /** Emitted when a payment attempt begins (H3.1–H3.2: Card / Klarna / Affirm confirm). */
   readonly started: Observable<PaymentStartedEvent>;
   /** Emitted when {@link HeadlessCheckoutSession.selectMethod} changes selection. */
   readonly methodChange: Observable<PaymentMethodChangeEvent>;
@@ -116,7 +116,8 @@ export interface HeadlessCheckoutEvents {
  * Public Headless Checkout session.
  *
  * H2: initialize, readiness, selection, destroy.
- * H3.1: mount/confirm for Stripe Card only (official Payment Element).
+ * H3.1–H3.2: mount/confirm for `card`, `klarna`, and `affirm` (official Stripe Payment Element).
+ * PayPal / wallets are not mountable yet. BNPL full-page redirect recovery is H4.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;
@@ -136,13 +137,13 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * H3.1 supports `card` only (Stripe Payment Element).
+   * Supports `card`, `klarna`, and `affirm` (Stripe Payment Element via existing adapters).
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 
   /**
    * Confirm the selected method.
-   * H3.1: requires `selectedMethod() === 'card'` and an active Card mount.
+   * Requires `selectedMethod()` to be `card` | `klarna` | `affirm` with a matching active mount.
    */
   confirm(): Promise<void>;
 

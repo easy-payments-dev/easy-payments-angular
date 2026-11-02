@@ -172,7 +172,12 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
     const session = await readySession({ methods: ['card', 'paypal'] });
     await expectAsync(
       session.mount('paypal', document.createElement('div')),
-    ).toBeRejectedWith(jasmine.objectContaining({ code: 'PROVIDER_NOT_IMPLEMENTED' }));
+    ).toBeRejectedWith(
+      jasmine.objectContaining({
+        code: 'PROVIDER_NOT_IMPLEMENTED',
+        message: jasmine.stringMatching(/PayPal and wallets/),
+      }),
+    );
 
     backend.createStripePayment.and.rejectWith(
       new PaymentError({ code: 'BACKEND_ERROR', message: 'backend down', method: 'card', provider: 'stripe' }),
@@ -207,12 +212,12 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
   it('rejects confirm without mount or without card selected', async () => {
     const session = await readySession({ methods: ['card'] });
     await expectAsync(session.confirm()).toBeRejectedWith(
-      jasmine.objectContaining({ message: jasmine.stringMatching(/selectedMethod|Mount/) }),
+      jasmine.objectContaining({ message: jasmine.stringMatching(/selectedMethod|Mount|mount/) }),
     );
 
     session.selectMethod('card');
     await expectAsync(session.confirm()).toBeRejectedWith(
-      jasmine.objectContaining({ message: jasmine.stringMatching(/Mount the Stripe/) }),
+      jasmine.objectContaining({ message: jasmine.stringMatching(/Mount the Payment Element/) }),
     );
     await session.destroy();
   });
