@@ -357,7 +357,24 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
     this.inlineError.set(null);
 
     try {
-      await this.paypalAdapter.ensureSdkLoaded(locale);
+      try {
+        await this.paypalAdapter.ensureSdkLoaded(locale);
+      } catch (err) {
+        if (generation !== this.renderGeneration) {
+          return;
+        }
+        this.renderKey = null;
+        const paymentError = mapPayPalError(
+          err,
+          'SDK_LOAD_FAILED',
+          'PayPal SDK script failed to load.',
+        );
+        this.uiState.set('error');
+        this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
+        this.error.emit(paymentError);
+        return;
+      }
+
       if (generation !== this.renderGeneration) {
         return;
       }
@@ -416,7 +433,12 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
         return;
       }
       this.renderKey = null;
-      const paymentError = mapPayPalError(err, 'SDK_LOAD_FAILED', 'Failed to initialize PayPal.');
+      // SDK script already loaded — classify Buttons create/render separately.
+      const paymentError = mapPayPalError(
+        err,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons failed to initialize.',
+      );
       this.uiState.set('error');
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);

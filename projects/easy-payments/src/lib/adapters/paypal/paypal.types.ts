@@ -35,6 +35,8 @@ export type PayPalUiState =
 export interface PayPalButtonsHandle {
   render(selector: string | HTMLElement): Promise<void>;
   close?: () => Promise<void>;
+  /** Official SDK eligibility probe — prefer checking before `render()`. */
+  isEligible?: () => boolean;
 }
 
 /**

@@ -26,8 +26,38 @@ import { mapPayPalError } from './paypal-error.mapper';
 import {
   PayPalButtonsHandle,
   PayPalButtonsOptions,
+  PayPalButtonsStyle,
   PayPalNamespace,
 } from './paypal.types';
+
+/**
+ * PayPal JS SDK rejects non-numeric `height` and `tagline` with vertical layout.
+ * Coerce CSS-like values and drop incompatible fields before `Buttons()`.
+ */
+export function sanitizePayPalButtonStyle(style: PayPalButtonsStyle): PayPalButtonsStyle {
+  const next: PayPalButtonsStyle = { ...style };
+  if ('height' in next) {
+    const raw = next.height as unknown;
+    let height: number | undefined;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      height = raw;
+    } else if (typeof raw === 'string') {
+      const parsed = Number.parseInt(raw, 10);
+      height = Number.isFinite(parsed) ? parsed : undefined;
+    } else {
+      height = undefined;
+    }
+    if (height === undefined) {
+      delete next.height;
+    } else {
+      next.height = Math.min(55, Math.max(25, Math.round(height)));
+    }
+  }
+  if (next.layout !== 'horizontal') {
+    delete next.tagline;
+  }
+  return next;
+}
 
 declare global {
   interface Window {
@@ -144,18 +174,25 @@ export class PayPalAdapter extends BaseProviderAdapter {
         await this.sdkLoader.loadScript({
           id: scriptId,
           src: `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=${encodeURIComponent(intent)}&components=buttons&locale=${encodeURIComponent(paypalLocale)}`,
+          // Surface hangs (adblock / DNS / captive portal) as a timeout instead of spinning forever.
+          timeoutMs: 20_000,
         });
       } catch (error) {
         this.loadPromise = null;
-        throw mapPayPalError(error, 'SDK_LOAD_FAILED', 'PayPal SDK failed to load.');
+        this.loadedSdkLocale = null;
+        this.sdkLoader.unloadScript(scriptId);
+        throw mapPayPalError(error, 'SDK_LOAD_FAILED', 'PayPal SDK script failed to load.');
       }
 
       const paypal = this.browser.getWindow()?.paypal;
       if (!paypal?.Buttons) {
         this.loadPromise = null;
+        this.loadedSdkLocale = null;
+        this.sdkLoader.unloadScript(scriptId);
         throw new PaymentError({
           code: 'SDK_LOAD_FAILED',
-          message: 'PayPal SDK loaded but window.paypal.Buttons is unavailable.',
+          message:
+            'PayPal SDK script finished loading but window.paypal.Buttons is unavailable.',
           method: 'paypal',
           provider: 'paypal',
         });
@@ -272,28 +309,52 @@ export class PayPalAdapter extends BaseProviderAdapter {
         ? options.fundingSource.trim()
         : undefined;
 
-    const buttons = paypal.Buttons({
-      style: {
-        layout: 'vertical',
-        color: 'gold',
-        shape: 'rect',
-        label: 'paypal',
-        ...(options.style ?? {}),
-      },
-      ...(resolvedFunding ? { fundingSource: resolvedFunding } : {}),
-      createOrder: options.createOrder,
-      onApprove: options.onApprove,
-      onCancel: options.onCancel,
-      onError: options.onError,
-      onClick: options.onClick,
+    const style = sanitizePayPalButtonStyle({
+      layout: 'vertical',
+      color: 'gold',
+      shape: 'rect',
+      label: 'paypal',
+      ...(options.style ?? {}),
     });
+
+    let buttons: PayPalButtonsHandle;
+    try {
+      buttons = paypal.Buttons({
+        style,
+        ...(resolvedFunding ? { fundingSource: resolvedFunding } : {}),
+        createOrder: options.createOrder,
+        onApprove: options.onApprove,
+        onCancel: options.onCancel,
+        onError: options.onError,
+        onClick: options.onClick,
+      });
+    } catch (error) {
+      throw mapPayPalError(
+        error,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons could not be created with the current options.',
+      );
+    }
+
+    if (typeof buttons.isEligible === 'function' && !buttons.isEligible()) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'PayPal Buttons are not eligible in this browser or funding configuration.',
+        method: 'paypal',
+        provider: 'paypal',
+      });
+    }
 
     this.buttonMounts.set(id, buttons);
     try {
       await buttons.render(container);
     } catch (error) {
       this.buttonMounts.delete(id);
-      throw error;
+      throw mapPayPalError(
+        error,
+        'PROVIDER_UNAVAILABLE',
+        'PayPal Buttons failed to render.',
+      );
     }
     return id;
   }

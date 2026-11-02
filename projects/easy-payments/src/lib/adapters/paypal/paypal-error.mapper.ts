@@ -46,7 +46,15 @@ export function mapPayPalError(
     });
   }
 
-  if (lower.includes('sdk') || lower.includes('script')) {
+  // Script/network load only — do not treat Buttons create/render messages as SDK load.
+  if (
+    lower.includes('failed to load sdk') ||
+    lower.includes('sdk failed to load') ||
+    lower.includes('sdk script') ||
+    lower.includes('window.paypal') ||
+    lower.includes('sdk load timed out') ||
+    lower.includes('timed out loading')
+  ) {
     return new PaymentError({
       code: 'SDK_LOAD_FAILED',
       message: 'PayPal SDK failed to load.',

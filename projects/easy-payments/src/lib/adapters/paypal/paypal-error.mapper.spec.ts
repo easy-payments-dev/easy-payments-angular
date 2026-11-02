@@ -25,4 +25,24 @@ describe('mapPayPalError', () => {
   it('normalizes declined payments', () => {
     expect(mapPayPalError(new Error('INSTRUMENT_DECLINED')).code).toBe('PAYMENT_FAILED');
   });
+
+  it('maps script load / timeout messages to SDK_LOAD_FAILED', () => {
+    expect(
+      mapPayPalError(
+        new Error('Failed to load SDK: https://www.paypal.com/sdk/js?client-id=REDACTED'),
+      ).code,
+    ).toBe('SDK_LOAD_FAILED');
+    expect(
+      mapPayPalError(new Error('Timed out loading SDK after 20000ms: https://example.test')).code,
+    ).toBe('SDK_LOAD_FAILED');
+  });
+
+  it('does not mislabel Buttons create/render failures as SDK_LOAD_FAILED', () => {
+    expect(
+      mapPayPalError(
+        new Error('Expected height to be a number between 25 and 55'),
+        'PROVIDER_UNAVAILABLE',
+      ).code,
+    ).toBe('PROVIDER_UNAVAILABLE');
+  });
 });

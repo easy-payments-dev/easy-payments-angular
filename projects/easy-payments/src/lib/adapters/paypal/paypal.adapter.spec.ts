@@ -5,8 +5,23 @@ import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { BackendService } from '../../services/backend.service';
 import { SdkLoaderService } from '../../loaders/sdk-loader.service';
 import { PaymentError } from '../../errors/payment-error';
-import { PayPalAdapter } from './paypal.adapter';
+import { PayPalAdapter, sanitizePayPalButtonStyle } from './paypal.adapter';
 import { PayPalNamespace } from './paypal.types';
+
+describe('sanitizePayPalButtonStyle', () => {
+  it('coerces string height and drops tagline for vertical layout', () => {
+    expect(
+      sanitizePayPalButtonStyle({
+        layout: 'vertical',
+        height: '40px' as unknown as number,
+        tagline: true,
+      }),
+    ).toEqual({
+      layout: 'vertical',
+      height: 40,
+    });
+  });
+});
 
 describe('PayPalAdapter', () => {
   let adapter: PayPalAdapter;
@@ -107,6 +122,35 @@ describe('PayPalAdapter', () => {
     expect(sdkLoader.loadScript.calls.mostRecent().args[0].id).toBe(
       'easy-payments-paypal-sdk-en_US',
     );
+  });
+
+  it('unloads the script and clears load state after SDK load failure', async () => {
+    sdkLoader.loadScript.and.rejectWith(new Error('Failed to load SDK: https://www.paypal.com/sdk/js?client-id=SECRET'));
+
+    await expectAsync(adapter.ensureSdkLoaded()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'SDK_LOAD_FAILED' }),
+    );
+    expect(sdkLoader.unloadScript).toHaveBeenCalledWith('easy-payments-paypal-sdk-en_US');
+
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+    await expectAsync(adapter.ensureSdkLoaded()).toBeResolvedTo(paypalNs);
+  });
+
+  it('maps Buttons create/render failures as PROVIDER_UNAVAILABLE not SDK_LOAD_FAILED', async () => {
+    sdkLoader.loadScript.and.callFake(async () => {
+      (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;
+    });
+    (paypalNs.Buttons as jasmine.Spy).and.throwError('Expected height to be a number');
+
+    await expectAsync(
+      adapter.renderButtons(document.createElement('div'), {
+        createOrder: async () => 'ORDER-1',
+        onApprove: async () => undefined,
+        style: { height: '40px' as unknown as number },
+      }),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: 'PROVIDER_UNAVAILABLE' }));
   });
 
   it('creates an order through the backend without amount or metadata', async () => {
