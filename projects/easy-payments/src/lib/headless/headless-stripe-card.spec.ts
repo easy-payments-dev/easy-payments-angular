@@ -171,11 +171,11 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
   it('rejects unsupported methods and cleans up after mount failure', async () => {
     const session = await readySession({ methods: ['card', 'paypal'] });
     await expectAsync(
-      session.mount('paypal', document.createElement('div')),
+      session.mount('google-pay', document.createElement('div')),
     ).toBeRejectedWith(
       jasmine.objectContaining({
         code: 'PROVIDER_NOT_IMPLEMENTED',
-        message: jasmine.stringMatching(/PayPal and wallets/),
+        message: jasmine.stringMatching(/Google Pay and Apple Pay/),
       }),
     );
 

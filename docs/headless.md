@@ -14,24 +14,31 @@ Headless Checkout is the third Easy Payments integration experience:
 | Method readiness + selection | **Supported (H2)** |
 | Stripe **Card** mount + confirm | **Supported (H3.1)** |
 | **Klarna** + **Affirm** mount + confirm | **Supported (H3.2)** — see redirect limitation |
-| PayPal / Google Pay / Apple Pay mount | Not yet (later H3.x) |
+| **PayPal** official Buttons | **Supported (H3.3)** — no `confirm()` |
+| Google Pay / Apple Pay mount | Not yet (later H3.x) |
 | BNPL / Stripe redirect recovery for Headless | Not yet (**H4**) |
 | Demo Headless experience | Not yet (H5) |
 
-**Card, Klarna, and Affirm** are the supported Headless payment methods. PayPal and wallets are not mountable yet.
+**Card, Klarna, Affirm, and PayPal** are the supported Headless payment methods. Google Pay and Apple Pay are not mountable yet.
 
-## Shared mount / confirm API
+## Shared mount API
 
 ```typescript
-await session.mount('card' | 'klarna' | 'affirm', container);
+await session.mount('card' | 'klarna' | 'affirm' | 'paypal', container);
 session.selectMethod(/* same method — also applied by mount */);
-await session.confirm(); // merchant-owned button
 const handle = /* from mount */;
 await handle.unmount(); // idempotent
 await session.destroy();
 ```
 
-Do not use separate `confirmKlarna()` / `confirmAffirm()` APIs — route through `confirm()` and `selectedMethod()`.
+### Confirm vs Buttons
+
+| Method | How the buyer pays |
+|--------|--------------------|
+| `card` / `klarna` / `affirm` | Merchant button → `session.confirm()` |
+| `paypal` | Official PayPal Buttons (SDK). **`session.confirm()` rejects.** |
+
+Do not use separate `confirmKlarna()` / `confirmPayPal()` APIs.
 
 ## Stripe Card (H3.1)
 
@@ -114,40 +121,84 @@ const session = headless.createSession({
 
 await session.initialize();
 
-// Klarna
 const klarnaHost = document.getElementById('klarna-slot')!;
 await session.mount('klarna', klarnaHost);
 await session.confirm(); // merchant CTA
-
-// Or switch to Affirm (unmounts prior Stripe Element for this session)
-const affirmHost = document.getElementById('affirm-slot')!;
-await session.mount('affirm', affirmHost);
-await session.confirm();
 ```
 
 ### Redirect limitation (H4)
 
-Klarna and Affirm often **redirect** the buyer to an external authorization flow.
+Klarna and Affirm often **redirect** the buyer. H3.2 stamps `ep_method` on return URLs but does **not** resume Headless after a full-page redirect and does not write Full Checkout / Buttons Only ownership markers. Backend webhooks remain authoritative. Full Headless BNPL return recovery is **H4**.
 
-H3.2 preserves adapter `return_url` stamping (`ep_method=klarna|affirm` and an attempt id) so a future Headless recovery path can identify the method.
+## PayPal (H3.3)
 
-H3.2 does **not**:
+PayPal Headless mounts the **official PayPal JavaScript SDK Buttons** through the existing `PayPalAdapter`. The SDK owns the button and buyer approval UI. Easy Payments never synthesizes approval or capture in the browser.
 
-- Write Full Checkout / Buttons Only redirect ownership markers (`hostKind: 'checkout' | 'buttons'`)
-- Resume a Headless session after a full-page redirect
-- Treat “browser came back from redirect” as verified payment success
+### Requirements
 
-**Backend webhooks / PaymentIntent retrieve remain authoritative.**
+- `providers.paypal.clientId` (PayPal **client id** only — never a secret)
+- `backend.paypalCreateOrderUrl` and `backend.paypalCaptureOrderUrl`
+- A merchant-owned `HTMLElement` container
+- Sandbox / live credentials configured on your backend (not in Angular)
 
-Until **H4**, merchants should:
+### Example
 
-1. Prefer verifying fulfillment on the server after any BNPL attempt
-2. Treat Headless `success` / `pending` as UX only
-3. Expect that a hard redirect away from the page ends the in-memory Headless session — remount/recreate after return is a merchant + H4 concern
+```typescript
+const session = headless.createSession({
+  product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
+  methods: ['paypal', 'card'],
+  checkoutInstanceId: 'account-checkout',
+});
 
-Minimal H4 dependency: Headless-aware Stripe return ownership (`hostKind: 'headless'` or equivalent) wired through `StripeRedirectRecoveryService` / `CheckoutHostContext`, without letting Full Checkout or Buttons Only claim Headless returns.
+await session.initialize();
 
-### Lifecycle (Card / Klarna / Affirm)
+const paypalHost = document.getElementById('paypal-slot')!;
+const handle = await session.mount('paypal', paypalHost);
+
+session.events.started.subscribe(() => { /* createOrder started */ });
+session.events.success.subscribe((result) => { /* capture completed; still verify on backend */ });
+session.events.pending.subscribe(() => { /* ambiguous/pending capture — do not auto-retry */ });
+session.events.cancel.subscribe(() => { /* buyer cancelled PayPal */ });
+session.events.error.subscribe((err) => { /* show error; Buttons may remain for retry */ });
+
+// Do NOT call session.confirm() for PayPal — it rejects with CONFIG_INVALID.
+// The buyer clicks the official PayPal Button rendered into paypalHost.
+
+await handle.unmount();
+await session.destroy();
+```
+
+### Lifecycle
+
+1. `mount('paypal', container)` → load SDK → `renderButtons` into merchant container
+2. Buyer clicks official PayPal Button
+3. SDK `createOrder` → backend creates order (catalog/pricing authoritative)
+4. Buyer approves or cancels in PayPal
+5. SDK `onApprove` → backend **capture** (success requires capture result, not approve alone)
+6. Headless emits `success` | `pending` | `cancel` | `error`
+7. `unmount` / `destroy` closes **this session’s** Buttons only
+
+### Events & state
+
+| Phase | State | Event |
+|-------|-------|--------|
+| createOrder begins | `processing` | `started` |
+| Capture completed | `success` | `success` |
+| Capture pending / ambiguous | `pending` | `pending` (do **not** auto-retry) |
+| Buyer cancel | `cancelled` → `ready` | `cancel` |
+| Create/capture/SDK failure | `error` → `ready` (Buttons still mounted) | `error` |
+
+Cancellation is not treated as a generic payment failure.
+
+### Multi-session
+
+Each Headless session uses a stable owner id (`session.id`) for PayPal order-create guards and a Buttons mount id from `PayPalAdapter.renderButtons`. Destroying or unmounting one session must not close another session’s Buttons.
+
+### Sandbox testing
+
+Use PayPal Sandbox client ids and backend create/capture endpoints against Sandbox. Mocked unit tests do **not** prove live Sandbox funding eligibility or SDK rendering.
+
+## Lifecycle (Card / Klarna / Affirm)
 
 1. `initialize()` → `ready`
 2. `selectMethod(...)` (also applied automatically by `mount`)
@@ -156,33 +207,21 @@ Minimal H4 dependency: Headless-aware Stripe return ownership (`hostKind: 'headl
 5. Terminal: `success` | `pending` | `cancelled` | `error`
 6. `handle.unmount()` and/or `session.destroy()` for cleanup
 
-If confirmation still requires customer authentication / redirect without a same-page result, Headless moves to **`pending`** (not `success`) and documents the H4 gap — never invent a false success.
-
-### States & events
-
-| Transition | Events |
-|------------|--------|
-| confirm starts | `started` |
-| PaymentIntent succeeded / requires_capture | `success`, state `success` |
-| PaymentIntent processing or auth still required | `pending`, state `pending` (do **not** retry casually) |
-| Cancelled | `cancel`, state `cancelled` |
-| Failure | `error`, state `error` (retry/remount when appropriate) |
-
 Client secrets are **not** exposed on session signals, events, or diagnostics.
 
-### Errors
+## Errors
 
-Typed `PaymentError` cases include: invalid container, unsupported method (PayPal/wallets), method unavailable / ineligible BNPL, mount failure, confirm without mount, wrong selected method, duplicate confirm, concurrent Stripe confirmation (page gate), destroyed session, backend failure, confirmation failure, cancellation.
+Typed `PaymentError` cases include: invalid container, unsupported method (wallets), method unavailable, mount/render failure, SDK load failure, confirm without mount, wrong selected method, **`confirm()` for PayPal**, duplicate confirm / in-flight PayPal create, concurrent Stripe confirmation gate, destroyed session, backend create/capture failure, cancellation.
 
-### Multi-instance
+## Multi-instance
 
-Each Headless session uses its own Stripe Element owner id (the session `id`). Sibling sessions can mount independently. Switching Card ↔ Klarna ↔ Affirm within one session unmounts the previous Element for that owner. At most one Stripe confirmation may run on the page at a time (existing confirmation gate).
+Each Headless session uses its own Stripe Element owner id and PayPal Buttons mount id (tied to the session `id`). Sibling sessions can mount independently. Switching Card ↔ Klarna ↔ Affirm ↔ PayPal within one session tears down the previous mount for that session only.
 
-### Security
+## Security
 
-- Publishable key only in the browser
-- No raw card / BNPL secrets in Easy Payments
-- Official Stripe Payment Element only
+- Publishable Stripe key / PayPal client id only in the browser
+- No raw card data; no PayPal secrets in Angular
+- Official Stripe Payment Element / PayPal Buttons only
 - Backend must re-price / authorize; webhooks remain authoritative for fulfillment
 
 ## Session foundation (H2+)
@@ -190,7 +229,7 @@ Each Headless session uses its own Stripe Element owner id (the session `id`). S
 ```typescript
 const session = headless.createSession({
   product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
-  methods: ['card', 'klarna', 'paypal'], // paypal not mountable yet
+  methods: ['card', 'klarna', 'paypal'],
   checkoutInstanceId: 'account-checkout',
 });
 
@@ -203,7 +242,7 @@ Apple Pay may still report `readiness: 'loading'` until an Express Checkout Elem
 
 ## Not supported yet
 
-- `mount('paypal' | 'google-pay' | 'apple-pay', …)`
+- `mount('google-pay' | 'apple-pay', …)`
 - Headless demo mode in the playground
 - Complete Headless BNPL redirect recovery after leave-page authorization (**H4**)
 

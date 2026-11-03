@@ -19,6 +19,8 @@ import type { EasyPaymentsConfigService } from '../config/easy-payments-config.s
 import type { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import type { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import type { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
+import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
+import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
 import {
   buildStripeReturnUrl,
   createStripeReturnAttemptId,
@@ -46,8 +48,15 @@ import type {
 /** Methods that mount a Stripe Payment Element through existing adapters (H3.1–H3.2). */
 type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm';
 
+/** All Headless-mountable methods through H3.3. */
+type HeadlessMountableMethod = HeadlessStripeElementMethod | 'paypal';
+
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
   return method === 'card' || method === 'klarna' || method === 'affirm';
+}
+
+function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMethod {
+  return isStripeElementMethod(method) || method === 'paypal';
 }
 
 interface StripeElementAdapterApi {
@@ -85,11 +94,12 @@ export interface HeadlessCheckoutSessionDeps {
   stripeCard: StripeCardAdapter;
   klarna: KlarnaAdapter;
   affirm: AffirmAdapter;
+  paypal: PayPalAdapter;
 }
 
 /**
  * Independently owned Headless session.
- * H3.1: Stripe Card. H3.2: Klarna + Affirm (Stripe Payment Element adapters).
+ * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal official Buttons.
  */
 export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   readonly id: string;
@@ -109,10 +119,13 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private readonly stripeCard: StripeCardAdapter;
   private readonly klarna: KlarnaAdapter;
   private readonly affirm: AffirmAdapter;
+  private readonly paypal: PayPalAdapter;
   private readonly availability = new CheckoutAvailabilitySession();
 
-  /** Stripe Element session owner — equals Headless session id for isolation. */
+  /** Stripe Element / PayPal order owner — equals Headless session id for isolation. */
   private readonly stripeOwnerId: string;
+  /** Same as session id — scopes PayPal createOrder concurrency to this session. */
+  private readonly paypalOrderOwnerId: string;
 
   private readonly _state = signal<HeadlessSessionState>('idle');
   private readonly _selectedMethod = signal<PaymentMethod | null>(null);
@@ -148,13 +161,21 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private released = false;
 
   private mountGeneration = 0;
-  private mountedMethod: HeadlessStripeElementMethod | null = null;
+  private mountedMethod: HeadlessMountableMethod | null = null;
   private confirmGeneration = 0;
   private terminalEmittedForConfirm = 0;
+
+  /** Ownership-scoped PayPal Buttons mount id from {@link PayPalAdapter.renderButtons}. */
+  private paypalButtonsMountId: string | null = null;
+  /** This session's most recent PayPal order id (never a sibling's). */
+  private paypalCurrentOrderId: string | null = null;
+  private paypalCaptureEmitted = false;
+  private paypalAttemptAnnounced = false;
 
   constructor(deps: HeadlessCheckoutSessionDeps) {
     this.id = deps.id;
     this.stripeOwnerId = deps.id;
+    this.paypalOrderOwnerId = deps.id;
     this.product = deps.product;
     this.methods = deps.methods;
     this.checkout = deps.checkout;
@@ -168,6 +189,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.stripeCard = deps.stripeCard;
     this.klarna = deps.klarna;
     this.affirm = deps.affirm;
+    this.paypal = deps.paypal;
     void this.translations;
   }
 
@@ -288,11 +310,11 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       });
     }
 
-    if (!isStripeElementMethod(method)) {
+    if (!isMountableMethod(method)) {
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", and "affirm". PayPal and wallets arrive in later milestones.',
+          'Headless mount currently supports "card", "klarna", "affirm", and "paypal". Google Pay and Apple Pay arrive in later milestones.',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -330,8 +352,23 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
 
     const mountGen = ++this.mountGeneration;
     this.mountedMethod = null;
-    this.unmountAllStripeElements();
+    this.paypalCaptureEmitted = false;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCurrentOrderId = null;
+    await this.teardownActiveMounts();
 
+    if (method === 'paypal') {
+      return this.mountPayPal(container, mountGen);
+    }
+
+    return this.mountStripeElement(method, container, mountGen);
+  }
+
+  private async mountStripeElement(
+    method: HeadlessStripeElementMethod,
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
     const adapter = this.adapterFor(method);
 
     try {
@@ -370,7 +407,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this._state.set('ready');
       }
 
-      return this.createMountHandle(method, mountGen);
+      return this.createStripeMountHandle(method, mountGen);
     } catch (error) {
       if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
         this.mountedMethod = null;
@@ -388,6 +425,85 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         method,
         provider: this.providerOf(method),
       });
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
+
+  private async mountPayPal(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    try {
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      await this.paypal.ensureSdkLoaded(effectiveLocale);
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'paypal');
+
+      const mountId = await this.paypal.renderButtons(
+        container,
+        {
+          createOrder: () => this.onPayPalCreateOrder(mountGen),
+          onApprove: (data) => this.onPayPalApprove(data.orderID, mountGen),
+          onCancel: () => this.onPayPalCancel(mountGen),
+          onError: (err) => this.onPayPalSdkError(err, mountGen),
+          onClick: async (_data, actions) => {
+            if (
+              this._state() === 'destroyed' ||
+              mountGen !== this.mountGeneration ||
+              this.paypal.isBusy(this.paypalOrderOwnerId, this.paypalCurrentOrderId) ||
+              this._state() === 'success' ||
+              this._state() === 'pending'
+            ) {
+              await actions.reject();
+              return;
+            }
+            await actions.resolve();
+          },
+        },
+        effectiveLocale,
+        this.paypalButtonsMountId ?? undefined,
+      );
+
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        await this.paypal.destroyButtons(mountId);
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'paypal',
+          provider: 'paypal',
+        });
+      }
+
+      this.paypalButtonsMountId = mountId;
+      this.mountedMethod = 'paypal';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      return this.createPayPalMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.paypalButtonsMountId;
+        this.paypalButtonsMountId = null;
+        if (id) {
+          await this.paypal.destroyButtons(id);
+        }
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'paypal',
+          provider: 'paypal',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapPayPalError(error, 'PROVIDER_UNAVAILABLE', 'PayPal Buttons failed to initialize.');
       this._lastError.set(paymentError);
       this.emitError(paymentError);
       throw paymentError;
@@ -428,11 +544,21 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       });
     }
 
+    if (selected === 'paypal') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'PayPal is confirmed through the official PayPal Buttons, not session.confirm(). Mount PayPal and let the buyer click the PayPal button.',
+        method: 'paypal',
+        provider: 'paypal',
+      });
+    }
+
     if (!selected || !isStripeElementMethod(selected)) {
       throw new PaymentError({
         code: 'CONFIG_INVALID',
         message:
-          'confirm() requires selectedMethod() to be "card", "klarna", or "affirm" with an active mount.',
+          'confirm() requires selectedMethod() to be "card", "klarna", or "affirm" with an active Stripe Payment Element mount.',
         ...selectedMeta,
       });
     }
@@ -531,6 +657,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.mountGeneration += 1;
     this.confirmGeneration += 1;
     this.mountedMethod = null;
+    this.paypalCaptureEmitted = false;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCurrentOrderId = null;
     this._state.set('destroyed');
     this._selectedMethod.set(null);
     this._availableMethods.set([]);
@@ -542,6 +671,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this.stripeCard.destroy(this.stripeOwnerId),
         this.klarna.destroy(this.stripeOwnerId),
         this.affirm.destroy(this.stripeOwnerId),
+        this.destroyPayPalButtonsOnly(),
       ]);
     } catch {
       // Ignore teardown failures.
@@ -551,7 +681,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.releaseId();
   }
 
-  private createMountHandle(
+  private createStripeMountHandle(
     method: HeadlessStripeElementMethod,
     mountGen: number,
   ): HeadlessMountHandle {
@@ -574,6 +704,244 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this.adapterFor(method).unmountPaymentElement(this.stripeOwnerId);
       },
     };
+  }
+
+  private createPayPalMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'paypal',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.paypalCurrentOrderId = null;
+        this.paypalCaptureEmitted = false;
+        this.paypalAttemptAnnounced = false;
+        if (this.paypalButtonsMountId === mountId) {
+          this.paypalButtonsMountId = null;
+        }
+        void this.paypal.destroyButtons(mountId);
+      },
+    };
+  }
+
+  private async onPayPalCreateOrder(mountGen: number): Promise<string> {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'PayPal checkout was superseded.',
+        method: 'paypal',
+        provider: 'paypal',
+      });
+    }
+
+    this._lastError.set(null);
+    this.paypalCaptureEmitted = false;
+    const confirmGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.paypalAttemptAnnounced) {
+      this.paypalAttemptAnnounced = true;
+      this.emitStarted('paypal');
+    }
+
+    try {
+      const orderId = await this.paypal.createOrder(
+        this.product,
+        this.checkout,
+        this.paypalOrderOwnerId,
+      );
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        throw new PaymentError({
+          code: 'PAYMENT_FAILED',
+          message: 'PayPal checkout was superseded.',
+          method: 'paypal',
+          provider: 'paypal',
+        });
+      }
+      this.paypalCurrentOrderId = orderId;
+      return orderId;
+    } catch (error) {
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        throw mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create PayPal order.');
+      }
+      const paymentError = mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create PayPal order.');
+      this.paypalAttemptAnnounced = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      // Buttons remain mounted — allow another buyer attempt.
+      this._state.set('ready');
+      throw paymentError;
+    }
+  }
+
+  private async onPayPalApprove(orderId: string, mountGen: number): Promise<void> {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this.paypalCaptureEmitted
+    ) {
+      return;
+    }
+    this.paypalCaptureEmitted = true;
+
+    const confirmGen = this.confirmGeneration;
+    this._state.set('processing');
+    this._lastError.set(null);
+
+    try {
+      const result = await this.paypal.captureOrder(orderId);
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+
+      if (result.status === 'success') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'paypal');
+        return;
+      }
+
+      if (result.status === 'processing') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'paypal');
+        return;
+      }
+
+      if (result.status === 'cancelled') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'paypal');
+        this.restorePayPalReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      const paymentError = new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: result.message ?? 'PayPal payment failed.',
+        method: 'paypal',
+        provider: 'paypal',
+      });
+      this.paypalAttemptAnnounced = false;
+      this.paypalCaptureEmitted = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restorePayPalReadyAfterTerminal(mountGen);
+    } catch (error) {
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+      const paymentError = normalizeError(error, { method: 'paypal', provider: 'paypal' });
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.paypalAttemptAnnounced = false;
+        this.paypalCaptureEmitted = false;
+        this.applyPaymentResult(
+          {
+            status: 'cancelled',
+            method: 'paypal',
+            provider: 'paypal',
+            message: paymentError.message,
+            sessionId: orderId,
+          },
+          confirmGen,
+          'paypal',
+        );
+        this.restorePayPalReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      this.paypalAttemptAnnounced = false;
+      this.paypalCaptureEmitted = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restorePayPalReadyAfterTerminal(mountGen);
+    }
+  }
+
+  private onPayPalCancel(mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCaptureEmitted = false;
+    this.applyPaymentResult(
+      {
+        status: 'cancelled',
+        method: 'paypal',
+        provider: 'paypal',
+        message: 'PayPal checkout was cancelled.',
+        sessionId: this.paypalCurrentOrderId ?? undefined,
+      },
+      confirmGen,
+      'paypal',
+    );
+    this.restorePayPalReadyAfterTerminal(mountGen);
+  }
+
+  private onPayPalSdkError(err: unknown, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const paymentError = mapPayPalError(err);
+    if (paymentError.code === 'PAYMENT_CANCELLED') {
+      this.onPayPalCancel(mountGen);
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCaptureEmitted = false;
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restorePayPalReadyAfterTerminal(mountGen);
+  }
+
+  /** Official Buttons stay mounted after cancel/error so the buyer can retry. */
+  private restorePayPalReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'paypal'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
+  }
+
+  private async teardownActiveMounts(): Promise<void> {
+    this.unmountAllStripeElements();
+    await this.destroyPayPalButtonsOnly();
+  }
+
+  private async destroyPayPalButtonsOnly(): Promise<void> {
+    const id = this.paypalButtonsMountId;
+    this.paypalButtonsMountId = null;
+    if (id) {
+      await this.paypal.destroyButtons(id);
+    }
   }
 
   private async createStripeElementSession(
@@ -654,14 +1022,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.affirm.unmountPaymentElement(this.stripeOwnerId);
   }
 
-  private providerOf(method: HeadlessStripeElementMethod): PaymentProviderName {
+  private providerOf(method: HeadlessMountableMethod): PaymentProviderName {
     return PAYMENT_METHOD_PROVIDER_MAP[method];
   }
 
   private applyPaymentResult(
     result: PaymentResult,
     confirmGen: number,
-    method: HeadlessStripeElementMethod,
+    method: HeadlessMountableMethod,
   ): void {
     if (confirmGen !== this.confirmGeneration || this._state() === 'destroyed') {
       return;
@@ -698,7 +1066,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.emitTerminalError(paymentError, confirmGen);
   }
 
-  private emitStarted(method: HeadlessStripeElementMethod): void {
+  private emitStarted(method: HeadlessMountableMethod): void {
     if (this.started$.closed) {
       return;
     }
@@ -830,7 +1198,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private throwIfDestroyedOrMountStale(
     mountGen: number,
     operation: string,
-    method: HeadlessStripeElementMethod,
+    method: HeadlessMountableMethod,
   ): void {
     if (this._state() === 'destroyed') {
       throw new PaymentError({
@@ -880,7 +1248,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   }
 }
 
-function methodLabel(method: HeadlessStripeElementMethod): string {
+function methodLabel(method: HeadlessMountableMethod): string {
   switch (method) {
     case 'card':
       return 'Card';
@@ -888,5 +1256,7 @@ function methodLabel(method: HeadlessStripeElementMethod): string {
       return 'Klarna';
     case 'affirm':
       return 'Affirm';
+    case 'paypal':
+      return 'PayPal';
   }
 }
