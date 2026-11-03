@@ -21,6 +21,8 @@ import type { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import type { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
+import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
+import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mapper';
 import {
   buildStripeReturnUrl,
   createStripeReturnAttemptId,
@@ -29,6 +31,7 @@ import {
 import {
   resolveEffectiveLocale,
   toAffirmPreferredLocale,
+  toGooglePayButtonLocale,
   toKlarnaPreferredLocale,
   toStripeElementsLocale,
   type EasyPaymentsLocale,
@@ -48,15 +51,15 @@ import type {
 /** Methods that mount a Stripe Payment Element through existing adapters (H3.1–H3.2). */
 type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm';
 
-/** All Headless-mountable methods through H3.3. */
-type HeadlessMountableMethod = HeadlessStripeElementMethod | 'paypal';
+/** All Headless-mountable methods through H3.4. */
+type HeadlessMountableMethod = HeadlessStripeElementMethod | 'paypal' | 'google-pay';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
   return method === 'card' || method === 'klarna' || method === 'affirm';
 }
 
 function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMethod {
-  return isStripeElementMethod(method) || method === 'paypal';
+  return isStripeElementMethod(method) || method === 'paypal' || method === 'google-pay';
 }
 
 interface StripeElementAdapterApi {
@@ -95,11 +98,12 @@ export interface HeadlessCheckoutSessionDeps {
   klarna: KlarnaAdapter;
   affirm: AffirmAdapter;
   paypal: PayPalAdapter;
+  googlePay: GooglePayAdapter;
 }
 
 /**
  * Independently owned Headless session.
- * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal official Buttons.
+ * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal Buttons. H3.4: Google Pay button.
  */
 export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   readonly id: string;
@@ -120,12 +124,15 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private readonly klarna: KlarnaAdapter;
   private readonly affirm: AffirmAdapter;
   private readonly paypal: PayPalAdapter;
+  private readonly googlePay: GooglePayAdapter;
   private readonly availability = new CheckoutAvailabilitySession();
 
-  /** Stripe Element / PayPal order owner — equals Headless session id for isolation. */
+  /** Stripe Element / PayPal / Google Pay owner — equals Headless session id for isolation. */
   private readonly stripeOwnerId: string;
   /** Same as session id — scopes PayPal createOrder concurrency to this session. */
   private readonly paypalOrderOwnerId: string;
+  /** Same as session id — scopes Google Pay payWithGooglePay concurrency to this session. */
+  private readonly googlePayOwnerId: string;
 
   private readonly _state = signal<HeadlessSessionState>('idle');
   private readonly _selectedMethod = signal<PaymentMethod | null>(null);
@@ -172,10 +179,17 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private paypalCaptureEmitted = false;
   private paypalAttemptAnnounced = false;
 
+  /** Ownership-scoped Google Pay button mount id from {@link GooglePayAdapter.renderOfficialButton}. */
+  private googlePayButtonMountId: string | null = null;
+  private googlePayAttemptAnnounced = false;
+  /** Guards duplicate in-flight click handling for this mount generation. */
+  private googlePayClickInFlight = false;
+
   constructor(deps: HeadlessCheckoutSessionDeps) {
     this.id = deps.id;
     this.stripeOwnerId = deps.id;
     this.paypalOrderOwnerId = deps.id;
+    this.googlePayOwnerId = deps.id;
     this.product = deps.product;
     this.methods = deps.methods;
     this.checkout = deps.checkout;
@@ -190,6 +204,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.klarna = deps.klarna;
     this.affirm = deps.affirm;
     this.paypal = deps.paypal;
+    this.googlePay = deps.googlePay;
     void this.translations;
   }
 
@@ -314,7 +329,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", and "paypal". Google Pay and Apple Pay arrive in later milestones.',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", and "google-pay". Apple Pay arrives in a later milestone.',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -355,10 +370,15 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypalCaptureEmitted = false;
     this.paypalAttemptAnnounced = false;
     this.paypalCurrentOrderId = null;
+    this.googlePayAttemptAnnounced = false;
+    this.googlePayClickInFlight = false;
     await this.teardownActiveMounts();
 
     if (method === 'paypal') {
       return this.mountPayPal(container, mountGen);
+    }
+    if (method === 'google-pay') {
+      return this.mountGooglePay(container, mountGen);
     }
 
     return this.mountStripeElement(method, container, mountGen);
@@ -510,6 +530,74 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
   }
 
+  private async mountGooglePay(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    try {
+      const prefersDark =
+        this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
+      const resolvedTheme = resolveHeadlessTheme(this.theme, prefersDark);
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      const buttonLocale = toGooglePayButtonLocale(effectiveLocale);
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'google-pay');
+
+      const mountId = await this.googlePay.renderOfficialButton(
+        container,
+        {
+          theme: resolvedTheme,
+          buttonLocale,
+          onClick: () => this.onGooglePayClick(mountGen),
+        },
+        this.googlePayButtonMountId ?? undefined,
+      );
+
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        this.googlePay.destroyButtonMount(mountId);
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'google-pay',
+          provider: 'googlePay',
+        });
+      }
+
+      this.googlePayButtonMountId = mountId;
+      this.mountedMethod = 'google-pay';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      return this.createGooglePayMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.googlePayButtonMountId;
+        this.googlePayButtonMountId = null;
+        if (id) {
+          this.googlePay.destroyButtonMount(id);
+        }
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'google-pay',
+          provider: 'googlePay',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapGooglePayError(error, 'SDK_LOAD_FAILED', 'Failed to initialize Google Pay.');
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
+
   async confirm(): Promise<void> {
     this.assertNotDestroyed('confirm');
 
@@ -551,6 +639,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
           'PayPal is confirmed through the official PayPal Buttons, not session.confirm(). Mount PayPal and let the buyer click the PayPal button.',
         method: 'paypal',
         provider: 'paypal',
+      });
+    }
+
+    if (selected === 'google-pay') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Google Pay is confirmed through the official Google Pay button, not session.confirm(). Mount Google Pay and let the buyer click the Google Pay button.',
+        method: 'google-pay',
+        provider: 'googlePay',
       });
     }
 
@@ -660,6 +758,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypalCaptureEmitted = false;
     this.paypalAttemptAnnounced = false;
     this.paypalCurrentOrderId = null;
+    this.googlePayAttemptAnnounced = false;
+    this.googlePayClickInFlight = false;
     this._state.set('destroyed');
     this._selectedMethod.set(null);
     this._availableMethods.set([]);
@@ -672,6 +772,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this.klarna.destroy(this.stripeOwnerId),
         this.affirm.destroy(this.stripeOwnerId),
         this.destroyPayPalButtonsOnly(),
+        Promise.resolve(this.destroyGooglePayButtonOnly()),
       ]);
     } catch {
       // Ignore teardown failures.
@@ -931,9 +1032,159 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     });
   }
 
+  private createGooglePayMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'google-pay',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.googlePayAttemptAnnounced = false;
+        this.googlePayClickInFlight = false;
+        if (this.googlePayButtonMountId === mountId) {
+          this.googlePayButtonMountId = null;
+        }
+        this.googlePay.destroyButtonMount(mountId);
+      },
+    };
+  }
+
+  private async onGooglePayClick(mountGen: number): Promise<void> {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this.googlePayClickInFlight ||
+      this.googlePay.isProcessing(this.googlePayOwnerId) ||
+      this._state() === 'success' ||
+      this._state() === 'pending'
+    ) {
+      return;
+    }
+
+    this.googlePayClickInFlight = true;
+    this._lastError.set(null);
+    const confirmGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.googlePayAttemptAnnounced) {
+      this.googlePayAttemptAnnounced = true;
+      this.emitStarted('google-pay');
+    }
+
+    try {
+      const result = await this.googlePay.payWithGooglePay(
+        this.product,
+        this.checkout,
+        this.googlePayOwnerId,
+      );
+
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+
+      if (result.status === 'success') {
+        this.googlePayAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'google-pay');
+        return;
+      }
+
+      if (result.status === 'processing') {
+        this.googlePayAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'google-pay');
+        return;
+      }
+
+      if (result.status === 'cancelled') {
+        this.googlePayAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'google-pay');
+        this.restoreGooglePayReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      const paymentError = new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: result.message ?? 'Google Pay payment failed.',
+        method: 'google-pay',
+        provider: 'googlePay',
+      });
+      this.googlePayAttemptAnnounced = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restoreGooglePayReadyAfterTerminal(mountGen);
+    } catch (error) {
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+
+      const paymentError = normalizeError(error, {
+        method: 'google-pay',
+        provider: 'googlePay',
+      });
+
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.googlePayAttemptAnnounced = false;
+        this.applyPaymentResult(
+          {
+            status: 'cancelled',
+            method: 'google-pay',
+            provider: 'googlePay',
+            message: paymentError.message,
+          },
+          confirmGen,
+          'google-pay',
+        );
+        this.restoreGooglePayReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      this.googlePayAttemptAnnounced = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restoreGooglePayReadyAfterTerminal(mountGen);
+    } finally {
+      if (mountGen === this.mountGeneration) {
+        this.googlePayClickInFlight = false;
+      }
+    }
+  }
+
+  /** Official Google Pay button stays mounted after cancel/error for another attempt. */
+  private restoreGooglePayReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'google-pay'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
+  }
+
   private async teardownActiveMounts(): Promise<void> {
     this.unmountAllStripeElements();
     await this.destroyPayPalButtonsOnly();
+    this.destroyGooglePayButtonOnly();
   }
 
   private async destroyPayPalButtonsOnly(): Promise<void> {
@@ -941,6 +1192,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypalButtonsMountId = null;
     if (id) {
       await this.paypal.destroyButtons(id);
+    }
+  }
+
+  private destroyGooglePayButtonOnly(): void {
+    const id = this.googlePayButtonMountId;
+    this.googlePayButtonMountId = null;
+    if (id) {
+      this.googlePay.destroyButtonMount(id);
     }
   }
 
@@ -1258,5 +1517,7 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'Affirm';
     case 'paypal':
       return 'PayPal';
+    case 'google-pay':
+      return 'Google Pay';
   }
 }

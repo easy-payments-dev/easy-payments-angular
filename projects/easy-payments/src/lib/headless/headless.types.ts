@@ -20,7 +20,7 @@ import type {
  * Public Headless Checkout session lifecycle.
  *
  * H2: `idle → initializing → ready | error → destroyed`.
- * H3.1–H3.3 (Card / Klarna / Affirm / PayPal): `ready → processing → success | pending | cancelled | error`.
+ * H3.1–H3.4 (Card / Klarna / Affirm / PayPal / Google Pay): `ready → processing → success | pending | cancelled | error`.
  */
 export type HeadlessSessionState =
   | 'idle'
@@ -98,7 +98,7 @@ export interface HeadlessMethodStatus {
 }
 
 export interface HeadlessCheckoutEvents {
-  /** Emitted when a payment attempt begins (Card/BNPL confirm, or PayPal Buttons createOrder). */
+  /** Emitted when a payment attempt begins (Card/BNPL confirm, PayPal createOrder, or Google Pay click). */
   readonly started: Observable<PaymentStartedEvent>;
   /** Emitted when {@link HeadlessCheckoutSession.selectMethod} changes selection. */
   readonly methodChange: Observable<PaymentMethodChangeEvent>;
@@ -118,7 +118,8 @@ export interface HeadlessCheckoutEvents {
  * H2: initialize, readiness, selection, destroy.
  * H3.1–H3.2: mount/confirm for `card`, `klarna`, and `affirm` (official Stripe Payment Element).
  * H3.3: mount PayPal official Buttons (buyer clicks Buttons — do **not** call `confirm()` for PayPal).
- * Google Pay / Apple Pay are not mountable yet. BNPL full-page redirect recovery is H4.
+ * H3.4: mount Google Pay official button (buyer clicks button — do **not** call `confirm()` for Google Pay).
+ * Apple Pay is not mountable yet. BNPL full-page redirect recovery is H4.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;
@@ -138,13 +139,13 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * Supports `card`, `klarna`, `affirm` (Stripe Payment Element) and `paypal` (official Buttons).
+   * Supports `card`, `klarna`, `affirm`, `paypal`, and `google-pay`.
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 
   /**
    * Confirm the selected Stripe method (`card` | `klarna` | `affirm`) with an active mount.
-   * Rejects for PayPal — the official PayPal Buttons own approval.
+   * Rejects for PayPal and Google Pay — their official buttons own the payment gesture.
    */
   confirm(): Promise<void>;
 

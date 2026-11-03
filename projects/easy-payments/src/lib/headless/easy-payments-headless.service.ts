@@ -10,6 +10,7 @@ import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
+import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import type { PaymentMethod } from '../models/payment-method.model';
 import { isKnownPaymentMethod } from './headless-method-meta';
 import { HeadlessCheckoutSessionImpl } from './headless-checkout-session';
@@ -25,7 +26,8 @@ import type {
  * H3.1: Stripe Card mount/confirm.
  * H3.2: Klarna + Affirm mount/confirm via existing Stripe Payment Element adapters.
  * H3.3: PayPal official Buttons (create/capture via backend; no session.confirm()).
- * Google Pay / Apple Pay remain not mountable until later milestones.
+ * H3.4: Google Pay official button (Stripe gateway; no session.confirm()).
+ * Apple Pay remains not mountable until a later milestone.
  * BNPL full-page redirect recovery is H4 — not claimed here.
  */
 @Injectable({ providedIn: 'root' })
@@ -38,6 +40,7 @@ export class EasyPaymentsHeadless {
   private readonly klarna = inject(KlarnaAdapter);
   private readonly affirm = inject(AffirmAdapter);
   private readonly paypal = inject(PayPalAdapter);
+  private readonly googlePay = inject(GooglePayAdapter);
 
   createSession(options: HeadlessSessionOptions): HeadlessCheckoutSession {
     if (!options || typeof options !== 'object') {
@@ -77,6 +80,7 @@ export class EasyPaymentsHeadless {
         klarna: this.klarna,
         affirm: this.affirm,
         paypal: this.paypal,
+        googlePay: this.googlePay,
       });
     } catch (error) {
       this.registry.release(id);

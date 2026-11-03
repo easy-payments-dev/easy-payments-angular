@@ -15,16 +15,17 @@ Headless Checkout is the third Easy Payments integration experience:
 | Stripe **Card** mount + confirm | **Supported (H3.1)** |
 | **Klarna** + **Affirm** mount + confirm | **Supported (H3.2)** — see redirect limitation |
 | **PayPal** official Buttons | **Supported (H3.3)** — no `confirm()` |
-| Google Pay / Apple Pay mount | Not yet (later H3.x) |
+| **Google Pay** official button | **Supported (H3.4)** — no `confirm()` |
+| Apple Pay mount | Not yet (later H3.x) |
 | BNPL / Stripe redirect recovery for Headless | Not yet (**H4**) |
 | Demo Headless experience | Not yet (H5) |
 
-**Card, Klarna, Affirm, and PayPal** are the supported Headless payment methods. Google Pay and Apple Pay are not mountable yet.
+**Card, Klarna, Affirm, PayPal, and Google Pay** are the supported Headless payment methods. Apple Pay is not mountable yet.
 
 ## Shared mount API
 
 ```typescript
-await session.mount('card' | 'klarna' | 'affirm' | 'paypal', container);
+await session.mount('card' | 'klarna' | 'affirm' | 'paypal' | 'google-pay', container);
 session.selectMethod(/* same method — also applied by mount */);
 const handle = /* from mount */;
 await handle.unmount(); // idempotent
@@ -37,8 +38,9 @@ await session.destroy();
 |--------|--------------------|
 | `card` / `klarna` / `affirm` | Merchant button → `session.confirm()` |
 | `paypal` | Official PayPal Buttons (SDK). **`session.confirm()` rejects.** |
+| `google-pay` | Official Google Pay button (SDK). **`session.confirm()` rejects.** |
 
-Do not use separate `confirmKlarna()` / `confirmPayPal()` APIs.
+Do not use separate `confirmKlarna()` / `confirmPayPal()` / `confirmGooglePay()` APIs.
 
 ## Stripe Card (H3.1)
 
@@ -198,6 +200,97 @@ Each Headless session uses a stable owner id (`session.id`) for PayPal order-cre
 
 Use PayPal Sandbox client ids and backend create/capture endpoints against Sandbox. Mocked unit tests do **not** prove live Sandbox funding eligibility or SDK rendering.
 
+## Google Pay (H3.4)
+
+Google Pay Headless mounts the **official Google Pay button** through the existing `GooglePayAdapter` and Google Pay JS SDK (`pay.js`). The buyer must click that button — Easy Payments never fakes Google Pay authorization and never starts the payment sheet from `session.confirm()`.
+
+### Why `confirm()` is not used
+
+Browsers and Google Pay require a **user gesture** on the official button. Calling `session.confirm()` for `google-pay` rejects with `CONFIG_INVALID`. Mount the button and let the buyer click it.
+
+### Architecture (Google Pay → Stripe gateway)
+
+1. `mount('google-pay', container)` → load SDK (lazy) → `renderOfficialButton` into the merchant container
+2. Buyer clicks the official Google Pay button
+3. Adapter opens the Google Pay sheet (`loadPaymentData`) and receives a **gateway token** for Stripe
+4. Backend creates a Stripe PaymentIntent (`createPaymentUrl`) — catalog/pricing remain server-authoritative
+5. Adapter confirms with Stripe (`createPaymentMethod` + `confirmCardPayment`)
+6. Headless emits `success` | `pending` | `cancel` | `error` from the **processor** result — never from Google payment data alone
+7. `unmount` / `destroy` removes **this session’s** button mount only
+
+### Requirements
+
+- `providers.googlePay` (`environment`, `merchantName`; PRODUCTION also needs `merchantId`)
+- Stripe **publishable** key (`providers.stripe.publishableKey`) for gateway tokenization
+- `backend.createPaymentUrl` (same Stripe create endpoint used by Full Checkout Google Pay)
+- A merchant-owned `HTMLElement` container
+- Eligible browser/device (Chrome / supported Google Pay surfaces; `isReadyToPay`)
+
+Never put Stripe secret keys or Google merchant secrets in Angular.
+
+### Example
+
+```typescript
+const session = headless.createSession({
+  product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
+  methods: ['google-pay', 'card'],
+  checkoutInstanceId: 'account-checkout',
+});
+
+await session.initialize();
+
+const googlePayHost = document.getElementById('google-pay-slot')!;
+const handle = await session.mount('google-pay', googlePayHost);
+
+session.events.started.subscribe(() => { /* sheet / confirm started */ });
+session.events.success.subscribe((result) => { /* Stripe confirmed; still verify on backend */ });
+session.events.pending.subscribe(() => { /* processing / uncertain — do not auto-retry */ });
+session.events.cancel.subscribe(() => { /* buyer closed the sheet */ });
+session.events.error.subscribe((err) => { /* show error; button may remain for retry */ });
+
+// Do NOT call session.confirm() for Google Pay — it rejects with CONFIG_INVALID.
+// The buyer clicks the official Google Pay button rendered into googlePayHost.
+
+await handle.unmount();
+await session.destroy();
+```
+
+### Events & state
+
+| Phase | State | Event |
+|-------|-------|--------|
+| Buyer click → payment starts | `processing` | `started` |
+| Stripe confirms succeeded | `success` | `success` |
+| Stripe status `processing` / uncertain | `pending` | `pending` (do **not** auto-retry) |
+| Buyer cancels sheet | `cancelled` → `ready` | `cancel` |
+| Auth / Stripe / SDK failure | `error` → `ready` (button still mounted) | `error` |
+
+### TEST vs PRODUCTION
+
+| Mode | Notes |
+|------|--------|
+| `environment: 'TEST'` | Google Pay test tokens are **not chargeable** end-to-end like live cards. Useful for sheet/UI and integration wiring. Do not claim production readiness from TEST alone. |
+| `environment: 'PRODUCTION'` | Requires a real Google Pay `merchantId` and live Stripe keys. Must be validated on real devices/browsers. |
+
+Mocked unit tests do **not** prove real Google Pay device eligibility, funding, or live charging.
+
+### Eligibility & browsers
+
+Availability uses the same `GooglePayAdapter.isAvailable` / `isReadyToPay` path as Full Checkout and Buttons Only. Unsupported browsers, missing config, or ineligible devices keep `available: false` and reject `mount()`.
+
+### Multi-session
+
+Each Headless session uses a stable owner id (`session.id`) for the Stripe confirmation gate (`google-pay:${ownerId}`) and an ownership-scoped button mount id from `GooglePayAdapter.renderOfficialButton`. Destroying or unmounting session A must not clear session B’s button. Stale clicks after unmount/remount/destroy are ignored.
+
+### Manual testing checklist
+
+1. Eligible Chrome profile with Google Pay TEST/PRODUCTION as configured
+2. Mount official button; confirm branding is Google’s, not a custom imitation
+3. Complete a payment and verify Stripe PaymentIntent status on the backend
+4. Cancel the sheet → `cancel` → button remains for retry
+5. Two Headless sessions on one page — unmount one, pay with the other
+6. Switch Google Pay ↔ Card / PayPal / BNPL — mounts tear down correctly
+
 ## Lifecycle (Card / Klarna / Affirm)
 
 1. `initialize()` → `ready`
@@ -211,17 +304,17 @@ Client secrets are **not** exposed on session signals, events, or diagnostics.
 
 ## Errors
 
-Typed `PaymentError` cases include: invalid container, unsupported method (wallets), method unavailable, mount/render failure, SDK load failure, confirm without mount, wrong selected method, **`confirm()` for PayPal**, duplicate confirm / in-flight PayPal create, concurrent Stripe confirmation gate, destroyed session, backend create/capture failure, cancellation.
+Typed `PaymentError` cases include: invalid container, unsupported method (Apple Pay), method unavailable, mount/render failure, SDK load failure, confirm without mount, wrong selected method, **`confirm()` for PayPal or Google Pay**, duplicate confirm / in-flight create, concurrent Stripe confirmation gate, destroyed session, backend create/capture failure, buyer cancellation.
 
 ## Multi-instance
 
-Each Headless session uses its own Stripe Element owner id and PayPal Buttons mount id (tied to the session `id`). Sibling sessions can mount independently. Switching Card ↔ Klarna ↔ Affirm ↔ PayPal within one session tears down the previous mount for that session only.
+Each Headless session uses its own Stripe Element owner id, PayPal Buttons mount id, and Google Pay button mount id (tied to the session `id`). Sibling sessions can mount independently. Switching Card ↔ Klarna ↔ Affirm ↔ PayPal ↔ Google Pay within one session tears down the previous mount for that session only.
 
 ## Security
 
 - Publishable Stripe key / PayPal client id only in the browser
-- No raw card data; no PayPal secrets in Angular
-- Official Stripe Payment Element / PayPal Buttons only
+- No raw card data; no PayPal / Google Pay secrets in Angular
+- Official Stripe Payment Element / PayPal Buttons / Google Pay button only
 - Backend must re-price / authorize; webhooks remain authoritative for fulfillment
 
 ## Session foundation (H2+)
@@ -229,7 +322,7 @@ Each Headless session uses its own Stripe Element owner id and PayPal Buttons mo
 ```typescript
 const session = headless.createSession({
   product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
-  methods: ['card', 'klarna', 'paypal'],
+  methods: ['card', 'klarna', 'paypal', 'google-pay'],
   checkoutInstanceId: 'account-checkout',
 });
 
@@ -242,8 +335,8 @@ Apple Pay may still report `readiness: 'loading'` until an Express Checkout Elem
 
 ## Not supported yet
 
-- `mount('google-pay' | 'apple-pay', …)`
+- `mount('apple-pay', …)`
 - Headless demo mode in the playground
 - Complete Headless BNPL redirect recovery after leave-page authorization (**H4**)
 
-Full Checkout and Buttons Only are unchanged; Headless is additive.
+Full Checkout and Buttons Only are unchanged; Headless is additive. Live Google Pay production readiness requires real-device validation beyond mocked tests.
