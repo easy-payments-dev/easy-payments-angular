@@ -139,13 +139,13 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * Supports `card`, `klarna`, `affirm`, `paypal`, and `google-pay`.
+   * Supports `card`, `klarna`, `affirm`, `paypal`, `google-pay`, and `apple-pay`.
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 
   /**
    * Confirm the selected Stripe method (`card` | `klarna` | `affirm`) with an active mount.
-   * Rejects for PayPal and Google Pay — their official buttons own the payment gesture.
+   * Rejects for PayPal, Google Pay, and Apple Pay — their official controls own the payment gesture.
    */
   confirm(): Promise<void>;
 

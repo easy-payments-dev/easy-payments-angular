@@ -23,6 +23,8 @@ import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
 import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mapper';
+import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
+import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
 import {
   buildStripeReturnUrl,
   createStripeReturnAttemptId,
@@ -51,15 +53,24 @@ import type {
 /** Methods that mount a Stripe Payment Element through existing adapters (H3.1–H3.2). */
 type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm';
 
-/** All Headless-mountable methods through H3.4. */
-type HeadlessMountableMethod = HeadlessStripeElementMethod | 'paypal' | 'google-pay';
+/** All Headless-mountable methods through H3.5. */
+type HeadlessMountableMethod =
+  | HeadlessStripeElementMethod
+  | 'paypal'
+  | 'google-pay'
+  | 'apple-pay';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
   return method === 'card' || method === 'klarna' || method === 'affirm';
 }
 
 function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMethod {
-  return isStripeElementMethod(method) || method === 'paypal' || method === 'google-pay';
+  return (
+    isStripeElementMethod(method) ||
+    method === 'paypal' ||
+    method === 'google-pay' ||
+    method === 'apple-pay'
+  );
 }
 
 interface StripeElementAdapterApi {
@@ -99,11 +110,13 @@ export interface HeadlessCheckoutSessionDeps {
   affirm: AffirmAdapter;
   paypal: PayPalAdapter;
   googlePay: GooglePayAdapter;
+  applePay: ApplePayAdapter;
 }
 
 /**
  * Independently owned Headless session.
- * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal Buttons. H3.4: Google Pay button.
+ * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal Buttons.
+ * H3.4: Google Pay button. H3.5: Apple Pay Express Checkout Element.
  */
 export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   readonly id: string;
@@ -125,6 +138,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private readonly affirm: AffirmAdapter;
   private readonly paypal: PayPalAdapter;
   private readonly googlePay: GooglePayAdapter;
+  private readonly applePay: ApplePayAdapter;
   private readonly availability = new CheckoutAvailabilitySession();
 
   /** Stripe Element / PayPal / Google Pay owner — equals Headless session id for isolation. */
@@ -185,6 +199,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   /** Guards duplicate in-flight click handling for this mount generation. */
   private googlePayClickInFlight = false;
 
+  /** Ownership-scoped Apple Pay ECE mount id from {@link ApplePayAdapter.mountExpressCheckout}. */
+  private applePayEceMountId: string | null = null;
+  private applePayAttemptAnnounced = false;
+
   constructor(deps: HeadlessCheckoutSessionDeps) {
     this.id = deps.id;
     this.stripeOwnerId = deps.id;
@@ -205,6 +223,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.affirm = deps.affirm;
     this.paypal = deps.paypal;
     this.googlePay = deps.googlePay;
+    this.applePay = deps.applePay;
     void this.translations;
   }
 
@@ -329,7 +348,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", "paypal", and "google-pay". Apple Pay arrives in a later milestone.',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "google-pay", and "apple-pay".',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -354,7 +373,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
 
     const methodStatus = this._availableMethods().find((entry) => entry.method === method);
-    if (!methodStatus?.available) {
+    if (method === 'apple-pay') {
+      this.assertApplePayMountable(methodStatus);
+    } else if (!methodStatus?.available) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: `${methodLabel(method)} is not available for this Headless session configuration.`,
@@ -372,6 +393,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypalCurrentOrderId = null;
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
+    this.applePayAttemptAnnounced = false;
     await this.teardownActiveMounts();
 
     if (method === 'paypal') {
@@ -379,6 +401,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
     if (method === 'google-pay') {
       return this.mountGooglePay(container, mountGen);
+    }
+    if (method === 'apple-pay') {
+      return this.mountApplePay(container, mountGen);
     }
 
     return this.mountStripeElement(method, container, mountGen);
@@ -598,6 +623,178 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     }
   }
 
+  /**
+   * Apple Pay eligibility is decided by the Express Checkout Element `ready` event.
+   * Allow mount while still `loading`/`checking` so Headless can discover availability
+   * the same way Full Checkout bootstrap does — never mount a fake button after a
+   * definitive unavailable/misconfigured result.
+   */
+  private assertApplePayMountable(methodStatus: HeadlessMethodStatus | undefined): void {
+    if (!this.applePay.isConfigured()) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Apple Pay is not available for this Headless session configuration.',
+        method: 'apple-pay',
+        provider: 'applePay',
+      });
+    }
+
+    const readiness = methodStatus?.readiness;
+    if (readiness === 'unavailable' || readiness === 'misconfigured') {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Apple Pay is not available for this Headless session configuration.',
+        method: 'apple-pay',
+        provider: 'applePay',
+      });
+    }
+  }
+
+  private async mountApplePay(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    const mountId = this.applePayEceMountId ?? this.applePay.createMountId();
+
+    try {
+      const prefersDark =
+        this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
+      const resolvedTheme = resolveHeadlessTheme(this.theme, prefersDark);
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      const elementsLocale = toStripeElementsLocale(effectiveLocale);
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'apple-pay');
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const settleOk = (): void => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        const settleErr = (error: unknown): void => {
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
+        };
+
+        void this.applePay
+          .mountExpressCheckout(
+            container,
+            {
+              product: this.product,
+              checkout: this.checkout,
+              theme: resolvedTheme,
+              locale: elementsLocale,
+              onReady: () => settleOk(),
+              onUnavailable: () =>
+                settleErr(
+                  new PaymentError({
+                    code: 'PROVIDER_UNAVAILABLE',
+                    message:
+                      'Apple Pay is not available in this browser, device, or wallet configuration.',
+                    method: 'apple-pay',
+                    provider: 'applePay',
+                  }),
+                ),
+              onSuccess: (result) => this.onApplePaySuccess(result, mountGen),
+              onCancel: () => this.onApplePayCancel(mountGen),
+              onError: (error) => {
+                if (!settled) {
+                  settleErr(error);
+                  return;
+                }
+                this.onApplePayError(error, mountGen);
+              },
+              onAttempt: () => this.onApplePayAttempt(mountGen),
+            },
+            mountId,
+          )
+          .then((id) => {
+            if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+              this.applePay.unmountExpressCheckout({ mountId: id });
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message: 'Headless checkout session was destroyed during mount().',
+                  method: 'apple-pay',
+                  provider: 'applePay',
+                }),
+              );
+              return;
+            }
+            this.applePayEceMountId = id;
+            // ready may already have settled synchronously inside mount().
+            if (this.applePay.getAvailabilityStatus(this.product) === 'available') {
+              settleOk();
+            } else if (this.applePay.getAvailabilityStatus(this.product) === 'unavailable') {
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message:
+                    'Apple Pay is not available in this browser, device, or wallet configuration.',
+                  method: 'apple-pay',
+                  provider: 'applePay',
+                }),
+              );
+            } else if (this.applePay.getAvailabilityStatus(this.product) === 'error') {
+              settleErr(
+                new PaymentError({
+                  code: 'SDK_LOAD_FAILED',
+                  message: 'Failed to initialize Apple Pay.',
+                  method: 'apple-pay',
+                  provider: 'applePay',
+                }),
+              );
+            }
+          })
+          .catch(settleErr);
+      });
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'apple-pay');
+
+      this.applePayEceMountId = mountId;
+      this.mountedMethod = 'apple-pay';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      // ECE ready may have flipped availability — refresh Headless projection.
+      void this.refreshAvailability().catch(() => undefined);
+
+      return this.createApplePayMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.applePayEceMountId ?? mountId;
+        this.applePayEceMountId = null;
+        // Keep ECE-decided unavailable/error so remount fails closed without a fake button.
+        this.applePay.unmountExpressCheckout({
+          mountId: id,
+          preserveAvailability: true,
+        });
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'apple-pay',
+          provider: 'applePay',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapApplePayError(error, 'SDK_LOAD_FAILED', 'Failed to initialize Apple Pay.');
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
+
   async confirm(): Promise<void> {
     this.assertNotDestroyed('confirm');
 
@@ -649,6 +846,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
           'Google Pay is confirmed through the official Google Pay button, not session.confirm(). Mount Google Pay and let the buyer click the Google Pay button.',
         method: 'google-pay',
         provider: 'googlePay',
+      });
+    }
+
+    if (selected === 'apple-pay') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Apple Pay is confirmed through the official Apple Pay control, not session.confirm(). Mount Apple Pay and let the buyer authorize payment.',
+        method: 'apple-pay',
+        provider: 'applePay',
       });
     }
 
@@ -760,6 +967,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypalCurrentOrderId = null;
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
+    this.applePayAttemptAnnounced = false;
     this._state.set('destroyed');
     this._selectedMethod.set(null);
     this._availableMethods.set([]);
@@ -773,6 +981,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         this.affirm.destroy(this.stripeOwnerId),
         this.destroyPayPalButtonsOnly(),
         Promise.resolve(this.destroyGooglePayButtonOnly()),
+        Promise.resolve(this.destroyApplePayEceOnly()),
       ]);
     } catch {
       // Ignore teardown failures.
@@ -1185,6 +1394,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.unmountAllStripeElements();
     await this.destroyPayPalButtonsOnly();
     this.destroyGooglePayButtonOnly();
+    this.destroyApplePayEceOnly();
   }
 
   private async destroyPayPalButtonsOnly(): Promise<void> {
@@ -1201,6 +1411,161 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     if (id) {
       this.googlePay.destroyButtonMount(id);
     }
+  }
+
+  private destroyApplePayEceOnly(): void {
+    const id = this.applePayEceMountId;
+    this.applePayEceMountId = null;
+    if (id) {
+      this.applePay.unmountExpressCheckout({
+        mountId: id,
+        preserveAvailability: true,
+      });
+    }
+  }
+
+  private createApplePayMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'apple-pay',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.applePayAttemptAnnounced = false;
+        if (this.applePayEceMountId === mountId) {
+          this.applePayEceMountId = null;
+        }
+        this.applePay.unmountExpressCheckout({
+          mountId,
+          preserveAvailability: true,
+        });
+      },
+    };
+  }
+
+  private onApplePayAttempt(mountGen: number): void {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this._state() === 'success' ||
+      this._state() === 'pending'
+    ) {
+      return;
+    }
+
+    this._lastError.set(null);
+    this.confirmGeneration += 1;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.applePayAttemptAnnounced) {
+      this.applePayAttemptAnnounced = true;
+      this.emitStarted('apple-pay');
+    }
+  }
+
+  private onApplePaySuccess(result: PaymentResult, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration;
+    this.applePayAttemptAnnounced = false;
+
+    if (result.status === 'cancelled') {
+      this.applyPaymentResult(result, confirmGen, 'apple-pay');
+      this.restoreApplePayReadyAfterTerminal(mountGen);
+      return;
+    }
+
+    if (result.status === 'success' || result.status === 'processing') {
+      this.applyPaymentResult(result, confirmGen, 'apple-pay');
+      return;
+    }
+
+    const paymentError = new PaymentError({
+      code: 'PAYMENT_FAILED',
+      message: result.message ?? 'Apple Pay payment failed.',
+      method: 'apple-pay',
+      provider: 'applePay',
+    });
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreApplePayReadyAfterTerminal(mountGen);
+  }
+
+  private onApplePayCancel(mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.applePayAttemptAnnounced = false;
+    this.applyPaymentResult(
+      {
+        status: 'cancelled',
+        method: 'apple-pay',
+        provider: 'applePay',
+        message: 'Apple Pay was cancelled.',
+      },
+      confirmGen,
+      'apple-pay',
+    );
+    this.restoreApplePayReadyAfterTerminal(mountGen);
+  }
+
+  private onApplePayError(error: PaymentError, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const paymentError = normalizeError(error, {
+      method: 'apple-pay',
+      provider: 'applePay',
+    });
+
+    if (paymentError.code === 'PAYMENT_CANCELLED') {
+      this.onApplePayCancel(mountGen);
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.applePayAttemptAnnounced = false;
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreApplePayReadyAfterTerminal(mountGen);
+  }
+
+  /** Official Apple Pay control stays mounted after cancel/error for another attempt. */
+  private restoreApplePayReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'apple-pay'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
   }
 
   private async createStripeElementSession(
@@ -1519,5 +1884,7 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'PayPal';
     case 'google-pay':
       return 'Google Pay';
+    case 'apple-pay':
+      return 'Apple Pay';
   }
 }

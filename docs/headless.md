@@ -16,16 +16,16 @@ Headless Checkout is the third Easy Payments integration experience:
 | **Klarna** + **Affirm** mount + confirm | **Supported (H3.2)** — see redirect limitation |
 | **PayPal** official Buttons | **Supported (H3.3)** — no `confirm()` |
 | **Google Pay** official button | **Supported (H3.4)** — no `confirm()` |
-| Apple Pay mount | Not yet (later H3.x) |
+| **Apple Pay** Express Checkout | **Supported (H3.5)** — no `confirm()` |
 | BNPL / Stripe redirect recovery for Headless | Not yet (**H4**) |
 | Demo Headless experience | Not yet (H5) |
 
-**Card, Klarna, Affirm, PayPal, and Google Pay** are the supported Headless payment methods. Apple Pay is not mountable yet.
+**Card, Klarna, Affirm, PayPal, Google Pay, and Apple Pay** are the supported Headless payment methods.
 
 ## Shared mount API
 
 ```typescript
-await session.mount('card' | 'klarna' | 'affirm' | 'paypal' | 'google-pay', container);
+await session.mount('card' | 'klarna' | 'affirm' | 'paypal' | 'google-pay' | 'apple-pay', container);
 session.selectMethod(/* same method — also applied by mount */);
 const handle = /* from mount */;
 await handle.unmount(); // idempotent
@@ -39,8 +39,9 @@ await session.destroy();
 | `card` / `klarna` / `affirm` | Merchant button → `session.confirm()` |
 | `paypal` | Official PayPal Buttons (SDK). **`session.confirm()` rejects.** |
 | `google-pay` | Official Google Pay button (SDK). **`session.confirm()` rejects.** |
+| `apple-pay` | Stripe Express Checkout Element Apple Pay control. **`session.confirm()` rejects.** |
 
-Do not use separate `confirmKlarna()` / `confirmPayPal()` / `confirmGooglePay()` APIs.
+Do not use separate `confirmKlarna()` / `confirmPayPal()` / `confirmGooglePay()` / `confirmApplePay()` APIs.
 
 ## Stripe Card (H3.1)
 
@@ -291,6 +292,90 @@ Each Headless session uses a stable owner id (`session.id`) for the Stripe confi
 5. Two Headless sessions on one page — unmount one, pay with the other
 6. Switch Google Pay ↔ Card / PayPal / BNPL — mounts tear down correctly
 
+## Apple Pay (H3.5)
+
+Apple Pay Headless mounts Stripe’s **Express Checkout Element** configured for Apple Pay only (`applePay: 'always'`, other wallets `never`) through the existing `ApplePayAdapter`. Canonical method id: **`apple-pay`**.
+
+### Why `confirm()` is not used
+
+Apple Pay requires a real user gesture on the official wallet control. Calling `session.confirm()` for `apple-pay` rejects with `CONFIG_INVALID`. Mount the control and let the buyer authorize.
+
+### Architecture (Express Checkout → Stripe)
+
+1. `mount('apple-pay', container)` → load Stripe.js → mount ECE into the merchant container
+2. ECE `ready` decides eligibility (`availablePaymentMethods.applePay`)
+3. If unavailable, Headless rejects the mount (no fake usable button)
+4. Buyer authorizes in the Apple Pay sheet
+5. Adapter creates a PaymentIntent and `confirmPayment` with `redirect: 'if_required'`
+6. Headless emits `success` | `pending` | `cancel` | `error` from the **processor** result — never from wallet authorization alone
+7. `unmount` / `destroy` tears down **this session’s** ECE mount only
+
+### Requirements
+
+- `providers.applePay` (e.g. `merchantName`, `countryCode`)
+- Stripe **publishable** key
+- `backend.createPaymentUrl`
+- Stripe Dashboard Apple Pay domain verification for your merchant domain(s)
+- Eligible browser/device or Apple Pay on the Web cross-device flow (Stripe-decided — not UA sniffing)
+
+Never put Stripe secret keys in Angular. Domain verification cannot be completed from unit tests alone.
+
+### Example
+
+```typescript
+const session = headless.createSession({
+  product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
+  methods: ['apple-pay', 'card'],
+  checkoutInstanceId: 'account-checkout',
+});
+
+await session.initialize();
+// availableMethods() may show apple-pay readiness "loading" until mount discovers ECE ready.
+
+const applePayHost = document.getElementById('apple-pay-slot')!;
+const handle = await session.mount('apple-pay', applePayHost);
+
+session.events.started.subscribe(() => { /* wallet confirm began */ });
+session.events.success.subscribe((result) => { /* Stripe confirmed; still verify on backend */ });
+session.events.pending.subscribe(() => { /* processing — do not auto-retry */ });
+session.events.cancel.subscribe(() => { /* buyer cancelled */ });
+session.events.error.subscribe((err) => { /* show error; control may remain for retry */ });
+
+// Do NOT call session.confirm() for Apple Pay — it rejects with CONFIG_INVALID.
+
+await handle.unmount();
+await session.destroy();
+```
+
+### Events & state
+
+| Phase | State | Event |
+|-------|-------|--------|
+| Buyer authorize begins | `processing` | `started` |
+| Stripe confirms succeeded | `success` | `success` |
+| Stripe status `processing` | `pending` | `pending` |
+| Buyer cancel | `cancelled` → `ready` | `cancel` |
+| Auth / Stripe / SDK failure | `error` → `ready` | `error` |
+
+### Eligibility & domain verification
+
+Before ECE mounts, Headless may report `readiness: 'loading'` (not a false “unsupported”). After `mount('apple-pay')`, Stripe’s `ready` event is authoritative. Missing Apple Pay config or a definitive unavailable/error readiness rejects mount.
+
+Apple Pay on the Web requires your domain to be registered in the Stripe Dashboard. Localhost and mocked tests do **not** prove domain verification or real-device wallet eligibility.
+
+### Multi-session
+
+Each Headless session uses an ownership-scoped ECE mount id from `ApplePayAdapter.createMountId` / `mountExpressCheckout`. Confirmation is gated per mount (`apple-pay:${mountId}`). Destroying session A must not unmount session B.
+
+### Manual testing checklist
+
+1. Safari / eligible Apple Pay surface with verified domain (or Stripe test setup)
+2. Mount official ECE Apple Pay control — not a custom imitation
+3. Complete payment; verify PaymentIntent on the backend
+4. Cancel sheet → `cancel` → control remains for retry
+5. Two Headless sessions — isolate unmount/destroy
+6. Switch Apple Pay ↔ Card / PayPal / Google Pay / BNPL
+
 ## Lifecycle (Card / Klarna / Affirm)
 
 1. `initialize()` → `ready`
@@ -304,17 +389,17 @@ Client secrets are **not** exposed on session signals, events, or diagnostics.
 
 ## Errors
 
-Typed `PaymentError` cases include: invalid container, unsupported method (Apple Pay), method unavailable, mount/render failure, SDK load failure, confirm without mount, wrong selected method, **`confirm()` for PayPal or Google Pay**, duplicate confirm / in-flight create, concurrent Stripe confirmation gate, destroyed session, backend create/capture failure, buyer cancellation.
+Typed `PaymentError` cases include: invalid container, method not configured on session, method unavailable, mount/render failure, SDK load failure, confirm without mount, wrong selected method, **`confirm()` for PayPal / Google Pay / Apple Pay**, duplicate confirm / in-flight create, concurrent Stripe confirmation gate, destroyed session, backend create/capture failure, buyer cancellation.
 
 ## Multi-instance
 
-Each Headless session uses its own Stripe Element owner id, PayPal Buttons mount id, and Google Pay button mount id (tied to the session `id`). Sibling sessions can mount independently. Switching Card ↔ Klarna ↔ Affirm ↔ PayPal ↔ Google Pay within one session tears down the previous mount for that session only.
+Each Headless session uses its own Stripe Element owner id, PayPal Buttons mount id, Google Pay button mount id, and Apple Pay ECE mount id (tied to the session). Sibling sessions can mount independently. Switching among Card, Klarna, Affirm, PayPal, Google Pay, and Apple Pay within one session tears down the previous mount for that session only.
 
 ## Security
 
 - Publishable Stripe key / PayPal client id only in the browser
-- No raw card data; no PayPal / Google Pay secrets in Angular
-- Official Stripe Payment Element / PayPal Buttons / Google Pay button only
+- No raw card data; no PayPal / Google Pay / Apple Pay secrets in Angular
+- Official Stripe Payment Element / Express Checkout / PayPal Buttons / Google Pay button only
 - Backend must re-price / authorize; webhooks remain authoritative for fulfillment
 
 ## Session foundation (H2+)
@@ -322,21 +407,18 @@ Each Headless session uses its own Stripe Element owner id, PayPal Buttons mount
 ```typescript
 const session = headless.createSession({
   product: { id: 'sku_1', name: 'Plan', amount: 20, currency: 'USD' },
-  methods: ['card', 'klarna', 'paypal', 'google-pay'],
+  methods: ['card', 'klarna', 'paypal', 'google-pay', 'apple-pay'],
   checkoutInstanceId: 'account-checkout',
 });
 
 await session.initialize();
-session.availableMethods(); // readiness projection
+session.availableMethods(); // readiness projection — Apple Pay may be loading until mount
 await session.destroy();
 ```
 
-Apple Pay may still report `readiness: 'loading'` until an Express Checkout Element can mount in a later milestone.
-
 ## Not supported yet
 
-- `mount('apple-pay', …)`
 - Headless demo mode in the playground
 - Complete Headless BNPL redirect recovery after leave-page authorization (**H4**)
 
-Full Checkout and Buttons Only are unchanged; Headless is additive. Live Google Pay production readiness requires real-device validation beyond mocked tests.
+Full Checkout and Buttons Only are unchanged; Headless is additive. Live Apple Pay / Google Pay production readiness requires real-device and domain validation beyond mocked tests.

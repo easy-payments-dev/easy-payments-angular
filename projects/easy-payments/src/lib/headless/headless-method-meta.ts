@@ -88,7 +88,7 @@ export function toHeadlessMethodStatus(entry: AvailablePaymentMethod): HeadlessM
 
   if (entry.method === 'apple-pay' && (readiness === 'loading' || entry.status === 'checking')) {
     status.readinessNote =
-      'Apple Pay eligibility is confirmed after an Express Checkout Element mounts (H3).';
+      'Apple Pay eligibility is confirmed after mount("apple-pay") renders the Stripe Express Checkout Element.';
   }
 
   return status;

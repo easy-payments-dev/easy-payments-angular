@@ -168,14 +168,14 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
     await session.destroy();
   });
 
-  it('rejects unsupported methods and cleans up after mount failure', async () => {
+  it('rejects methods not configured on the session and cleans up after mount failure', async () => {
     const session = await readySession({ methods: ['card', 'paypal'] });
     await expectAsync(
       session.mount('apple-pay', document.createElement('div')),
     ).toBeRejectedWith(
       jasmine.objectContaining({
-        code: 'PROVIDER_NOT_IMPLEMENTED',
-        message: jasmine.stringMatching(/Apple Pay/),
+        code: 'CONFIG_INVALID',
+        message: jasmine.stringMatching(/not configured/),
       }),
     );
 
