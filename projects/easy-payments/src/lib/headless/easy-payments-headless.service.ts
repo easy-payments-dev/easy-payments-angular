@@ -12,6 +12,7 @@ import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import type { PaymentMethod } from '../models/payment-method.model';
 import { isKnownPaymentMethod } from './headless-method-meta';
 import { HeadlessCheckoutSessionImpl } from './headless-checkout-session';
@@ -29,8 +30,8 @@ import type {
  * H3.3: PayPal official Buttons (create/capture via backend; no session.confirm()).
  * H3.4: Google Pay official button (Stripe gateway; no session.confirm()).
  * H3.5: Apple Pay via Stripe Express Checkout Element (no session.confirm()).
- * H4.2: Headless Klarna/Affirm pending ownership markers (no public return recovery).
- * Public Headless BNPL return recovery is H4.3 — not claimed here.
+ * H4.2: Headless Klarna/Affirm pending ownership markers.
+ * H4.3: {@link HeadlessCheckoutSession.recoverReturn} via shared StripeRedirectRecoveryService.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsHeadless {
@@ -44,6 +45,7 @@ export class EasyPaymentsHeadless {
   private readonly paypal = inject(PayPalAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
+  private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
 
   createSession(options: HeadlessSessionOptions): HeadlessCheckoutSession {
     if (!options || typeof options !== 'object') {
@@ -86,6 +88,7 @@ export class EasyPaymentsHeadless {
         paypal: this.paypal,
         googlePay: this.googlePay,
         applePay: this.applePay,
+        stripeRedirectRecovery: this.stripeRedirectRecovery,
       });
     } catch (error) {
       this.registry.release(id);

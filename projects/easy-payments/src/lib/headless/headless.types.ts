@@ -121,7 +121,7 @@ export interface HeadlessCheckoutEvents {
  * H3.1–H3.2: mount/confirm for `card`, `klarna`, and `affirm` (official Stripe Payment Element).
  * H3.3: mount PayPal official Buttons (buyer clicks Buttons — do **not** call `confirm()` for PayPal).
  * H3.4: mount Google Pay official button (buyer clicks button — do **not** call `confirm()` for Google Pay).
- * Public Headless BNPL return recovery after leave-page redirect is H4.3.
+ * H4.3: {@link HeadlessCheckoutSession.recoverReturn} for Klarna/Affirm after leave-page redirect.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;
@@ -150,6 +150,16 @@ export interface HeadlessCheckoutSession {
    * Rejects for PayPal, Google Pay, and Apple Pay — their official controls own the payment gesture.
    */
   confirm(): Promise<void>;
+
+  /**
+   * Recover a Klarna/Affirm Stripe redirect return for this session's stable
+   * `checkoutInstanceId` via the shared recovery service (no remount / no reconfirm).
+   *
+   * @returns Normalized {@link PaymentResult} when this session owns the return;
+   * `null` when there is no applicable return for this session (unrelated / absent).
+   * Rejects with {@link PaymentError} for owned returns that fail verification.
+   */
+  recoverReturn(): Promise<PaymentResult | null>;
 
   destroy(): Promise<void>;
 }

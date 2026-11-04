@@ -247,7 +247,7 @@ describe('Stripe redirect return ownership', () => {
       ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
     });
 
-    it('does not let checkout claim a Headless marker', () => {
+    it('does not let checkout claim a Headless marker (waits for Headless owner)', () => {
       const m = marker({
         attemptId: ATTEMPT,
         hostKind: 'headless',
@@ -259,10 +259,10 @@ describe('Stripe redirect return ownership', () => {
           params(ATTEMPT),
           m,
         ),
-      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+      ).toEqual({ kind: 'wait' });
     });
 
-    it('does not let buttons claim a Headless marker', () => {
+    it('does not let buttons claim a Headless marker (waits for Headless owner)', () => {
       const m = marker({
         attemptId: ATTEMPT,
         hostKind: 'headless',
@@ -274,7 +274,7 @@ describe('Stripe redirect return ownership', () => {
           params(ATTEMPT),
           m,
         ),
-      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+      ).toEqual({ kind: 'wait' });
     });
 
     it('does not let Headless claim a checkout marker', () => {

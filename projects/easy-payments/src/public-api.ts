@@ -141,7 +141,7 @@ export {
   toStripeElementsLocale,
 } from './lib/i18n';
 
-/** Headless Checkout (v1.2.0 — H3.1 Stripe Card mount/confirm; other providers later). */
+/** Headless Checkout (v1.2.0 — H3 providers + H4.3 Klarna/Affirm recoverReturn). */
 export {
   EasyPaymentsHeadless,
 } from './lib/headless';

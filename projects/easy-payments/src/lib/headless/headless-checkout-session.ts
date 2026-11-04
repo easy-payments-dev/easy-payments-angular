@@ -26,9 +26,15 @@ import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mappe
 import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
 import {
+  StripeRedirectRecoveryService,
+  type StripeReturnHost,
+} from '../adapters/stripe/stripe-redirect-recovery.service';
+import {
   buildStripeReturnUrl,
   clearStripePendingReturnFor,
   createStripeReturnAttemptId,
+  detectStripeReturnMethod,
+  isStripeReturnAttempt,
   markHeadlessPendingReturn,
   type StripeRedirectMethod,
 } from '../adapters/stripe/stripe-redirect-return';
@@ -118,15 +124,19 @@ export interface HeadlessCheckoutSessionDeps {
   paypal: PayPalAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
+  stripeRedirectRecovery: StripeRedirectRecoveryService;
 }
 
 /**
  * Independently owned Headless session.
  * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal Buttons.
  * H3.4: Google Pay button. H3.5: Apple Pay Express Checkout Element.
+ * H4.3: Klarna/Affirm redirect recovery via {@link StripeRedirectRecoveryService}.
  */
-export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
+export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, StripeReturnHost {
   readonly id: string;
+  /** Stripe redirect ownership host kind — Headless only (never checkout/buttons). */
+  readonly kind = 'headless' as const;
 
   private readonly product: PaymentProduct;
   private readonly methods: readonly PaymentMethod[];
@@ -146,6 +156,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private readonly paypal: PayPalAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
+  private readonly stripeRedirectRecovery: StripeRedirectRecoveryService;
   private readonly availability = new CheckoutAvailabilitySession();
 
   /** Stripe Element / PayPal / Google Pay owner — equals Headless session id for isolation. */
@@ -215,6 +226,13 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   private applePayEceMountId: string | null = null;
   private applePayAttemptAnnounced = false;
 
+  /** In-flight recoverReturn() promise (idempotent concurrent callers). */
+  private recoverPromise: Promise<PaymentResult | null> | null = null;
+  /** True after this session owned and applied (or failed) a consume for the current page load. */
+  private recoverSettled = false;
+  /** True while registered with {@link StripeRedirectRecoveryService}. */
+  private returnHostRegistered = false;
+
   constructor(deps: HeadlessCheckoutSessionDeps) {
     this.id = deps.id;
     this.stripeOwnerId = deps.id;
@@ -237,7 +255,24 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this.paypal = deps.paypal;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
+    this.stripeRedirectRecovery = deps.stripeRedirectRecovery;
     void this.translations;
+
+    this.stripeRedirectRecovery.registerHost(this);
+    this.returnHostRegistered = true;
+  }
+
+  /** {@link StripeReturnHost} — product correlated with the pending Headless marker. */
+  productId(): string | null {
+    return this.product.id;
+  }
+
+  /**
+   * {@link StripeReturnHost} — merchant-stable id when present; otherwise the runtime session id
+   * (which cannot match a Headless BNPL marker by design).
+   */
+  instanceId(): string {
+    return this.stableCheckoutIdentity ?? this.id;
   }
 
   async initialize(): Promise<void> {
@@ -958,7 +993,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       }
 
       // BNPL may still require a redirect / customer action. Do not treat as success.
-      // Public Headless return recovery remains H4.3 — ownership markers are H4.2 only.
+      // After a leave-page redirect, recreate the session and call recoverReturn().
       if (paymentError.code === 'AUTHENTICATION_REQUIRED') {
         this.applyPaymentResult(
           {
@@ -967,7 +1002,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
             provider: this.providerOf(selected),
             message:
               paymentError.message +
-              ' Headless redirect recovery is not available until H4.3 — confirm the final status on your backend.',
+              ' If the buyer left the page, recreate this session with the same checkoutInstanceId and call recoverReturn(). Confirm final fulfillment on your backend.',
           },
           confirmGen,
           selected,
@@ -978,6 +1013,131 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       this._lastError.set(paymentError);
       this._state.set('error');
       this.emitTerminalError(paymentError, confirmGen);
+      throw paymentError;
+    }
+  }
+
+  /**
+   * Recover Klarna/Affirm Stripe redirect returns for this stable checkout identity.
+   * No Payment Element mount or confirmPayment — uses {@link StripeRedirectRecoveryService}.
+   */
+  async recoverReturn(): Promise<PaymentResult | null> {
+    this.assertNotDestroyed('recoverReturn');
+
+    if (this._state() === 'idle' || this._state() === 'initializing') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Call initialize() before recoverReturn().',
+      });
+    }
+
+    if (!this.stableCheckoutIdentity) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Klarna/Affirm Headless return recovery requires a stable merchant checkoutInstanceId that matches the identity used before the redirect.',
+      });
+    }
+
+    if (this.recoverPromise) {
+      return this.recoverPromise;
+    }
+
+    if (this.recoverSettled) {
+      const priorError = this._lastError();
+      if (priorError && this._state() === 'error') {
+        throw priorError;
+      }
+      return this._lastResult();
+    }
+
+    this.recoverPromise = this.doRecoverReturn().finally(() => {
+      this.recoverPromise = null;
+    });
+    return this.recoverPromise;
+  }
+
+  private async doRecoverReturn(): Promise<PaymentResult | null> {
+    if (!this.browser.isBrowser || !isStripeReturnAttempt()) {
+      return null;
+    }
+
+    const claim = await this.stripeRedirectRecovery.claimReturn(this, this.methods);
+    if (this._state() === 'destroyed') {
+      return null;
+    }
+
+    if (claim !== 'owner') {
+      // Unrelated / wait / not ours — do not mutate session state or clear another host's return.
+      return null;
+    }
+
+    const method =
+      detectStripeReturnMethod() ??
+      (this.methods.includes('affirm') && !this.methods.includes('klarna') ? 'affirm' : 'klarna');
+    const recoverGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this.recoverSettled = true;
+
+    this._lastError.set(null);
+    this.applySelection(method);
+    this._state.set('processing');
+    this.emitStarted(method);
+
+    try {
+      const result = await this.stripeRedirectRecovery.consumeReturn();
+
+      if (this._state() === 'destroyed' || recoverGen !== this.confirmGeneration) {
+        return null;
+      }
+
+      if (!result) {
+        const paymentError = new PaymentError({
+          code: 'PAYMENT_FAILED',
+          message: `${method === 'affirm' ? 'Affirm' : 'Klarna'} return could not be verified.`,
+          method,
+          provider: method,
+        });
+        this._lastError.set(paymentError);
+        this._state.set('error');
+        this.emitTerminalError(paymentError, recoverGen);
+        throw paymentError;
+      }
+
+      this.applyPaymentResult(result, recoverGen, method);
+      return result;
+    } catch (error) {
+      if (this._state() === 'destroyed' || recoverGen !== this.confirmGeneration) {
+        return null;
+      }
+
+      const paymentError = normalizeError(error, { method, provider: method });
+
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        const cancelled: PaymentResult = {
+          status: 'cancelled',
+          method,
+          provider: method,
+          message: paymentError.message,
+        };
+        this.applyPaymentResult(cancelled, recoverGen, method);
+        return cancelled;
+      }
+
+      if (paymentError.code === 'AUTHENTICATION_REQUIRED') {
+        const pending: PaymentResult = {
+          status: 'processing',
+          method,
+          provider: method,
+          message: paymentError.message,
+        };
+        this.applyPaymentResult(pending, recoverGen, method);
+        return pending;
+      }
+
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, recoverGen);
       throw paymentError;
     }
   }
@@ -1002,6 +1162,11 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this._availableMethods.set([]);
     this.availability.clear();
     this.initPromise = null;
+
+    if (this.returnHostRegistered) {
+      this.stripeRedirectRecovery.unregisterHost(this);
+      this.returnHostRegistered = false;
+    }
 
     try {
       await Promise.all([

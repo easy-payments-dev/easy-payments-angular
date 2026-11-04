@@ -183,13 +183,8 @@ function decideHeadlessReturnOwner<T>(
     return { kind: 'owner', owner: eligible[0].host };
   }
   if (eligible.length === 0) {
-    // Wrong instance / kind / method among candidates → not claimable by checkout/buttons.
-    const foreign = candidates.filter(
-      (c) => c.kind !== 'headless' && c.methods.includes(method),
-    );
-    if (foreign.length > 0) {
-      return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
-    }
+    // Matching Headless host not registered yet (or wrong instance among claimants).
+    // Always wait — never let Checkout/Buttons close a Headless return.
     return { kind: 'wait' };
   }
   return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };
