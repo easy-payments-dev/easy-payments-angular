@@ -10,7 +10,7 @@ Source: [`projects/demo`](../projects/demo)
 
 ## What the demo shows
 
-- Experience switch: **Full Checkout** (`<easy-payments>`) vs **Payment Buttons Only** (`<easy-payment-buttons>`)
+- Experience switch: **Full Checkout** (`<easy-payments>`) vs **Payment Buttons Only** (`<easy-payment-buttons>`) vs **Headless Checkout** (`EasyPaymentsHeadless` session API)
 - Card, PayPal, Apple Pay, Google Pay, Klarna, Affirm (availability depends on mode/config)
 - Product fields (demo default **$99** USD `premium-plan`)
 - Method enable/disable and **reorder**
@@ -87,6 +87,18 @@ Never put `sk_...` or PayPal Client Secret in Angular.
 | Provider wiring | `projects/demo/src/app/app.config.ts` + Real-mode config in `app.ts` |
 | Template bindings | `projects/demo/src/app/app.html` |
 | Product / methods / theme / appearance / maxWidth | `projects/demo/src/app/app.ts` |
+| Headless foundation panel (H5.1) | `projects/demo/src/app/headless-demo/` |
 | Placeholders | `projects/demo/src/environments/environment.example.ts` |
+
+### Headless Checkout demo (H5.1)
+
+Select **Headless Checkout** in the Experience control. The panel:
+
+- Injects public `EasyPaymentsHeadless` from `@easy-payments/angular`
+- Creates a session with the playground product/methods and stable `checkoutInstanceId` `demo-headless-1`
+- Calls `initialize()` and displays live availability + session state
+- Destroys the session when you leave the mode (component teardown)
+
+**Not in H5.1:** provider mounting, `confirm()`, `recoverReturn()`, or payment CTA UI (H5.2 / H5.3). The stable checkout id is reserved so H5.3 can demonstrate Klarna/Affirm return recovery without regenerating identity on every remount.
 
 Screenshots in docs were captured from this demo using browser viewport emulation (not physical device claims).

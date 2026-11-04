@@ -35,9 +35,6 @@ import {
   type EasyPaymentsVisualStyle,
   resolveEffectiveLocale,
 } from '@easy-payments/angular';
-
-/** Main playground: Ready-to-Use Checkout vs Payment Buttons Only. */
-type PlaygroundExperience = 'checkout' | 'buttons';
 import { environment } from '../environments/environment';
 import {
   persistDemoMode,
@@ -45,6 +42,10 @@ import {
   type PersistedDemoMode,
 } from './demo-mode-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
+import { HeadlessDemoPanel } from './headless-demo/headless-demo.panel';
+
+/** Main playground: Full Checkout, Buttons Only, or Headless session API. */
+type PlaygroundExperience = 'checkout' | 'buttons' | 'headless';
 
 function isMultiInstanceQaQuery(): boolean {
   if (typeof window === 'undefined') {
@@ -204,7 +205,12 @@ const VISUAL_STYLE_FIELDS: readonly {
 
 @Component({
   selector: 'app-root',
-  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent, NgComponentOutlet],
+  imports: [
+    EasyPaymentsComponent,
+    EasyPaymentButtonsComponent,
+    HeadlessDemoPanel,
+    NgComponentOutlet,
+  ],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
@@ -280,7 +286,7 @@ export class App {
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
   readonly switchingMode = signal(false);
-  /** Full Checkout vs Payment Buttons Only playground surface. */
+  /** Full Checkout vs Buttons Only vs Headless playground surface. */
   readonly playgroundExperience = signal<PlaygroundExperience>('checkout');
   readonly buttonsLayout = signal<EasyPaymentButtonsLayout>('horizontal');
   readonly buttonsSeparators = signal<'none' | 'line'>('none');

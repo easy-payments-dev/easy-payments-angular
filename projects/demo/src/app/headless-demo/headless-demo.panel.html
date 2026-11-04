@@ -1,0 +1,132 @@
+<section class="headless-demo" data-testid="headless-demo-panel" aria-label="Headless Checkout demo">
+  <header class="headless-demo__header">
+    <p class="headless-demo__kicker">Merchant-owned UI</p>
+    <h3 class="headless-demo__title">Headless Checkout session</h3>
+    <p class="headless-demo__lede">
+      H5.1 foundation: create, initialize, inspect availability and state. Mounting, confirm, and
+      redirect recovery arrive in later demo milestones.
+    </p>
+  </header>
+
+  <dl class="headless-demo__meta" data-testid="headless-demo-identity">
+    <div>
+      <dt>Checkout identity</dt>
+      <dd><code>{{ checkoutInstanceId }}</code></dd>
+    </div>
+    <div>
+      <dt>Runtime session id</dt>
+      <dd>
+        @if (sessionId(); as id) {
+          <code>{{ id }}</code>
+        } @else {
+          <span>—</span>
+        }
+      </dd>
+    </div>
+    <div>
+      <dt>Session state</dt>
+      <dd data-testid="headless-demo-state">{{ sessionState() ?? bootStatus() }}</dd>
+    </div>
+    <div>
+      <dt>Selected method</dt>
+      <dd data-testid="headless-demo-selected">{{ selectedMethod() ?? 'none' }}</dd>
+    </div>
+  </dl>
+
+  @if (isInitializing()) {
+    <p class="headless-demo__status" role="status" data-testid="headless-demo-loading">
+      Initializing Headless session…
+    </p>
+  }
+
+  @if (bootError(); as error) {
+    <div class="headless-demo__error" role="alert" data-testid="headless-demo-boot-error">
+      <p>{{ error }}</p>
+      <button type="button" class="headless-demo__retry" (click)="retryInitialize()">
+        Retry initialize
+      </button>
+    </div>
+  }
+
+  @if (lastError(); as paymentError) {
+    <p class="headless-demo__error" role="status" data-testid="headless-demo-last-error">
+      Last error: {{ paymentError.code }} — {{ paymentError.message }}
+    </p>
+  }
+
+  @if (lastResult(); as result) {
+    <p class="headless-demo__result" role="status" data-testid="headless-demo-last-result">
+      Last result: {{ result.status }} · {{ result.method }}
+      @if (result.transactionId) {
+        · {{ result.transactionId }}
+      }
+    </p>
+  }
+
+  <section class="headless-demo__availability" aria-label="Method availability">
+    <h4 class="headless-demo__subtitle">Available methods</h4>
+    <p class="headless-demo__hint">
+      Values come from the live Headless session. Wallet readiness follows provider evidence — this
+      panel does not invent Apple Pay or Google Pay buttons.
+    </p>
+
+    @if (availabilityEmpty()) {
+      <p class="headless-demo__empty" data-testid="headless-demo-availability-empty">
+        No methods reported available for the current configuration.
+      </p>
+    } @else {
+      <ul class="headless-demo__methods" data-testid="headless-demo-availability">
+        @for (entry of availableMethods(); track entry.method) {
+          <li
+            class="headless-demo__method"
+            [attr.data-method]="entry.method"
+            [attr.data-readiness]="entry.readiness"
+            [attr.data-available]="entry.available"
+          >
+            <div class="headless-demo__method-main">
+              <span class="headless-demo__method-name">
+                {{ methodLabels[entry.method] ?? entry.method }}
+              </span>
+              <span class="headless-demo__badge" [attr.data-readiness]="entry.readiness">
+                {{ entry.readiness }}
+              </span>
+              <span
+                class="headless-demo__badge"
+                [attr.data-available]="entry.available ? 'yes' : 'no'"
+              >
+                {{ entry.available ? 'available' : 'unavailable' }}
+              </span>
+            </div>
+            <p class="headless-demo__method-meta">
+              provider {{ entry.provider }} · interaction {{ entry.interaction }}
+              @if (entry.mock) {
+                · mock
+              }
+              @if (entry.diagnosticCode) {
+                · {{ entry.diagnosticCode }}
+              }
+            </p>
+            @if (entry.readinessNote) {
+              <p class="headless-demo__method-note">{{ entry.readinessNote }}</p>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <section class="headless-demo__events" aria-label="Headless lifecycle events">
+    <h4 class="headless-demo__subtitle">Lifecycle events</h4>
+    @if (lifecycleEvents().length === 0) {
+      <p class="headless-demo__hint" data-testid="headless-demo-events-empty">
+        No Headless payment events yet (expected until mount/confirm in H5.2+).
+      </p>
+    } @else {
+      <ul class="headless-demo__event-list" data-testid="headless-demo-events">
+        @for (line of lifecycleEvents(); track $index) {
+          <li>{{ line }}</li>
+        }
+      </ul>
+    }
+  </section>
+</section>

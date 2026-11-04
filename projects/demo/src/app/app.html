@@ -11,8 +11,9 @@
       <p class="eyebrow">Easy Payments</p>
       <h1>Payment playground</h1>
       <p class="lede">
-        Configure the library on the left. Preview Full Checkout or Payment Buttons Only on the right.
-        Sections are grouped by what they change — method tiles are separate from the Stripe Card confirm button.
+        Configure the library on the left. Preview Full Checkout, Payment Buttons Only, or Headless
+        Checkout on the right. Sections are grouped by what they change — method tiles are separate
+        from the Stripe Card confirm button.
       </p>
     </div>
     @if (mode() === 'demo') {
@@ -28,7 +29,8 @@
       <p class="panel-intro">
         Each section lists which surface it affects:
         <code>&lt;easy-payments&gt;</code> (Full Checkout),
-        <code>&lt;easy-payment-buttons&gt;</code> (Buttons Only), both, or demo-only.
+        <code>&lt;easy-payment-buttons&gt;</code> (Buttons Only),
+        <code>EasyPaymentsHeadless</code> (Headless), both components, or demo-only.
       </p>
 
       <!-- 1. Experience -->
@@ -41,8 +43,8 @@
         </summary>
         <div class="config-section__body">
           <p class="hint">
-            Switches the live preview between Full Checkout and Buttons Only. Does not change provider
-            credentials.
+            Switches the live preview between Full Checkout, Buttons Only, and Headless. Does not
+            change provider credentials.
           </p>
           <fieldset class="choice-group">
             <legend class="visually-hidden">Playground experience</legend>
@@ -66,10 +68,22 @@
               />
               <span>Payment Buttons Only</span>
             </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="playgroundExperience"
+                value="headless"
+                [checked]="playgroundExperience() === 'headless'"
+                (change)="setPlaygroundExperience('headless')"
+              />
+              <span>Headless Checkout</span>
+            </label>
           </fieldset>
           <p class="hint">
             Full Checkout is <code>&lt;easy-payments&gt;</code>. Buttons Only is
-            <code>&lt;easy-payment-buttons&gt;</code> — a compact strip for your own checkout UI.
+            <code>&lt;easy-payment-buttons&gt;</code>. Headless uses the public
+            <code>EasyPaymentsHeadless</code> session API with merchant-owned UI (H5.1 foundation —
+            no provider mount yet).
           </p>
         </div>
       </details>
@@ -1214,8 +1228,10 @@
           <p class="preview-kicker">Live preview</p>
           @if (playgroundExperience() === 'checkout') {
             <h2>Embedded <code>&lt;easy-payments&gt;</code></h2>
-          } @else {
+          } @else if (playgroundExperience() === 'buttons') {
             <h2>Embedded <code>&lt;easy-payment-buttons&gt;</code></h2>
+          } @else {
+            <h2>Headless <code>EasyPaymentsHeadless</code></h2>
           }
         </div>
         @if (mode() === 'demo') {
@@ -1241,6 +1257,7 @@
           transparentPreviewBackdrop() === 'dark'
         "
         [class.checkout-stage--buttons]="playgroundExperience() === 'buttons'"
+        [class.checkout-stage--headless]="playgroundExperience() === 'headless'"
       >
         <div class="checkout-stage__surface">
           @if (!checkoutReady()) {
@@ -1269,7 +1286,7 @@
               (methodChange)="onPaymentMethodChange($event)"
               (successContinue)="onSuccessContinue($event)"
             />
-          } @else {
+          } @else if (playgroundExperience() === 'buttons') {
             <easy-payment-buttons
               [product]="product()"
               [methods]="methods()"
@@ -1286,6 +1303,14 @@
               (error)="onPaymentError($event)"
               (methodChange)="onPaymentMethodChange($event)"
               (pending)="onPaymentPending($event)"
+            />
+          } @else {
+            <app-headless-demo
+              [product]="product()"
+              [methods]="methods()"
+              [theme]="theme()"
+              [locale]="locale()"
+              [translations]="customTranslations()"
             />
           }
         </div>
@@ -1382,6 +1407,8 @@
             <p class="preview-kicker">
               @if (playgroundExperience() === 'buttons') {
                 Host event inspector
+              } @else if (playgroundExperience() === 'headless') {
+                Component host events
               } @else {
                 Events
               }
@@ -1394,6 +1421,11 @@
             Inspect <code>started</code>, <code>methodChange</code>, <code>success</code>,
             <code>cancel</code>, <code>error</code>, and <code>pending</code> emitted by
             <code>&lt;easy-payment-buttons&gt;</code>. Outcome banners above are demo-app UI.
+          </p>
+        } @else if (playgroundExperience() === 'headless') {
+          <p class="hint">
+            Headless lifecycle events are shown inside the Headless panel above. This host log stays
+            for Full Checkout / Buttons Only event handlers and is intentionally quiet in H5.1.
           </p>
         }
         <p>{{ lastEvent() }}</p>

@@ -218,6 +218,7 @@ describe('App', () => {
     expect(app.playgroundExperience()).toBe('buttons');
     expect(compiled.querySelector('easy-payments')).toBeNull();
     expect(compiled.querySelector('easy-payment-buttons')).toBeTruthy();
+    expect(compiled.querySelector('app-headless-demo')).toBeNull();
     expect(compiled.querySelector('[data-testid="easy-payment-buttons-demo-notice"]')).toBeTruthy();
     expect(compiled.querySelector('.ep-payment-buttons__demo')).toBeNull();
     expect(compiled.querySelector('.buttons-code__pre')?.textContent).toContain(
@@ -227,6 +228,83 @@ describe('App', () => {
     expect(compiled.querySelector('.buttons-code__pre')?.textContent).toContain('separators');
     expect(app.buttonsAppearance().border).toBe('none');
     expect(app.buttonsAppearance().gap).toBe('16px');
+  });
+
+  it('switches to Headless Checkout foundation without mounting providers', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    const app = fixture.componentInstance;
+    app.setPlaygroundExperience('headless');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(app.playgroundExperience()).toBe('headless');
+    expect(compiled.querySelector('easy-payments')).toBeNull();
+    expect(compiled.querySelector('easy-payment-buttons')).toBeNull();
+    expect(compiled.querySelector('app-headless-demo')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="headless-demo-panel"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="headless-demo-identity"]')?.textContent).toContain(
+      'demo-headless-1',
+    );
+    expect(compiled.querySelector('[data-testid="headless-demo-availability"]')).toBeTruthy();
+    expect(compiled.textContent).toContain('H5.1 foundation');
+    expect(compiled.textContent).not.toContain('client_secret');
+  });
+
+  it('destroys Headless when leaving and creates a fresh session on return', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    const app = fixture.componentInstance;
+    app.setPlaygroundExperience('headless');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const firstId = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector('[data-testid="headless-demo-identity"]')?.textContent;
+    expect(firstId).toContain('demo-headless-1');
+
+    app.setPlaygroundExperience('checkout');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeTruthy();
+
+    app.setPlaygroundExperience('headless');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('app-headless-demo')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="headless-demo-identity"]')?.textContent).toContain(
+      'demo-headless-1',
+    );
+    expect(compiled.querySelector('easy-payments')).toBeNull();
+  });
+
+  it('keeps theme controls compatible with Headless mode', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    const app = fixture.componentInstance;
+    app.setPlaygroundExperience('headless');
+    app.theme.set('dark');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(app.theme()).toBe('dark');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeTruthy();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="config-section-theme"]'),
+    ).toBeTruthy();
   });
 
   it('shows host-owned Buttons Only outcomes outside the library component', async () => {

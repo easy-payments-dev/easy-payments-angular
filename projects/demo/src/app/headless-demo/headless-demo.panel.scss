@@ -1,0 +1,174 @@
+.headless-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 2px 8px;
+  color: #0f172a;
+}
+
+.headless-demo__kicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.headless-demo__title {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+}
+
+.headless-demo__lede,
+.headless-demo__hint,
+.headless-demo__empty,
+.headless-demo__status,
+.headless-demo__method-meta,
+.headless-demo__method-note {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.headless-demo__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.headless-demo__meta dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.headless-demo__meta dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.headless-demo__meta code {
+  font-size: 0.92em;
+}
+
+.headless-demo__subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.headless-demo__error,
+.headless-demo__result {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.headless-demo__error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.headless-demo__result {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.headless-demo__retry {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #fca5a5;
+  background: #fff;
+  color: #991b1b;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.headless-demo__methods,
+.headless-demo__event-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.headless-demo__method {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.headless-demo__method-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.headless-demo__method-name {
+  font-weight: 650;
+  font-size: 14px;
+}
+
+.headless-demo__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.headless-demo__badge[data-readiness='ready'],
+.headless-demo__badge[data-available='yes'] {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.headless-demo__badge[data-readiness='loading'] {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.headless-demo__badge[data-readiness='unavailable'],
+.headless-demo__badge[data-readiness='misconfigured'],
+.headless-demo__badge[data-available='no'] {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.headless-demo__event-list li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #334155;
+}
+
+@media (max-width: 720px) {
+  .headless-demo__meta {
+    grid-template-columns: 1fr;
+  }
+}
