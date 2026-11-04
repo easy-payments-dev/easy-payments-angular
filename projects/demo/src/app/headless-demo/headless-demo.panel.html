@@ -1,12 +1,27 @@
 <section class="headless-demo" data-testid="headless-demo-panel" aria-label="Headless Checkout demo">
   <header class="headless-demo__header">
     <p class="headless-demo__kicker">Merchant-owned UI</p>
-    <h3 class="headless-demo__title">Headless Checkout session</h3>
+    <h3 class="headless-demo__title">Headless Checkout</h3>
     <p class="headless-demo__lede">
-      H5.1 foundation: create, initialize, inspect availability and state. Mounting, confirm, and
-      redirect recovery arrive in later demo milestones.
+      H5.2: select a method and mount official Stripe Payment Element UI. PayPal / Google Pay /
+      Apple Pay interactive mounts are deferred until H5.3. Payment confirmation and redirect
+      recovery are not wired yet.
     </p>
   </header>
+
+  <section class="headless-demo__product" data-testid="headless-demo-product" aria-label="Product summary">
+    <h4 class="headless-demo__subtitle">Product</h4>
+    <p class="headless-demo__product-name">{{ product().name }}</p>
+    @if (product().description) {
+      <p class="headless-demo__product-description">{{ product().description }}</p>
+    }
+    <p class="headless-demo__product-price" data-testid="headless-demo-price">
+      {{ priceLabel() }}
+      @if ((product().quantity ?? 1) > 1) {
+        <span class="headless-demo__product-qty"> · qty {{ product().quantity }}</span>
+      }
+    </p>
+  </section>
 
   <dl class="headless-demo__meta" data-testid="headless-demo-identity">
     <div>
@@ -29,7 +44,7 @@
     </div>
     <div>
       <dt>Selected method</dt>
-      <dd data-testid="headless-demo-selected">{{ selectedMethod() ?? 'none' }}</dd>
+      <dd data-testid="headless-demo-selected">{{ selectedMethod() ?? uiSelectedMethod() ?? 'none' }}</dd>
     </div>
   </dl>
 
@@ -48,6 +63,12 @@
     </div>
   }
 
+  @if (configSkipMessage(); as skip) {
+    <p class="headless-demo__notice" role="status" data-testid="headless-demo-config-skip">
+      {{ skip }}
+    </p>
+  }
+
   @if (lastError(); as paymentError) {
     <p class="headless-demo__error" role="status" data-testid="headless-demo-last-error">
       Last error: {{ paymentError.code }} — {{ paymentError.message }}
@@ -63,11 +84,11 @@
     </p>
   }
 
-  <section class="headless-demo__availability" aria-label="Method availability">
-    <h4 class="headless-demo__subtitle">Available methods</h4>
+  <section class="headless-demo__selector" aria-label="Payment method selector">
+    <h4 class="headless-demo__subtitle">Payment methods</h4>
     <p class="headless-demo__hint">
-      Values come from the live Headless session. Wallet readiness follows provider evidence — this
-      panel does not invent Apple Pay or Google Pay buttons.
+      Choose an available method to mount its official provider UI. Unavailable methods stay visible
+      with a reason. Wallet and PayPal buttons are listed but not mounted in H5.2.
     </p>
 
     @if (availabilityEmpty()) {
@@ -75,15 +96,27 @@
         No methods reported available for the current configuration.
       </p>
     } @else {
-      <ul class="headless-demo__methods" data-testid="headless-demo-availability">
+      <div
+        class="headless-demo__method-list"
+        role="listbox"
+        aria-label="Headless payment methods"
+        data-testid="headless-demo-availability"
+      >
         @for (entry of availableMethods(); track entry.method) {
-          <li
+          <button
+            type="button"
             class="headless-demo__method"
+            role="option"
             [attr.data-method]="entry.method"
             [attr.data-readiness]="entry.readiness"
             [attr.data-available]="entry.available"
+            [attr.data-selected]="uiSelectedMethod() === entry.method"
+            [attr.aria-selected]="uiSelectedMethod() === entry.method"
+            [attr.aria-disabled]="!canSelectMethod(entry)"
+            [disabled]="!canSelectMethod(entry)"
+            (click)="onSelectMethod(entry.method)"
           >
-            <div class="headless-demo__method-main">
+            <span class="headless-demo__method-main">
               <span class="headless-demo__method-name">
                 {{ methodLabels[entry.method] ?? entry.method }}
               </span>
@@ -96,22 +129,83 @@
               >
                 {{ entry.available ? 'available' : 'unavailable' }}
               </span>
-            </div>
-            <p class="headless-demo__method-meta">
+              @if (isDeferredMethod(entry.method)) {
+                <span class="headless-demo__badge" data-deferred="yes">H5.3 mount</span>
+              }
+            </span>
+            <span class="headless-demo__method-meta">
               provider {{ entry.provider }} · interaction {{ entry.interaction }}
               @if (entry.mock) {
                 · mock
               }
-              @if (entry.diagnosticCode) {
-                · {{ entry.diagnosticCode }}
-              }
-            </p>
-            @if (entry.readinessNote) {
-              <p class="headless-demo__method-note">{{ entry.readinessNote }}</p>
+            </span>
+            @if (!entry.available || entry.readiness !== 'ready') {
+              <span class="headless-demo__method-note" data-testid="headless-demo-unavailable-reason">
+                {{ unavailableReason(entry) }}
+              </span>
             }
-          </li>
+          </button>
         }
-      </ul>
+      </div>
+    }
+  </section>
+
+  <section class="headless-demo__mount" aria-label="Provider mount area">
+    <h4 class="headless-demo__subtitle">Provider surface</h4>
+
+    @if (mountPhase() === 'idle') {
+      <p class="headless-demo__hint" data-testid="headless-demo-mount-idle">
+        Select a payment method to mount its official UI here.
+      </p>
+    }
+
+    @if (mountPhase() === 'mounting') {
+      <p class="headless-demo__status" role="status" data-testid="headless-demo-mounting">
+        Mounting provider UI…
+      </p>
+    }
+
+    @if (mountPhase() === 'deferred') {
+      <div class="headless-demo__notice" role="status" data-testid="headless-demo-mount-deferred">
+        @if (uiSelectedMethod(); as deferredMethod) {
+          <p>
+            <strong>{{ methodLabels[deferredMethod] ?? deferredMethod }}</strong>
+            is available, but interactive mounting is deferred.
+          </p>
+        }
+        <p>{{ mountNotice() }}</p>
+      </div>
+    }
+
+    @if (mountError(); as error) {
+      <p class="headless-demo__error" role="alert" data-testid="headless-demo-mount-error">
+        {{ error }}
+      </p>
+    }
+
+    <div
+      #mountHost
+      class="headless-demo__mount-host"
+      data-testid="headless-demo-mount-host"
+      [class.headless-demo__mount-host--active]="
+        mountPhase() === 'mounted' || mountPhase() === 'mounting'
+      "
+      [attr.hidden]="
+        mountPhase() === 'mounted' || mountPhase() === 'mounting' ? null : true
+      "
+      [attr.data-method]="uiSelectedMethod()"
+      [attr.aria-hidden]="mountPhase() !== 'mounted' && mountPhase() !== 'mounting'"
+    ></div>
+
+    @if (showConfirmPlaceholder()) {
+      <div class="headless-demo__confirm-placeholder" data-testid="headless-demo-confirm-placeholder">
+        <button type="button" class="headless-demo__pay-disabled" disabled>
+          Pay — not available yet (H5.3)
+        </button>
+        <p class="headless-demo__hint">
+          Stripe Payment Element is mounted. The demo does not call <code>confirm()</code> in H5.2.
+        </p>
+      </div>
     }
   </section>
 
@@ -119,7 +213,7 @@
     <h4 class="headless-demo__subtitle">Lifecycle events</h4>
     @if (lifecycleEvents().length === 0) {
       <p class="headless-demo__hint" data-testid="headless-demo-events-empty">
-        No Headless payment events yet (expected until mount/confirm in H5.2+).
+        No Headless payment terminal events yet (confirm / wallet pay arrive in H5.3).
       </p>
     } @else {
       <ul class="headless-demo__event-list" data-testid="headless-demo-events">

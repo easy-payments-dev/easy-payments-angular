@@ -87,18 +87,22 @@ Never put `sk_...` or PayPal Client Secret in Angular.
 | Provider wiring | `projects/demo/src/app/app.config.ts` + Real-mode config in `app.ts` |
 | Template bindings | `projects/demo/src/app/app.html` |
 | Product / methods / theme / appearance / maxWidth | `projects/demo/src/app/app.ts` |
-| Headless foundation panel (H5.1) | `projects/demo/src/app/headless-demo/` |
+| Headless checkout panel (H5.1–H5.2) | `projects/demo/src/app/headless-demo/` |
 | Placeholders | `projects/demo/src/environments/environment.example.ts` |
 
-### Headless Checkout demo (H5.1)
+### Headless Checkout demo (H5.1–H5.2)
 
 Select **Headless Checkout** in the Experience control. The panel:
 
 - Injects public `EasyPaymentsHeadless` from `@easy-payments/angular`
 - Creates a session with the playground product/methods and stable `checkoutInstanceId` `demo-headless-1`
+- Shows a merchant-owned product summary and method selector
 - Calls `initialize()` and displays live availability + session state
-- Destroys the session when you leave the mode (component teardown)
+- Mounts official Stripe Payment Element UI for **Card / Klarna / Affirm** via `selectMethod()` + `mount()`
+- Defers interactive **PayPal / Google Pay / Apple Pay** mounts (official buttons start payment on click)
+- Recreates the session when product / methods / theme / locale change (skips while `processing` / `pending`)
+- Unmounts provider UI and destroys the session when you leave the mode
 
-**Not in H5.1:** provider mounting, `confirm()`, `recoverReturn()`, or payment CTA UI (H5.2 / H5.3). The stable checkout id is reserved so H5.3 can demonstrate Klarna/Affirm return recovery without regenerating identity on every remount.
+**Not in H5.2:** `confirm()`, wallet/PayPal interactive mounts, or `recoverReturn()` (H5.3). The disabled “Pay” control is a placeholder only. The stable checkout id remains reserved for H5.3 Klarna/Affirm return recovery.
 
 Screenshots in docs were captured from this demo using browser viewport emulation (not physical device claims).
