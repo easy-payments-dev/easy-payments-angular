@@ -101,12 +101,14 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
     headless = TestBed.inject(EasyPaymentsHeadless);
     registry = TestBed.inject(HeadlessSessionRegistry);
     recovery = TestBed.inject(StripeRedirectRecoveryService);
+    recovery.resetForTests();
     retrieve = spyOn(recovery, 'retrieveReturningPayment');
     registry.clearForTests();
   });
 
   afterEach(() => {
     registry.clearForTests();
+    recovery.resetForTests();
     sessionStorage.removeItem(STRIPE_PENDING_STORAGE_KEY);
     history.replaceState({}, '', '/');
   });
@@ -345,7 +347,7 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
     await session.destroy();
   });
 
-  it('maps requires_action to pending (not success)', async () => {
+  it('maps requires_action to AUTHENTICATION_REQUIRED error (not success/pending)', async () => {
     setReturnUrl('klarna');
     markHeadless();
     retrieve.and.rejectWith(
@@ -357,11 +359,33 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
       }),
     );
     const session = await readySession();
-    const pending = firstValueFrom(session.events.pending);
-    const result = await session.recoverReturn();
-    expect(result?.status).toBe('processing');
-    expect(session.state()).toBe('pending');
-    await expectAsync(pending).toBeResolved();
+    const errors: PaymentError[] = [];
+    session.events.error.subscribe((e) => errors.push(e));
+    await expectAsync(session.recoverReturn()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
+    );
+    expect(session.state()).toBe('error');
+    expect(session.lastResult()?.status).not.toBe('success');
+    expect(errors.length).toBe(1);
+    await session.destroy();
+  });
+
+  it('maps requires_confirmation like requires_action (typed error)', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.rejectWith(
+      new PaymentError({
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'requires confirmation',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    const session = await readySession();
+    await expectAsync(session.recoverReturn()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
+    );
+    expect(session.state()).toBe('error');
     await session.destroy();
   });
 
@@ -517,6 +541,183 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
     await session.recoverReturn();
     expect(readStripePendingReturn()?.checkoutInstanceId).toBe('hl-owner');
     clearStripePendingReturn();
+    await session.destroy();
+  });
+
+  it('preserves marker on transient verification failure and allows safe retry', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.rejectWith(
+      new PaymentError({
+        code: 'NETWORK_ERROR',
+        message: 'network down',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    const session = await readySession();
+    const errors: PaymentError[] = [];
+    session.events.error.subscribe((e) => errors.push(e));
+
+    await expectAsync(session.recoverReturn()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'NETWORK_ERROR' }),
+    );
+    expect(session.state()).toBe('error');
+    expect(readStripePendingReturn()?.checkoutInstanceId).toBe('hl-recover');
+    expect(readStripeReturnParams().clientSecret).toBeTruthy();
+    expect(recovery.wasReturnConsumed()).toBeFalse();
+
+    retrieve.and.resolveTo(successResult());
+    const result = await session.recoverReturn();
+    expect(result?.status).toBe('success');
+    expect(session.state()).toBe('success');
+    expect(errors.length).toBe(1);
+    expect(readStripePendingReturn()).toBeNull();
+    await session.destroy();
+  });
+
+  it('rejects mount/selectMethod/confirm while recovery is processing', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    let release!: (value: PaymentResult) => void;
+    retrieve.and.returnValue(
+      new Promise<PaymentResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const session = await readySession({ methods: ['klarna', 'affirm'] });
+    const pending = session.recoverReturn();
+
+    expect(() => session.selectMethod('affirm')).toThrowMatching(
+      (e) => e instanceof PaymentError && e.code === 'PAYMENT_FAILED',
+    );
+    await expectAsync(session.mount('affirm', document.createElement('div'))).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+    await expectAsync(session.confirm()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+
+    release(successResult());
+    await pending;
+    await session.destroy();
+  });
+
+  it('rejects mount/selectMethod/confirm while payment is pending', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.resolveTo({
+      status: 'processing',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_ret',
+    });
+    const session = await readySession({ methods: ['klarna', 'affirm'] });
+    await session.recoverReturn();
+    expect(session.state()).toBe('pending');
+
+    expect(() => session.selectMethod('affirm')).toThrowMatching(
+      (e) => e instanceof PaymentError && e.code === 'PAYMENT_FAILED',
+    );
+    await expectAsync(session.mount('klarna', document.createElement('div'))).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+    await expectAsync(session.confirm()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+    await expectAsync(session.recoverReturn()).toBeResolvedTo(
+      jasmine.objectContaining({ status: 'processing' }),
+    );
+    await session.destroy();
+  });
+
+  it('allows refreshAvailability while pending without mutating payment state', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.resolveTo({
+      status: 'processing',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_ret',
+    });
+    const session = await readySession();
+    await session.recoverReturn();
+    expect(session.state()).toBe('pending');
+    await session.refreshAvailability();
+    expect(session.state()).toBe('pending');
+    expect(session.lastResult()?.status).toBe('processing');
+    await session.destroy();
+  });
+
+  it('maps requires_payment_method failure without success', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.rejectWith(
+      new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'requires payment method',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    const session = await readySession();
+    await expectAsync(session.recoverReturn()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+    expect(session.state()).toBe('error');
+    expect(session.lastResult()).toBeNull();
+    await session.destroy();
+  });
+
+  it('maps unknown PaymentIntent status to failure', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.rejectWith(
+      new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'Unexpected PaymentIntent status: mystery.',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    const session = await readySession();
+    await expectAsync(session.recoverReturn()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
+    );
+    expect(session.state()).toBe('error');
+    await session.destroy();
+  });
+
+  it('does not emit terminal events for browser refresh after consume (new session)', async () => {
+    setReturnUrl('klarna');
+    markHeadless();
+    retrieve.and.resolveTo(successResult());
+    const first = await readySession({ checkoutInstanceId: 'hl-refresh' });
+    await first.recoverReturn();
+    await first.destroy();
+
+    // Consumed return: URL/marker cleared — new session sees no return.
+    const second = await readySession({ checkoutInstanceId: 'hl-refresh' });
+    const successes: PaymentResult[] = [];
+    second.events.success.subscribe((r) => successes.push(r));
+    expect(await second.recoverReturn()).toBeNull();
+    expect(successes.length).toBe(0);
+    expect(second.state()).toBe('ready');
+    await second.destroy();
+  });
+
+  it('keeps Headless vs Checkout marker isolation during recovery attempt', async () => {
+    setReturnUrl('klarna');
+    markStripePendingReturn('klarna', PRODUCT.id, undefined, {
+      attemptId: ATTEMPT,
+      hostKind: 'checkout',
+      checkoutInstanceId: 'co-1',
+    });
+    retrieve.and.resolveTo(successResult());
+    const session = await readySession({ checkoutInstanceId: 'co-1' });
+    expect(await session.recoverReturn()).toBeNull();
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(readStripePendingReturn()?.hostKind).toBe('checkout');
     await session.destroy();
   });
 });

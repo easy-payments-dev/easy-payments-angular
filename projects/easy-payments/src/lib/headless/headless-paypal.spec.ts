@@ -11,6 +11,7 @@ import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import type { PayPalButtonsOptions, PayPalNamespace } from '../adapters/paypal/paypal.types';
 import { StripeSdkLoader } from '../adapters/stripe/stripe-sdk.loader';
 import { SdkLoaderService } from '../loaders/sdk-loader.service';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -128,10 +129,12 @@ describe('HeadlessCheckoutSession PayPal (H3.3)', () => {
     paypal = TestBed.inject(PayPalAdapter);
     stripeCard = TestBed.inject(StripeCardAdapter);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   afterEach(() => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     delete (window as Window & { paypal?: PayPalNamespace }).paypal;
   });
 
@@ -470,7 +473,7 @@ describe('HeadlessCheckoutSession PayPal (H3.3)', () => {
     await b.destroy();
   });
 
-  it('switches PayPal → Card and Card → PayPal without leaking mounts', async () => {
+  it('switches PayPal ? Card and Card ? PayPal without leaking mounts', async () => {
     const session = await readySession();
     await session.mount('paypal', document.createElement('div'));
     expect(paypal.getActiveButtonMountCount()).toBe(1);

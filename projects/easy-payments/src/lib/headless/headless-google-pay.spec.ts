@@ -20,6 +20,7 @@ import type {
 import { StripeSdkLoader } from '../adapters/stripe/stripe-sdk.loader';
 import { SdkLoaderService } from '../loaders/sdk-loader.service';
 import type { PayPalNamespace } from '../adapters/paypal/paypal.types';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -183,10 +184,12 @@ describe('HeadlessCheckoutSession Google Pay (H3.4)', () => {
     affirm = TestBed.inject(AffirmAdapter);
     paypal = TestBed.inject(PayPalAdapter);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   afterEach(() => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     delete (window as Window & { paypal?: PayPalNamespace }).paypal;
   });
 
@@ -532,7 +535,7 @@ describe('HeadlessCheckoutSession Google Pay (H3.4)', () => {
     await b.destroy();
   });
 
-  it('switches Google Pay ↔ Card / PayPal / Klarna / Affirm without leaking mounts', async () => {
+  it('switches Google Pay ? Card / PayPal / Klarna / Affirm without leaking mounts', async () => {
     const session = await readySession({
       methods: ['google-pay', 'card', 'paypal', 'klarna', 'affirm'],
     });

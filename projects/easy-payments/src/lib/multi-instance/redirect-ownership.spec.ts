@@ -545,6 +545,7 @@ describe('Stripe redirect return ownership', () => {
     afterEach(() => {
       history.replaceState({}, '', '/');
       clearStripePendingReturn();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     });
 
     it('hands an unconsumed return to a remounted host when the owner is destroyed first', async () => {
@@ -592,7 +593,9 @@ describe('Stripe redirect return ownership', () => {
           { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
         ],
       }).compileComponents();
-      retrieve = spyOn(TestBed.inject(StripeRedirectRecoveryService), 'retrieveReturningPayment');
+      const recovery = TestBed.inject(StripeRedirectRecoveryService);
+      recovery.resetForTests();
+      retrieve = spyOn(recovery, 'retrieveReturningPayment');
       retrieve.and.resolveTo(successResult());
       warn = spyOn(console, 'warn');
     });
@@ -600,6 +603,7 @@ describe('Stripe redirect return ownership', () => {
     afterEach(() => {
       history.replaceState({}, '', '/');
       clearStripePendingReturn();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     });
 
     function warned(code: string): boolean {

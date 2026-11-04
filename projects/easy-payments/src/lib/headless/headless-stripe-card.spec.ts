@@ -8,6 +8,7 @@ import { PaymentError } from '../errors/payment-error';
 import type { PaymentProduct } from '../models';
 import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import { StripeSdkLoader } from '../adapters/stripe/stripe-sdk.loader';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -92,10 +93,12 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
     registry = TestBed.inject(HeadlessSessionRegistry);
     adapter = TestBed.inject(StripeCardAdapter);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   afterEach(() => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   async function readySession(
@@ -280,7 +283,7 @@ describe('HeadlessCheckoutSession Stripe Card (H3.1)', () => {
     // Remount for a fresh attempt after cancel.
     await session.mount('card', document.createElement('div'));
     const cancel2 = firstValueFrom(session.events.cancel);
-    // mapStripeError may map differently â€” force adapter throw path:
+    // mapStripeError may map differently — force adapter throw path:
     confirmPayment.and.rejectWith(
       new PaymentError({
         code: 'PAYMENT_CANCELLED',

@@ -6,6 +6,7 @@ import { provideEasyPayments } from '../config/provide-easy-payments';
 import { PaymentError } from '../errors/payment-error';
 import type { PaymentProduct } from '../models';
 import { PaymentOrchestratorService } from '../services/payment-orchestrator.service';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import { toHeadlessMethodStatus } from './headless-method-meta';
@@ -76,10 +77,12 @@ describe('EasyPaymentsHeadless / HeadlessCheckoutSession', () => {
     headless = TestBed.inject(EasyPaymentsHeadless);
     registry = TestBed.inject(HeadlessSessionRegistry);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   afterEach(async () => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   function create(

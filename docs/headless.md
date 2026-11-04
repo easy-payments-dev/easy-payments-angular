@@ -19,6 +19,7 @@ Headless Checkout is the third Easy Payments integration experience:
 | **Apple Pay** Express Checkout | **Supported (H3.5)** — no `confirm()` |
 | Headless BNPL pending ownership markers | **Supported (H4.2)** |
 | Public Headless BNPL return recovery (`recoverReturn`) | **Supported (H4.3)** — Klarna / Affirm |
+| Recovery lifecycle / status hardening | **Supported (H4.4)** |
 | Demo Headless experience | Not yet (H5) |
 
 **Card, Klarna, Affirm, PayPal, Google Pay, and Apple Pay** are the supported Headless payment methods.
@@ -130,7 +131,7 @@ await session.mount('klarna', klarnaHost);
 await session.confirm(); // merchant CTA
 ```
 
-### Redirect ownership (H4.2) and recovery (H4.3)
+### Redirect ownership (H4.2) and recovery (H4.3 / H4.4)
 
 Klarna and Affirm often **redirect** the buyer. Use a **stable merchant `checkoutInstanceId`** that you recreate after reload (auto-generated session ids cannot own redirects).
 
@@ -160,23 +161,29 @@ await session.initialize();
 
 session.events.started.subscribe(() => { /* recovery attempt began */ });
 session.events.success.subscribe((result) => { /* verify on backend / webhooks */ });
-session.events.pending.subscribe((result) => { /* processing — do not retry */ });
+session.events.pending.subscribe((result) => { /* Stripe processing — do not retry */ });
 session.events.cancel.subscribe(() => { /* buyer cancelled */ });
-session.events.error.subscribe((err) => { /* verification failed */ });
+session.events.error.subscribe((err) => {
+  // AUTHENTICATION_REQUIRED = still needs customer action (not ordinary pending)
+  // NETWORK_ERROR / SDK_LOAD_FAILED = verification retry may be safe via recoverReturn() again
+});
 
 const result = await session.recoverReturn();
 // result: PaymentResult when this session owns the return; null when unrelated / absent
 ```
 
-**Behavior**
+**Lifecycle (H4.4)**
 
-- Recovery starts → `processing` + `started`; then exactly one terminal `success` | `pending` | `cancel` | `error` for owned returns.
-- Unrelated / missing returns → `null`, no false terminal event.
-- Duplicate `recoverReturn()` in the same session is idempotent (shared consume + session settle). Concurrent callers share one promise. Two Headless sessions racing: only the matching instance consumes.
-- Browser **Refresh** / **Back**: recreate the session and call `recoverReturn()` again. If the return was already consumed, you get `null` (or the settled session result on a duplicate call in the same instance). Markers and URL params are cleared after a successful claim+consume.
-- Full Checkout and Buttons Only cannot claim Headless markers; Headless cannot claim Checkout/Buttons returns.
-- **Fulfillment remains backend/webhook-authoritative.** Never treat browser recovery alone as ship-goods proof. `redirect_status` / `ep_*` are not payment proof.
-- Manual Stripe TEST checklist: confirm Klarna/Affirm redirect in test mode → land on `successUrl` with PI params → recreate session → `recoverReturn()` → assert `success`/`pending` matches Dashboard PaymentIntent; refresh once and confirm no duplicate success side effects in your app.
+- Recovery: `ready` → `processing` (+ `started`) → one terminal `success` | `pending` | `cancelled` | `error`.
+- While `processing` or `pending`, `mount` / `selectMethod` / `confirm` / a second recovery are rejected — do not start another payment.
+- `succeeded` → success. `processing` → pending. `requires_capture` → success **with** `metadata.stripeStatus = 'requires_capture'` / `authorizationOnly` (not proof of captured funds). `requires_action` / `requires_confirmation` → typed `AUTHENTICATION_REQUIRED` error (not success, not ordinary pending).
+- Unrelated / missing returns → `null`, no payment events.
+- Duplicate `recoverReturn()` after a definitive outcome is idempotent. Concurrent callers share one promise.
+- **Transient verification** (`NETWORK_ERROR` / `SDK_LOAD_FAILED`): marker + URL are preserved; call `recoverReturn()` again to re-retrieve (never reconfirm). Bounded internal retrieve retries apply. Definitive outcomes clear marker/URL.
+- Browser **Refresh** / **Back**: recreate the session and call `recoverReturn()` again. Already-consumed returns yield `null` (or the settled result on a duplicate call in the same instance).
+- Full Checkout / Buttons Only cannot claim Headless markers (and the reverse).
+- **Fulfillment remains backend/webhook-authoritative.** `redirect_status` / `ep_*` are not payment proof.
+- Manual Stripe TEST checklist: Klarna/Affirm redirect in test mode → return URL → recreate session → `recoverReturn()` → match Dashboard PI status; refresh once with no duplicate fulfillment side effects; simulate offline retrieve and confirm a verification retry does not create a second PaymentIntent.
 
 ## PayPal (H3.3)
 
@@ -464,6 +471,6 @@ await session.destroy();
 ## Not supported yet
 
 - Headless demo mode in the playground (**H5**)
-- H4.4 / H4.5 expansions (not part of H4.3)
+- Comprehensive Headless docs audit (**H4.5**)
 
 Full Checkout and Buttons Only are unchanged; Headless is additive. Live Apple Pay / Google Pay production readiness requires real-device and domain validation beyond mocked tests.

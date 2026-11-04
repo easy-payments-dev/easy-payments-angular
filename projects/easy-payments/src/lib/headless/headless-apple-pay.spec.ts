@@ -20,6 +20,7 @@ import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { StripeSdkLoader } from '../adapters/stripe/stripe-sdk.loader';
 import { SdkLoaderService } from '../loaders/sdk-loader.service';
 import type { PayPalNamespace } from '../adapters/paypal/paypal.types';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -233,11 +234,13 @@ describe('HeadlessCheckoutSession Apple Pay (H3.5)', () => {
     affirm = TestBed.inject(AffirmAdapter);
     paypal = TestBed.inject(PayPalAdapter);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     await applePay.destroy();
   });
 
   afterEach(async () => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     await applePay.destroy();
     delete (window as Window & { paypal?: PayPalNamespace }).paypal;
   });
@@ -556,7 +559,7 @@ describe('HeadlessCheckoutSession Apple Pay (H3.5)', () => {
     await b.destroy();
   });
 
-  it('switches Apple Pay ↔ Card / PayPal / Google Pay / BNPL without leaking mounts', async () => {
+  it('switches Apple Pay ? Card / PayPal / Google Pay / BNPL without leaking mounts', async () => {
     const session = await readySession({
       methods: ['apple-pay', 'card', 'paypal', 'google-pay', 'klarna', 'affirm'],
     });

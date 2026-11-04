@@ -26,6 +26,7 @@ import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mappe
 import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
 import {
+  isTransientStripeVerificationError,
   StripeRedirectRecoveryService,
   type StripeReturnHost,
 } from '../adapters/stripe/stripe-redirect-recovery.service';
@@ -349,12 +350,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
   selectMethod(method: PaymentMethod | null): void {
     this.assertNotDestroyed('selectMethod');
-    if (this._state() === 'processing') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message: 'Cannot change payment method while a confirmation is in progress.',
-      });
-    }
+    this.assertNotPaymentLocked('selectMethod');
 
     if (method !== null && !this.methods.includes(method)) {
       throw new PaymentError({
@@ -383,14 +379,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       });
     }
 
-    if (this._state() === 'processing') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message: 'Cannot mount while a payment confirmation is in progress.',
-        method,
-        provider: PAYMENT_METHOD_PROVIDER_MAP[method],
-      });
-    }
+    this.assertNotPaymentLocked('mount', method);
 
     if (!isMountableMethod(method)) {
       throw new PaymentError({
@@ -852,22 +841,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       provider: selected ? PAYMENT_METHOD_PROVIDER_MAP[selected] : undefined,
     };
 
-    if (this._state() === 'processing') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message: 'A payment confirmation is already in progress.',
-        ...selectedMeta,
-      });
-    }
-
-    if (this._state() === 'pending') {
-      throw new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message:
-          'A payment is already pending. Do not retry — confirm the final status on your backend.',
-        ...selectedMeta,
-      });
-    }
+    this.assertNotPaymentLocked('confirm', selected ?? undefined);
 
     if (this._state() === 'idle' || this._state() === 'initializing') {
       throw new PaymentError({
@@ -1051,6 +1025,18 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       return this._lastResult();
     }
 
+    // Do not start recovery while another payment operation is active.
+    // Transient verification errors leave state `error` with recoverSettled=false (retry allowed).
+    if (this._state() === 'processing' || this._state() === 'pending') {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message:
+          this._state() === 'processing'
+            ? 'A payment operation is already in progress.'
+            : 'A payment is already pending. Do not start another recovery or confirmation — confirm the final status on your backend.',
+      });
+    }
+
     this.recoverPromise = this.doRecoverReturn().finally(() => {
       this.recoverPromise = null;
     });
@@ -1077,7 +1063,6 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       (this.methods.includes('affirm') && !this.methods.includes('klarna') ? 'affirm' : 'klarna');
     const recoverGen = ++this.confirmGeneration;
     this.terminalEmittedForConfirm = 0;
-    this.recoverSettled = true;
 
     this._lastError.set(null);
     this.applySelection(method);
@@ -1098,12 +1083,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           method,
           provider: method,
         });
+        this.recoverSettled = true;
         this._lastError.set(paymentError);
         this._state.set('error');
         this.emitTerminalError(paymentError, recoverGen);
         throw paymentError;
       }
 
+      this.recoverSettled = true;
       this.applyPaymentResult(result, recoverGen, method);
       return result;
     } catch (error) {
@@ -1114,6 +1101,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       const paymentError = normalizeError(error, { method, provider: method });
 
       if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.recoverSettled = true;
         const cancelled: PaymentResult = {
           status: 'cancelled',
           method,
@@ -1124,17 +1112,25 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         return cancelled;
       }
 
+      // Requires action / confirmation — not success and not ordinary async processing.
       if (paymentError.code === 'AUTHENTICATION_REQUIRED') {
-        const pending: PaymentResult = {
-          status: 'processing',
-          method,
-          provider: method,
-          message: paymentError.message,
-        };
-        this.applyPaymentResult(pending, recoverGen, method);
-        return pending;
+        this.recoverSettled = true;
+        this._lastError.set(paymentError);
+        this._state.set('error');
+        this.emitTerminalError(paymentError, recoverGen);
+        throw paymentError;
       }
 
+      // Transient verification failure: leave correlation data, allow recoverReturn() retry.
+      if (isTransientStripeVerificationError(paymentError)) {
+        this.recoverSettled = false;
+        this._lastError.set(paymentError);
+        this._state.set('error');
+        this.emitTerminalError(paymentError, recoverGen);
+        throw paymentError;
+      }
+
+      this.recoverSettled = true;
       this._lastError.set(paymentError);
       this._state.set('error');
       this.emitTerminalError(paymentError, recoverGen);
@@ -2020,6 +2016,32 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
         message: `Cannot ${operation}() on a destroyed Headless checkout session.`,
+      });
+    }
+  }
+
+  /**
+   * Blocks mount / select / confirm while a payment is in-flight or unresolved pending.
+   * Includes in-flight recoverReturn before state flips to `processing` (after claim).
+   * Does not block destroy, recoverReturn retry after transient error, or availability refresh.
+   */
+  private assertNotPaymentLocked(operation: string, method?: PaymentMethod): void {
+    const state = this._state();
+    const meta = method
+      ? { method, provider: PAYMENT_METHOD_PROVIDER_MAP[method] }
+      : {};
+    if (this.recoverPromise || state === 'processing') {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: `Cannot ${operation}() while a payment operation is already in progress.`,
+        ...meta,
+      });
+    }
+    if (state === 'pending') {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: `Cannot ${operation}() while a payment is pending. Do not start another payment — confirm the final status on your backend.`,
+        ...meta,
       });
     }
   }

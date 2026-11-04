@@ -16,6 +16,8 @@ import {
   readStripeReturnParams,
   STRIPE_PROCESSING_DELAY_MS,
   STRIPE_PROCESSING_MAX_ATTEMPTS,
+  STRIPE_RETRIEVE_RETRY_ATTEMPTS,
+  STRIPE_RETRIEVE_RETRY_DELAY_MS,
   type StripePendingReturn,
   type StripeRedirectMethod,
   type StripeReturnHostKind,
@@ -235,6 +237,20 @@ export class StripeRedirectRecoveryService {
     return this.consumed;
   }
 
+  /** Test helper — clears consume/claim state between Karma specs (root singleton). */
+  resetForTests(): void {
+    this.consumed = false;
+    this.consumePromise = null;
+    this.returnOwner = null;
+    this.returnClosed = false;
+    this.waitWarned = false;
+    this.pendingClaims = [];
+    this.claimScheduled = false;
+    this.hosts.length = 0;
+    this.stripe = null;
+    this.loadPromise = null;
+  }
+
   registerHost(host: StripeReturnHost): void {
     if (!this.hosts.includes(host)) {
       this.hosts.push(host);
@@ -293,7 +309,21 @@ export class StripeRedirectRecoveryService {
     const live = batch.filter((claim) => this.hosts.includes(claim.host));
     const rejectAll = () => batch.forEach((claim) => claim.resolve('not-owner'));
 
-    if (this.returnOwner || this.returnClosed || !isStripeReturnAttempt()) {
+    if (this.returnClosed || !isStripeReturnAttempt()) {
+      rejectAll();
+      return;
+    }
+
+    // Owner claimed earlier but verification did not finish (transient retrieve failure).
+    // Only that host may retry consume — never hand the return to a sibling.
+    if (this.returnOwner && !this.consumed) {
+      batch.forEach((claim) =>
+        claim.resolve(claim.host === this.returnOwner ? 'owner' : 'not-owner'),
+      );
+      return;
+    }
+
+    if (this.returnOwner && this.consumed) {
       rejectAll();
       return;
     }
@@ -337,12 +367,19 @@ export class StripeRedirectRecoveryService {
   }
 
   /**
-   * Idempotent. Returns null when there is no Stripe BNPL return attempt.
-   * Always clears return markers after a handled attempt (success or failure).
+   * Idempotent for a successful or definitive consume.
+   * Transient verification failures (network / SDK) do not mark the return consumed
+   * and preserve marker + URL so the owner may retry verification (not confirmation).
    */
   consumeReturn(): Promise<PaymentResult | null> {
     if (!this.consumePromise) {
-      this.consumePromise = this.doConsumeReturn();
+      this.consumePromise = this.doConsumeReturn().catch((error) => {
+        if (isTransientStripeVerificationError(error)) {
+          // Allow a later consumeReturn() to retry verification.
+          this.consumePromise = null;
+        }
+        throw error;
+      });
     }
     return this.consumePromise;
   }
@@ -352,7 +389,10 @@ export class StripeRedirectRecoveryService {
       return null;
     }
 
-    this.consumed = true;
+    if (this.consumed) {
+      return null;
+    }
+
     const method = detectStripeReturnMethod() ?? readStripeReturnParams().method;
     const { clientSecret, redirectStatus } = readStripeReturnParams();
 
@@ -384,11 +424,23 @@ export class StripeRedirectRecoveryService {
         });
       }
 
-      return await this.retrieveReturningPayment(method, clientSecret);
-    } finally {
-      clearStripePendingReturn();
-      clearStripeReturnParamsFromUrl();
+      const result = await this.retrieveReturningPayment(method, clientSecret);
+      this.finishConsumeCleanup();
+      return result;
+    } catch (error) {
+      if (isTransientStripeVerificationError(error)) {
+        // Outcome uncertain — keep correlation data for a bounded verification retry.
+        throw error;
+      }
+      this.finishConsumeCleanup();
+      throw error;
     }
+  }
+
+  private finishConsumeCleanup(): void {
+    this.consumed = true;
+    clearStripePendingReturn();
+    clearStripeReturnParamsFromUrl();
   }
 
   async retrieveReturningPayment(
@@ -407,15 +459,27 @@ export class StripeRedirectRecoveryService {
     const stripe = await this.ensureStripeLoaded();
     const secret = clientSecret.trim();
     let lastIntent: { id?: string; status?: string } | undefined;
+    let lastTransient: PaymentError | null = null;
 
     for (let attempt = 0; attempt < STRIPE_PROCESSING_MAX_ATTEMPTS; attempt++) {
-      const { paymentIntent, error } = await stripe.retrievePaymentIntent(secret);
-
-      if (error) {
-        throw mapMethodError(method, error);
+      let paymentIntent: { id?: string; status?: string } | undefined;
+      try {
+        const retrieved = await this.retrievePaymentIntentWithRetry(stripe, method, secret);
+        paymentIntent = retrieved ?? undefined;
+        lastTransient = null;
+      } catch (error) {
+        if (isTransientStripeVerificationError(error)) {
+          lastTransient = error instanceof PaymentError ? error : mapMethodError(method, error);
+          if (attempt < STRIPE_PROCESSING_MAX_ATTEMPTS - 1) {
+            await delay(STRIPE_PROCESSING_DELAY_MS);
+            continue;
+          }
+          throw lastTransient;
+        }
+        throw error;
       }
 
-      lastIntent = paymentIntent ?? undefined;
+      lastIntent = paymentIntent;
       const status = paymentIntent?.status;
 
       if (status === 'succeeded' || status === 'requires_capture' || status === 'canceled') {
@@ -441,7 +505,56 @@ export class StripeRedirectRecoveryService {
       return this.normalizeIntent(method, paymentIntent);
     }
 
+    if (lastTransient) {
+      throw lastTransient;
+    }
     return this.normalizeIntent(method, lastIntent);
+  }
+
+  /**
+   * Bounded retries for a single retrievePaymentIntent call on transient network/SDK errors.
+   * Never confirms or creates a PaymentIntent.
+   */
+  private async retrievePaymentIntentWithRetry(
+    stripe: Stripe,
+    method: StripeRedirectMethod,
+    clientSecret: string,
+  ): Promise<{ id?: string; status?: string } | undefined> {
+    let lastError: PaymentError | null = null;
+    for (let attempt = 0; attempt < STRIPE_RETRIEVE_RETRY_ATTEMPTS; attempt++) {
+      try {
+        const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret);
+        if (error) {
+          const mapped = mapMethodError(method, error);
+          if (!isTransientStripeVerificationError(mapped) || attempt === STRIPE_RETRIEVE_RETRY_ATTEMPTS - 1) {
+            throw mapped;
+          }
+          lastError = mapped;
+          await delay(STRIPE_RETRIEVE_RETRY_DELAY_MS);
+          continue;
+        }
+        return paymentIntent ?? undefined;
+      } catch (error) {
+        if (error instanceof PaymentError && !isTransientStripeVerificationError(error)) {
+          throw error;
+        }
+        lastError =
+          error instanceof PaymentError ? error : mapMethodError(method, error);
+        if (attempt === STRIPE_RETRIEVE_RETRY_ATTEMPTS - 1) {
+          throw lastError;
+        }
+        await delay(STRIPE_RETRIEVE_RETRY_DELAY_MS);
+      }
+    }
+    throw (
+      lastError ??
+      new PaymentError({
+        code: 'NETWORK_ERROR',
+        message: `Unable to verify ${methodLabel(method)} payment status.`,
+        method,
+        provider: method,
+      })
+    );
   }
 
   private normalizeIntent(
@@ -450,7 +563,7 @@ export class StripeRedirectRecoveryService {
   ): PaymentResult {
     const status = paymentIntent?.status;
 
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
       return normalizePaymentResult({
         status: 'success',
         method,
@@ -460,6 +573,22 @@ export class StripeRedirectRecoveryService {
         metadata: {
           stripeStatus: status,
           gateway: 'stripe',
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public contract keeps status "success" for compatibility; metadata clarifies authorization-only.
+      return normalizePaymentResult({
+        status: 'success',
+        method,
+        provider: method,
+        transactionId: paymentIntent?.id,
+        message: `${methodLabel(method)} payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.`,
+        metadata: {
+          stripeStatus: status,
+          gateway: 'stripe',
+          authorizationOnly: true,
         },
       });
     }
@@ -534,17 +663,23 @@ export class StripeRedirectRecoveryService {
     }
 
     this.loadPromise = (async () => {
-      const stripe = await this.sdkLoader.load(key);
-      if (!stripe) {
-        throw new PaymentError({
-          code: 'SDK_LOAD_FAILED',
-          message: 'Stripe.js failed to initialize.',
-          method: 'klarna',
-          provider: 'klarna',
-        });
+      try {
+        const stripe = await this.sdkLoader.load(key);
+        if (!stripe) {
+          throw new PaymentError({
+            code: 'SDK_LOAD_FAILED',
+            message: 'Stripe.js failed to initialize.',
+            method: 'klarna',
+            provider: 'klarna',
+          });
+        }
+        this.stripe = stripe;
+        return stripe;
+      } catch (error) {
+        // Allow a later verification retry to reload Stripe.js after a transient failure.
+        this.loadPromise = null;
+        throw error;
       }
-      this.stripe = stripe;
-      return stripe;
     })();
 
     return this.loadPromise;
@@ -574,4 +709,15 @@ function mapMethodError(method: StripeRedirectMethod, error: unknown): PaymentEr
     provider: method,
     originalError: mapped.originalError ?? error,
   });
+}
+
+/**
+ * Transient verification failures are not payment outcomes.
+ * Marker/URL must stay so the owning host can retry retrieve — never confirm again.
+ */
+export function isTransientStripeVerificationError(error: unknown): boolean {
+  if (!(error instanceof PaymentError)) {
+    return false;
+  }
+  return error.code === 'NETWORK_ERROR' || error.code === 'SDK_LOAD_FAILED';
 }

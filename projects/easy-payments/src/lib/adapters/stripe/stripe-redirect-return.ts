@@ -23,6 +23,13 @@ export const STRIPE_PENDING_STORAGE_KEY = 'ep.stripe.redirect.pending';
 export const STRIPE_PROCESSING_MAX_ATTEMPTS = 6;
 export const STRIPE_PROCESSING_DELAY_MS = 750;
 
+/**
+ * Bounded retries when Stripe PaymentIntent retrieval fails transiently
+ * (network / SDK). Does not reconfirm or create a new PaymentIntent.
+ */
+export const STRIPE_RETRIEVE_RETRY_ATTEMPTS = 3;
+export const STRIPE_RETRIEVE_RETRY_DELAY_MS = 400;
+
 /** Pending redirect markers older than this grant no ownership. */
 export const STRIPE_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 

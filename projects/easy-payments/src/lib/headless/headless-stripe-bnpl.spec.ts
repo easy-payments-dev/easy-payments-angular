@@ -17,6 +17,7 @@ import {
   STRIPE_RETURN_METHOD_PARAM,
   type StripePendingReturn,
 } from '../adapters/stripe/stripe-redirect-return';
+import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -124,10 +125,12 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     klarna = TestBed.inject(KlarnaAdapter);
     affirm = TestBed.inject(AffirmAdapter);
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   afterEach(() => {
     registry.clearForTests();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     sessionStorage.removeItem(STRIPE_PENDING_STORAGE_KEY);
   });
 
@@ -302,7 +305,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     await session.destroy();
   });
 
-  it('switches Card â†’ Klarna and Klarna â†’ Affirm without leaking mounts', async () => {
+  it('switches Card ? Klarna and Klarna ? Affirm without leaking mounts', async () => {
     const session = await readySession();
     await session.mount('card', document.createElement('div'));
     expect(stripeCard.hasMountedElement(session.id)).toBeTrue();
@@ -347,7 +350,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     await pending;
     expect(session.state()).not.toBe('success');
     expect(session.lastResult()).toBeNull();
-    // Unresolved confirm must not clear another attempt's path â€” marker stays for this attempt.
+    // Unresolved confirm must not clear another attempt's path — marker stays for this attempt.
     expect(readStripePendingReturn()?.checkoutInstanceId).toBe('bnpl-stale');
     clearStripePendingReturn();
 
@@ -366,7 +369,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     resolveConfirm({ paymentIntent: { id: 'pi_x', status: 'succeeded' } });
     await pending2;
     expect(session2.state()).toBe('destroyed');
-    // Destroy during confirm is stale â€” preserve unresolved marker.
+    // Destroy during confirm is stale — preserve unresolved marker.
     expect(readStripePendingReturn()?.checkoutInstanceId).toBe('bnpl-destroy-confirm');
     clearStripePendingReturn();
     await session.destroy();
@@ -426,7 +429,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     expect(markerDuringConfirm!.checkoutInstanceId).toBe('bnpl-marker-ok');
     expect(markerDuringConfirm!.attemptId).toBeTruthy();
     expect(returnUrl).toContain(`ep_attempt=${markerDuringConfirm!.attemptId}`);
-    // Same-page success clears only this attempt â€” storage empty afterward.
+    // Same-page success clears only this attempt — storage empty afterward.
     expect(sessionStorage.getItem(STRIPE_PENDING_STORAGE_KEY)).toBeNull();
     await session.destroy();
   });
@@ -438,7 +441,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     const session = headless.createSession({
       product: PRODUCT,
       methods: ['klarna'],
-      // omit checkoutInstanceId â€” auto runtime id must not own redirects
+      // omit checkoutInstanceId — auto runtime id must not own redirects
     });
     await session.initialize();
     await session.mount('klarna', document.createElement('div'));
