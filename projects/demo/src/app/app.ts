@@ -41,11 +41,16 @@ import {
   readPersistedDemoMode,
   type PersistedDemoMode,
 } from './demo-mode-persistence';
+import {
+  persistDemoExperience,
+  readPersistedDemoExperience,
+  type DemoPlaygroundExperience,
+} from './demo-experience-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
 import { HeadlessDemoPanel } from './headless-demo/headless-demo.panel';
 
 /** Main playground: Full Checkout, Buttons Only, or Headless session API. */
-type PlaygroundExperience = 'checkout' | 'buttons' | 'headless';
+type PlaygroundExperience = DemoPlaygroundExperience;
 
 function isMultiInstanceQaQuery(): boolean {
   if (typeof window === 'undefined') {
@@ -286,8 +291,14 @@ export class App {
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
   readonly switchingMode = signal(false);
-  /** Full Checkout vs Buttons Only vs Headless playground surface. */
-  readonly playgroundExperience = signal<PlaygroundExperience>('checkout');
+  /**
+   * Full Checkout vs Buttons Only vs Headless playground surface.
+   * Restored from sessionStorage so Klarna/Affirm returns remount the same experience
+   * before checkoutReady enables provider hosts (ownership recovery stays experience-scoped).
+   */
+  readonly playgroundExperience = signal<PlaygroundExperience>(
+    readPersistedDemoExperience() ?? 'checkout',
+  );
   readonly buttonsLayout = signal<EasyPaymentButtonsLayout>('horizontal');
   readonly buttonsSeparators = signal<'none' | 'line'>('none');
   readonly buttonsSeparatorColor = signal('');
@@ -666,6 +677,10 @@ ${cardAppearanceBlock}
     this.bootstrapping.set(true);
     this.checkoutReady.set(false);
 
+    // Restore experience before any checkout host mounts (checkoutReady stays false until mode is ready).
+    // Uses the user's last selection — never inferred from redirect query params or ownership markers.
+    this.playgroundExperience.set(readPersistedDemoExperience() ?? 'checkout');
+
     try {
       const forceReal = typeof window !== 'undefined' && isAnyStripeBnplReturnAttempt();
       const persisted = readPersistedDemoMode();
@@ -766,6 +781,7 @@ ${cardAppearanceBlock}
 
   setPlaygroundExperience(experience: PlaygroundExperience): void {
     this.playgroundExperience.set(experience);
+    persistDemoExperience(experience);
     this.buttonsHostOutcome.set(null);
   }
 

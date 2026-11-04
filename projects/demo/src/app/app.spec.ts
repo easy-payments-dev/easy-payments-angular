@@ -4,6 +4,12 @@ import { TestBed } from '@angular/core/testing';
 import { PaymentError, provideEasyPayments } from '@easy-payments/angular';
 import { App } from './app';
 import {
+  clearPersistedDemoExperience,
+  DEMO_EXPERIENCE_STORAGE_KEY,
+  persistDemoExperience,
+  readPersistedDemoExperience,
+} from './demo-experience-persistence';
+import {
   clearPersistedDemoMode,
   DEMO_MODE_STORAGE_KEY,
   persistDemoMode,
@@ -16,26 +22,32 @@ import {
   readPersistedDemoLocale,
 } from './demo-locale-persistence';
 
+function createMemoryStorage(): { memory: Record<string, string>; storage: Storage } {
+  const memory: Record<string, string> = {};
+  const storage: Storage = {
+    getItem: (key: string) => (key in memory ? memory[key] : null),
+    setItem: (key: string, value: string) => {
+      memory[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete memory[key];
+    },
+    clear: () => {
+      for (const key of Object.keys(memory)) {
+        delete memory[key];
+      }
+    },
+    key: () => null,
+    length: 0,
+  };
+  return { memory, storage };
+}
+
 describe('demo-mode-persistence', () => {
-  let memory: Record<string, string>;
   let storage: Storage;
 
   beforeEach(() => {
-    memory = {};
-    storage = {
-      getItem: (key: string) => (key in memory ? memory[key] : null),
-      setItem: (key: string, value: string) => {
-        memory[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete memory[key];
-      },
-      clear: () => {
-        memory = {};
-      },
-      key: () => null,
-      length: 0,
-    };
+    storage = createMemoryStorage().storage;
   });
 
   it('returns null when unset', () => {
@@ -55,25 +67,10 @@ describe('demo-mode-persistence', () => {
 });
 
 describe('demo-locale-persistence', () => {
-  let memory: Record<string, string>;
   let storage: Storage;
 
   beforeEach(() => {
-    memory = {};
-    storage = {
-      getItem: (key: string) => (key in memory ? memory[key] : null),
-      setItem: (key: string, value: string) => {
-        memory[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete memory[key];
-      },
-      clear: () => {
-        memory = {};
-      },
-      key: () => null,
-      length: 0,
-    };
+    storage = createMemoryStorage().storage;
   });
 
   it('returns null when unset', () => {
@@ -98,10 +95,66 @@ describe('demo-locale-persistence', () => {
   });
 });
 
+describe('demo-experience-persistence', () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = createMemoryStorage().storage;
+  });
+
+  it('returns null when unset', () => {
+    expect(readPersistedDemoExperience(storage)).toBeNull();
+  });
+
+  it('persists and restores headless, buttons, and checkout', () => {
+    persistDemoExperience('headless', storage);
+    expect(storage.getItem(DEMO_EXPERIENCE_STORAGE_KEY)).toBe('headless');
+    expect(readPersistedDemoExperience(storage)).toBe('headless');
+
+    persistDemoExperience('buttons', storage);
+    expect(readPersistedDemoExperience(storage)).toBe('buttons');
+
+    persistDemoExperience('checkout', storage);
+    expect(readPersistedDemoExperience(storage)).toBe('checkout');
+  });
+
+  it('ignores invalid stored experience', () => {
+    storage.setItem(DEMO_EXPERIENCE_STORAGE_KEY, 'wallet-only');
+    expect(readPersistedDemoExperience(storage)).toBeNull();
+  });
+
+  it('does not crash when storage read/write throws', () => {
+    const broken: Storage = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+      clear: () => undefined,
+      key: () => null,
+      length: 0,
+    };
+    expect(readPersistedDemoExperience(broken)).toBeNull();
+    expect(() => persistDemoExperience('headless', broken)).not.toThrow();
+    expect(() => clearPersistedDemoExperience(broken)).not.toThrow();
+  });
+
+  it('clears persisted experience', () => {
+    persistDemoExperience('buttons', storage);
+    clearPersistedDemoExperience(storage);
+    expect(readPersistedDemoExperience(storage)).toBeNull();
+  });
+});
+
 describe('App', () => {
   beforeEach(async () => {
     clearPersistedDemoMode();
     clearPersistedDemoLocale();
+    clearPersistedDemoExperience();
     history.replaceState({}, '', '/');
 
     await TestBed.configureTestingModule({
@@ -117,6 +170,7 @@ describe('App', () => {
   afterEach(() => {
     clearPersistedDemoMode();
     clearPersistedDemoLocale();
+    clearPersistedDemoExperience();
     history.replaceState({}, '', '/');
   });
 
@@ -721,5 +775,120 @@ describe('App', () => {
     await fixture.componentInstance.setMode('demo');
     expect(readPersistedDemoMode()).toBe('demo');
     expect(fixture.componentInstance.mode()).toBe('demo');
+  });
+
+  it('defaults to Full Checkout when no saved experience exists', async () => {
+    clearPersistedDemoExperience();
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('checkout');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeNull();
+  });
+
+  it('persists experience changes and restores Headless / Buttons / Full Checkout', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+    const app = fixture.componentInstance;
+
+    app.setPlaygroundExperience('headless');
+    expect(readPersistedDemoExperience()).toBe('headless');
+    app.setPlaygroundExperience('buttons');
+    expect(readPersistedDemoExperience()).toBe('buttons');
+    app.setPlaygroundExperience('checkout');
+    expect(readPersistedDemoExperience()).toBe('checkout');
+  });
+
+  it('restores saved Headless Checkout on bootstrap', async () => {
+    persistDemoExperience('headless');
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('headless');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeNull();
+  });
+
+  it('restores saved Payment Buttons Only on bootstrap', async () => {
+    persistDemoExperience('buttons');
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('buttons');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payment-buttons')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeNull();
+  });
+
+  it('restores saved Full Checkout on bootstrap', async () => {
+    persistDemoExperience('checkout');
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('checkout');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeTruthy();
+  });
+
+  it('falls back to Full Checkout when stored experience is invalid', async () => {
+    sessionStorage.setItem(DEMO_EXPERIENCE_STORAGE_KEY, 'not-a-valid-experience');
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(readPersistedDemoExperience()).toBeNull();
+    expect(fixture.componentInstance.playgroundExperience()).toBe('checkout');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeTruthy();
+  });
+
+  it('restores Headless before recovery init when BNPL return URL is present', async () => {
+    persistDemoExperience('headless');
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_x&payment_intent_client_secret=sec_x&ep_method=klarna',
+    );
+
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('headless');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeNull();
+    // Experience restore must not fabricate a successful payment result.
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-result"]'),
+    ).toBeNull();
+  });
+
+  it('restores Full Checkout on BNPL return when that experience was selected', async () => {
+    persistDemoExperience('checkout');
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_y&payment_intent_client_secret=sec_y&ep_method=affirm',
+    );
+
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('checkout');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payments')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeNull();
+  });
+
+  it('does not change experience merely because a BNPL return URL exists', async () => {
+    persistDemoExperience('buttons');
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_z&payment_intent_client_secret=sec_z&ep_method=klarna',
+    );
+
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+
+    expect(fixture.componentInstance.playgroundExperience()).toBe('buttons');
+    expect((fixture.nativeElement as HTMLElement).querySelector('easy-payment-buttons')).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-headless-demo')).toBeNull();
   });
 });
