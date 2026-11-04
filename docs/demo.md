@@ -87,10 +87,10 @@ Never put `sk_...` or PayPal Client Secret in Angular.
 | Provider wiring | `projects/demo/src/app/app.config.ts` + Real-mode config in `app.ts` |
 | Template bindings | `projects/demo/src/app/app.html` |
 | Product / methods / theme / appearance / maxWidth | `projects/demo/src/app/app.ts` |
-| Headless checkout panel (H5.1–H5.3) | `projects/demo/src/app/headless-demo/` |
+| Headless checkout panel (H5.1–H5.4) | `projects/demo/src/app/headless-demo/` |
 | Placeholders | `projects/demo/src/environments/environment.example.ts` |
 
-### Headless Checkout demo (H5.1–H5.3)
+### Headless Checkout demo (H5.1–H5.4)
 
 Select **Headless Checkout** in the Experience control. The panel:
 
@@ -125,5 +125,19 @@ On Headless boot, after `initialize()`, the demo calls `recoverReturn()` for the
 - Prerequisites match Real / Test Providers (Stripe TEST publishable key, PayPal Sandbox, NestJS URLs, Apple Pay domain verification where applicable).
 
 Mock Mode still uses library mocks — it does not prove live Stripe/PayPal production readiness.
+
+While return recovery is **retryable** (transient network/SDK failure), the demo locks method mounts and `confirm()` so a new PaymentIntent cannot start before `recoverReturn()` succeeds or the attempt is abandoned by leaving Headless.
+
+#### Manual validation checklist (not covered by unit tests)
+
+| Env | Preconditions | Action | Expected | Automated tests cannot prove |
+|-----|---------------|--------|----------|------------------------------|
+| A. Mock | Demo Mode | Select each method, confirm Card, click mock wallets | Mock outcomes / events | Real SDK chrome |
+| B. Stripe TEST Card | Real mode + `pk_test_` + NestJS | Mount Card, pay test card | Success/decline matches Dashboard | Live 3DS UX |
+| C. Stripe TEST Klarna/Affirm | Same + BNPL enabled | Confirm → redirect → return on Headless | `recoverReturn` matches PI; refresh no duplicate fulfill | Live bank UX |
+| D. PayPal Sandbox | PayPal client id + NestJS | Official Buttons approve/capture | Capture success only after backend | Sandbox account quirks |
+| E. Google Pay TEST | Stripe + supported Chrome | Official GPay button | Eligibility + charge path | Device/wallet availability |
+| F. Apple Pay | Verified domain + Safari/device | ECE Apple Pay | Ready only when provider says so | Domain association |
+| G. A11y/responsive | Any mode | Keyboard-only + 320–1440 widths | Focus visible, no overflow | Full WCAG audit / real devices |
 
 Screenshots in docs were captured from this demo using browser viewport emulation (not physical device claims).

@@ -668,6 +668,7 @@ describe('HeadlessDemoPanel', () => {
     const fixture = await createPanel({ theme: 'dark', locale: 'es' });
     expect(createSession.calls.mostRecent().args[0].theme).toBe('dark');
     expect(createSession.calls.mostRecent().args[0].locale).toBe('es');
+    expect(fixture.nativeElement.getAttribute('data-theme')).toBe('dark');
     expect(
       (fixture.nativeElement as HTMLElement)
         .querySelector('[data-testid="headless-demo-availability"]')
@@ -677,9 +678,178 @@ describe('HeadlessDemoPanel', () => {
 
   it('does not expose secrets in the UI', async () => {
     const fixture = await createPanel();
-    error$.next(new PaymentError({ code: 'PAYMENT_FAILED', message: 'declined' }));
+    error$.next(
+      new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'declined client_secret=cs_test_secret_abc sk_test_1234567890',
+      }),
+    );
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('client_secret');
-    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('sk_');
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).not.toContain('sk_test_1234567890');
+    expect(text).not.toContain('cs_test_secret_abc');
+    expect(text).toContain('[redacted');
+  });
+
+  it('locks mount and confirm while recovery is retryable', async () => {
+    setBnplReturnUrl();
+    recoverReturn.and.rejectWith(
+      new PaymentError({ code: 'SDK_LOAD_FAILED', message: 'stripe.js offline' }),
+    );
+    const fixture = await createPanel();
+    expect(fixture.componentInstance.canRetryRecovery()).toBeTrue();
+    expect(fixture.componentInstance.paymentLocked()).toBeTrue();
+
+    await fixture.componentInstance.onSelectMethod('card');
+    expect(mount).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.canConfirmPayment()).toBeFalse();
+
+    recoverReturn.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_after_retry',
+    } satisfies PaymentResult);
+    await fixture.componentInstance.retryRecoverReturn();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.canRetryRecovery()).toBeFalse();
+  });
+
+  it('does not confirm until a Stripe element method is mounted', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).not.toHaveBeenCalled();
+
+    await fixture.componentInstance.onSelectMethod('paypal');
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirm and method switching while session is pending', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+    state.set('pending');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canConfirmPayment()).toBeFalse();
+    await fixture.componentInstance.onSelectMethod('klarna');
+    expect(selectMethod).not.toHaveBeenCalledWith('klarna');
+  });
+
+  it('never describes authorization-only results as captured funds', async () => {
+    const fixture = await createPanel();
+    lastResult.set({
+      status: 'success',
+      method: 'card',
+      provider: 'stripe',
+      transactionId: 'pi_auth',
+      metadata: { authorizationOnly: true },
+      message: 'Authorized — capture required on your backend.',
+    });
+    state.set('success');
+    fixture.detectChanges();
+    const text =
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-authorization-only"]',
+      )?.textContent ?? '';
+    expect(text.toLowerCase()).toContain('not captured');
+    expect(text.toLowerCase()).not.toContain('funds captured');
+  });
+
+  it('bounds lifecycle event history and sanitizes secret-like error text', async () => {
+    const fixture = await createPanel();
+    for (let i = 0; i < 20; i++) {
+      error$.next(
+        new PaymentError({
+          code: 'PAYMENT_FAILED',
+          message: `fail-${i} sk_live_ABCDEFG123`,
+        }),
+      );
+    }
+    fixture.detectChanges();
+    expect(fixture.componentInstance.lifecycleEvents().length).toBe(12);
+    expect(fixture.componentInstance.lifecycleEvents().join(' ')).not.toContain('sk_live_ABCDEFG123');
+  });
+
+  it('surfaces AUTHENTICATION_REQUIRED recovery without success UI', async () => {
+    setBnplReturnUrl();
+    recoverReturn.and.rejectWith(
+      new PaymentError({
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Additional authentication is required.',
+        method: 'klarna',
+      }),
+    );
+    const fixture = await createPanel();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRetryRecovery()).toBeFalse();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-recovery"]')
+        ?.textContent,
+    ).toContain('AUTHENTICATION_REQUIRED');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-result"]'),
+    ).toBeNull();
+  });
+
+  it('ignores stale confirm completion after destroy', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+    let release!: () => void;
+    confirm.and.returnValue(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const pending = fixture.componentInstance.onConfirmPayment();
+    fixture.destroy();
+    await Promise.resolve();
+    release();
+    await pending;
+    expect(destroy).toHaveBeenCalled();
+  });
+
+  it('queues quantity and currency changes while pending without losing them', async () => {
+    const fixture = await createPanel();
+    const initialCalls = createSession.calls.count();
+    state.set('pending');
+    fixture.detectChanges();
+    fixture.componentRef.setInput('product', {
+      ...PRODUCT,
+      quantity: 3,
+      currency: 'EUR',
+      amount: 40,
+    });
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(createSession.calls.count()).toBe(initialCalls);
+    expect(fixture.componentInstance.pendingConfigFingerprint()).toContain('"quantity":3');
+    expect(fixture.componentInstance.pendingConfigFingerprint()).toContain('"currency":"EUR"');
+  });
+
+  it('exposes accessible names for pay and unavailable method reasons', async () => {
+    const fixture = await createPanel();
+    availableMethods.set([
+      methodStatus('card'),
+      methodStatus('google-pay', 'unavailable', false, {
+        readinessNote: 'Google Pay is not available in this browser.',
+      }),
+    ]);
+    fixture.detectChanges();
+
+    const unavailable = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-method="google-pay"]',
+    );
+    expect(unavailable?.getAttribute('aria-describedby')).toContain('headless-reason-google-pay');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('#headless-reason-google-pay')?.textContent,
+    ).toContain('Google Pay is not available');
+
+    await fixture.componentInstance.onSelectMethod('card');
+    fixture.detectChanges();
+    const pay = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="headless-demo-pay"]',
+    );
+    expect(pay?.textContent).toContain('Pay with card');
+    expect(pay?.hasAttribute('disabled')).toBeFalse();
   });
 });

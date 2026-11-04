@@ -38,14 +38,18 @@ type MountPhase = 'idle' | 'mounting' | 'mounted' | 'failed';
 type RecoveryPhase = 'idle' | 'checking' | 'recovering' | 'settled' | 'retryable';
 
 /**
- * H5.3 Headless Checkout playground — payment execution + redirect recovery.
+ * H5.4 Headless Checkout playground — audited payment execution + recovery UI.
  *
  * Card/Klarna/Affirm: Payment Element + merchant `confirm()`.
  * PayPal/Google Pay/Apple Pay: official provider buttons (no `confirm()`).
  * Klarna/Affirm returns: `recoverReturn()` before any new mount/payment attempt.
+ * While recovery is retryable, mounts/confirms stay locked to avoid a new PaymentIntent.
  */
 @Component({
   selector: 'app-headless-demo',
+  host: {
+    '[attr.data-theme]': 'theme()',
+  },
   templateUrl: './headless-demo.panel.html',
   styleUrl: './headless-demo.panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -113,10 +117,12 @@ export class HeadlessDemoPanel {
 
   readonly paymentLocked = computed(() => {
     const state = this.sessionState();
+    const recovery = this.recoveryPhase();
     return (
       this.confirmInFlight() ||
-      this.recoveryPhase() === 'checking' ||
-      this.recoveryPhase() === 'recovering' ||
+      recovery === 'checking' ||
+      recovery === 'recovering' ||
+      recovery === 'retryable' ||
       state === 'processing' ||
       state === 'pending'
     );
@@ -131,9 +137,7 @@ export class HeadlessDemoPanel {
       isHeadlessDemoStripeElementMethod(method) &&
       this.selectedMethod() === method &&
       (state === 'ready' || state === 'error') &&
-      !this.confirmInFlight() &&
-      this.recoveryPhase() !== 'recovering' &&
-      this.recoveryPhase() !== 'checking'
+      !this.paymentLocked()
     );
   });
 
@@ -174,6 +178,14 @@ export class HeadlessDemoPanel {
   });
 
   readonly canRetryRecovery = computed(() => this.recoveryPhase() === 'retryable');
+
+  readonly mountAriaLabel = computed(() => {
+    const method = this.uiSelectedMethod();
+    if (!method) {
+      return 'Official provider mount';
+    }
+    return `Official provider mount for ${this.methodLabels[method] ?? method}`;
+  });
 
   private readonly configFingerprint = computed(() => {
     const product = this.product();
@@ -549,7 +561,7 @@ export class HeadlessDemoPanel {
   }
 
   private pushLifecycleLine(line: string): void {
-    this.lifecycleEvents.update((entries) => [line, ...entries].slice(0, 12));
+    this.lifecycleEvents.update((entries) => [sanitizeLifecycleLine(line), ...entries].slice(0, 12));
   }
 
   private bindLifecycleEvents(session: HeadlessCheckoutSession): void {
@@ -656,12 +668,20 @@ export class HeadlessDemoPanel {
 
 function formatPublicError(error: unknown, fallback = 'Operation failed.'): string {
   if (error instanceof PaymentError) {
-    return `${error.code}: ${error.message}`;
+    return sanitizeLifecycleLine(`${error.code}: ${error.message}`);
   }
   if (error instanceof Error && error.message.trim()) {
-    return error.message;
+    return sanitizeLifecycleLine(error.message);
   }
   return fallback;
+}
+
+/** Strip accidental secrets/tokens from demo-visible event/error text. */
+function sanitizeLifecycleLine(line: string): string {
+  return line
+    .replace(/\b(sk|pk)_(test|live)_[A-Za-z0-9]+\b/gi, '[redacted-key]')
+    .replace(/\b(pi|cs|seti)_[A-Za-z0-9]+_secret_[A-Za-z0-9]+\b/gi, '[redacted-secret]')
+    .replace(/client_secret\s*[:=]\s*\S+/gi, 'client_secret=[redacted]');
 }
 
 function formatRecoveryResult(result: PaymentResult): string {

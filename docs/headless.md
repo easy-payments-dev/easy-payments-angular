@@ -316,7 +316,7 @@ Merchant responsibilities (library cannot complete these alone):
 | Headless BNPL pending ownership + `recoverReturn` | Supported |
 | Recovery lifecycle / retry safety | Supported |
 | Security + docs + regression audit (H4.5) | Supported |
-| Demo Headless playground (H5.1–H5.3) | Supported (mount, confirm, official wallets/PayPal, recoverReturn) |
+| Demo Headless playground (H5.1–H5.4) | Supported + demo QA/a11y/security audit |
 
 Full Checkout and Buttons Only remain unchanged; Headless is additive.
 

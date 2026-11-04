@@ -230,7 +230,7 @@ describe('App', () => {
     expect(app.buttonsAppearance().gap).toBe('16px');
   });
 
-  it('switches to Headless Checkout foundation without mounting providers', async () => {
+  it('switches to Headless Checkout with merchant-owned panel and mount host', async () => {
     const fixture = TestBed.createComponent(App);
     await settle(fixture);
 
@@ -252,7 +252,8 @@ describe('App', () => {
     expect(compiled.querySelector('[data-testid="headless-demo-availability"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="headless-demo-product"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="headless-demo-mount-host"]')).toBeTruthy();
-    expect(compiled.textContent).toContain('H5.3');
+    expect(compiled.textContent).toContain('recoverReturn');
+    expect(compiled.querySelector('[data-testid="headless-demo-pay"], [data-testid="headless-demo-mount-idle"]')).toBeTruthy();
     expect(compiled.textContent).not.toContain('client_secret');
   });
 
