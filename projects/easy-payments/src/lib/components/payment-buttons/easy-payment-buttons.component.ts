@@ -938,8 +938,16 @@ export class EasyPaymentButtonsComponent {
       this.stripeReturnMethod = null;
       if (!this.destroyed) {
         this.providerBusy.set(false);
-        // After a non-success return the panel may create a fresh PaymentIntent for retry.
-        if (!this.successAfterReturn) {
+        if (this.successAfterReturn) {
+          // Keep the panel from creating a new PaymentIntent, but clear active-submit UX.
+          // `processingMethod` remains set only for genuine pending (awaiting provider).
+          if (this.processingMethod() !== null) {
+            this.hostContext.setReturnPhase('awaiting', method);
+          } else {
+            this.hostContext.setReturnPhase('settled', method);
+          }
+        } else {
+          // Cancel / error: allow the panel to create a fresh PaymentIntent for retry.
           this.hostContext.setReturnPhase('none');
         }
       }

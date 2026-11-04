@@ -48,6 +48,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   buttonsDemoModeNotice: 'Modo demo — no se procesarán pagos reales.',
   continuePaymentHint: 'Continúe para completar su pago.',
   processingPayment: 'Procesando el pago…',
+  awaitingProviderPayment: 'Esperando la confirmación del proveedor…',
   payAmount: 'Pagar {{amount}}',
   payAmountWithMethodAria: 'Pagar {{amount}} con {{method}}',
   confirmPayment: 'Confirmar pago',

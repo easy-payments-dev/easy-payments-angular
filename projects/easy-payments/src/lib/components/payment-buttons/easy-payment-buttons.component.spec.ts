@@ -13,6 +13,7 @@ import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
+import { CheckoutHostContext } from '../../services/checkout-host-context';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentResult } from '../../models';
 
@@ -2337,6 +2338,70 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     expect(successes[0].method).toBe('klarna');
     expect(successes[0].transactionId).toBe('pi_buttons_klarna_txn');
     expect(errors.length).toBe(0);
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(fixture.componentInstance.processingMethod()).toBeNull();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna')).toBe(
+      'settled',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+
+    fixture.destroy();
+  });
+
+  it('recovers Affirm success and clears Processing payment UI', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/?payment_intent=pi_buttons_aff_ok&payment_intent_client_secret=sec_aff_ok&ep_method=affirm',
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_return_affirm_ok' },
+            affirm: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            affirmCreatePaymentUrl: '/api/affirm/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'consumeReturn').and.resolveTo({
+      status: 'success',
+      method: 'affirm',
+      provider: 'affirm',
+      transactionId: 'pi_buttons_aff_ok_txn',
+    });
+
+    const successes: PaymentResult[] = [];
+    const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['affirm', 'card']);
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(successes.length).toBe(1);
+    expect(successes[0].method).toBe('affirm');
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(fixture.componentInstance.processingMethod()).toBeNull();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('affirm')).toBe(
+      'settled',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Payment completed');
 
     fixture.destroy();
   });
@@ -2460,6 +2525,13 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     expect(pending.length).toBe(1);
     expect(pending[0].status).toBe('processing');
     expect(fixture.componentInstance.methodsLocked()).toBeTrue();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna')).toBe(
+      'awaiting',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Waiting for provider confirmation',
+    );
 
     fixture.destroy();
   });

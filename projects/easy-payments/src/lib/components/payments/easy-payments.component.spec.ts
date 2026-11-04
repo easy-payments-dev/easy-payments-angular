@@ -4,6 +4,7 @@ import { isDevMode, signal } from '@angular/core';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { MockPaymentController } from '../../adapters/mock/mock-payment.controller';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
+import { CheckoutHostContext } from '../../services/checkout-host-context';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentMethodChangeEvent, PaymentResult, PaymentStartedEvent } from '../../models';
@@ -1447,6 +1448,9 @@ describe('EasyPaymentsComponent', () => {
       expect(fixtureReturn.componentInstance.viewState()).toBe('success');
       expect(fixtureReturn.nativeElement.textContent).toContain('Payment successful');
       expect(fixtureReturn.nativeElement.textContent).toContain('Klarna');
+      expect(
+        fixtureReturn.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna'),
+      ).toBe('settled');
 
       history.replaceState({}, '', '/');
       fixtureReturn.destroy();
@@ -1520,6 +1524,9 @@ describe('EasyPaymentsComponent', () => {
       expect(successes[0].method).toBe('affirm');
       expect(fixtureReturn.componentInstance.viewState()).toBe('success');
       expect(fixtureReturn.nativeElement.textContent).toContain('Affirm');
+      expect(
+        fixtureReturn.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('affirm'),
+      ).toBe('settled');
 
       history.replaceState({}, '', '/');
       fixtureReturn.destroy();

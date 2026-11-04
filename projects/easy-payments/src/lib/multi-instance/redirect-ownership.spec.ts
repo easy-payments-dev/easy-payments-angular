@@ -683,7 +683,8 @@ describe('Stripe redirect return ownership', () => {
           const view = (h.fixture.componentInstance as EasyPaymentsComponent).viewState();
           expect(view).toBe(h === checkouts[3] ? 'success' : 'checkout');
           const phase = h.fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna');
-          expect(phase).toBe(h === checkouts[3] ? 'owner' : 'none');
+          // Successful recovery leaves `settled` (not `owner`) so BNPL panels clear Processing UI.
+          expect(phase).toBe(h === checkouts[3] ? 'settled' : 'none');
         });
         expect(retrieve).toHaveBeenCalledTimes(1);
       });
