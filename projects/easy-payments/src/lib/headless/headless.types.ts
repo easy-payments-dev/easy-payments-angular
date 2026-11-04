@@ -66,7 +66,9 @@ export interface HeadlessSessionOptions {
   methods: PaymentMethod[];
   checkout?: CheckoutOptions;
   /**
-   * Optional stable session id (redirect ownership in H4).
+   * Optional stable session id. Required for Klarna/Affirm redirect ownership (H4.2):
+   * merchant must supply a value reusable after page reload. Auto-generated ids are
+   * fine for Card / PayPal / Google Pay / Apple Pay but cannot own BNPL redirects.
    * Must match `^[a-zA-Z0-9_.:-]{1,64}$` when provided.
    * Must be unique among live Headless sessions.
    */
@@ -119,7 +121,7 @@ export interface HeadlessCheckoutEvents {
  * H3.1–H3.2: mount/confirm for `card`, `klarna`, and `affirm` (official Stripe Payment Element).
  * H3.3: mount PayPal official Buttons (buyer clicks Buttons — do **not** call `confirm()` for PayPal).
  * H3.4: mount Google Pay official button (buyer clicks button — do **not** call `confirm()` for Google Pay).
- * Apple Pay is not mountable yet. BNPL full-page redirect recovery is H4.
+ * Public Headless BNPL return recovery after leave-page redirect is H4.3.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;

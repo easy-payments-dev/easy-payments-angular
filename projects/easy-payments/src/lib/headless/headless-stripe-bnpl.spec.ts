@@ -11,8 +11,11 @@ import { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { StripeSdkLoader } from '../adapters/stripe/stripe-sdk.loader';
 import {
+  clearStripePendingReturn,
+  readStripePendingReturn,
   STRIPE_PENDING_STORAGE_KEY,
   STRIPE_RETURN_METHOD_PARAM,
+  type StripePendingReturn,
 } from '../adapters/stripe/stripe-redirect-return';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
@@ -344,6 +347,9 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     await pending;
     expect(session.state()).not.toBe('success');
     expect(session.lastResult()).toBeNull();
+    // Unresolved confirm must not clear another attempt's path — marker stays for this attempt.
+    expect(readStripePendingReturn()?.checkoutInstanceId).toBe('bnpl-stale');
+    clearStripePendingReturn();
 
     confirmPayment.and.returnValue(
       new Promise((resolve) => {
@@ -360,10 +366,13 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     resolveConfirm({ paymentIntent: { id: 'pi_x', status: 'succeeded' } });
     await pending2;
     expect(session2.state()).toBe('destroyed');
+    // Destroy during confirm is stale — preserve unresolved marker.
+    expect(readStripePendingReturn()?.checkoutInstanceId).toBe('bnpl-destroy-confirm');
+    clearStripePendingReturn();
     await session.destroy();
   });
 
-  it('enforces the Stripe confirmation gate across Klarna sessions', async () => {
+  it('blocks overlapping Headless Klarna confirms across sessions (pending ownership)', async () => {
     let releaseFirst!: (value: unknown) => void;
     confirmPayment.and.returnValue(
       new Promise((resolve) => {
@@ -377,22 +386,27 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
 
     const first = a.confirm();
     await expectAsync(b.confirm()).toBeRejectedWith(
-      jasmine.objectContaining({ code: 'PROVIDER_UNAVAILABLE' }),
+      jasmine.objectContaining({ code: 'PAYMENT_FAILED' }),
     );
+    expect(readStripePendingReturn()?.checkoutInstanceId).toBe('bnpl-gate-a');
 
     releaseFirst({ paymentIntent: { id: 'pi_a', status: 'succeeded' } });
     await first;
     expect(a.state()).toBe('success');
+    expect(readStripePendingReturn()).toBeNull();
     await a.destroy();
     await b.destroy();
   });
 
-  it('stamps ep_method on Klarna return_url without writing checkout/buttons ownership', async () => {
-    confirmPayment.and.resolveTo({
-      paymentIntent: { id: 'pi_klarna', status: 'succeeded' },
+  it('writes Headless pending marker before Klarna confirm and clears on same-page success', async () => {
+    let markerDuringConfirm: StripePendingReturn | null = null;
+    confirmPayment.and.callFake(async () => {
+      markerDuringConfirm = readStripePendingReturn();
+      return { paymentIntent: { id: 'pi_klarna', status: 'succeeded' } };
     });
     const session = await readySession({
       methods: ['klarna'],
+      checkoutInstanceId: 'bnpl-marker-ok',
       checkout: { successUrl: 'https://merchant.example/return' },
     });
     await session.mount('klarna', document.createElement('div'));
@@ -405,8 +419,61 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     const returnUrl = args.confirmParams?.return_url ?? '';
     expect(returnUrl).toContain(`${STRIPE_RETURN_METHOD_PARAM}=klarna`);
     expect(returnUrl).toContain('ep_attempt=');
+    expect(markerDuringConfirm).not.toBeNull();
+    expect(markerDuringConfirm!.hostKind).toBe('headless');
+    expect(markerDuringConfirm!.method).toBe('klarna');
+    expect(markerDuringConfirm!.productId).toBe(PRODUCT.id);
+    expect(markerDuringConfirm!.checkoutInstanceId).toBe('bnpl-marker-ok');
+    expect(markerDuringConfirm!.attemptId).toBeTruthy();
+    expect(returnUrl).toContain(`ep_attempt=${markerDuringConfirm!.attemptId}`);
+    // Same-page success clears only this attempt — storage empty afterward.
     expect(sessionStorage.getItem(STRIPE_PENDING_STORAGE_KEY)).toBeNull();
     await session.destroy();
+  });
+
+  it('requires a stable merchant checkoutInstanceId before Klarna redirect confirm', async () => {
+    confirmPayment.and.resolveTo({
+      paymentIntent: { id: 'pi_klarna', status: 'succeeded' },
+    });
+    const session = headless.createSession({
+      product: PRODUCT,
+      methods: ['klarna'],
+      // omit checkoutInstanceId — auto runtime id must not own redirects
+    });
+    await session.initialize();
+    await session.mount('klarna', document.createElement('div'));
+    await expectAsync(session.confirm()).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'CONFIG_INVALID' }),
+    );
+    expect(confirmPayment).not.toHaveBeenCalled();
+    expect(readStripePendingReturn()).toBeNull();
+    await session.destroy();
+  });
+
+  it('clears matching Headless marker on same-page cancel and error', async () => {
+    confirmPayment.and.resolveTo({
+      paymentIntent: { id: 'pi_klarna', status: 'canceled' },
+    });
+    const cancelSession = await readySession({
+      methods: ['klarna'],
+      checkoutInstanceId: 'bnpl-cancel-marker',
+    });
+    await cancelSession.mount('klarna', document.createElement('div'));
+    await cancelSession.confirm();
+    expect(readStripePendingReturn()).toBeNull();
+    await cancelSession.destroy();
+
+    confirmPayment.and.resolveTo({
+      error: { message: 'declined', code: 'card_declined' },
+    });
+    const errSession = await readySession({
+      methods: ['affirm'],
+      checkoutInstanceId: 'bnpl-error-marker',
+    });
+    await errSession.mount('affirm', document.createElement('div'));
+    await expectAsync(errSession.confirm()).toBeRejected();
+    expect(readStripePendingReturn()).toBeNull();
+    await errSession.destroy();
   });
 
   it('does not treat AUTHENTICATION_REQUIRED as success (no false redirect success)', async () => {

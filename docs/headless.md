@@ -13,11 +13,12 @@ Headless Checkout is the third Easy Payments integration experience:
 | Session create / initialize / destroy | **Supported (H2)** |
 | Method readiness + selection | **Supported (H2)** |
 | Stripe **Card** mount + confirm | **Supported (H3.1)** |
-| **Klarna** + **Affirm** mount + confirm | **Supported (H3.2)** — see redirect limitation |
+| **Klarna** + **Affirm** mount + confirm | **Supported (H3.2)** — stable `checkoutInstanceId` required for redirect confirm |
 | **PayPal** official Buttons | **Supported (H3.3)** — no `confirm()` |
 | **Google Pay** official button | **Supported (H3.4)** — no `confirm()` |
 | **Apple Pay** Express Checkout | **Supported (H3.5)** — no `confirm()` |
-| BNPL / Stripe redirect recovery for Headless | Not yet (**H4**) |
+| Headless BNPL pending ownership markers | **Supported (H4.2)** — no public recovery yet |
+| Public Headless BNPL return recovery | Not yet (**H4.3**) |
 | Demo Headless experience | Not yet (H5) |
 
 **Card, Klarna, Affirm, PayPal, Google Pay, and Apple Pay** are the supported Headless payment methods.
@@ -129,9 +130,15 @@ await session.mount('klarna', klarnaHost);
 await session.confirm(); // merchant CTA
 ```
 
-### Redirect limitation (H4)
+### Redirect ownership (H4.2) and recovery (H4.3)
 
-Klarna and Affirm often **redirect** the buyer. H3.2 stamps `ep_method` on return URLs but does **not** resume Headless after a full-page redirect and does not write Full Checkout / Buttons Only ownership markers. Backend webhooks remain authoritative. Full Headless BNPL return recovery is **H4**.
+Klarna and Affirm often **redirect** the buyer. For redirect-capable Headless confirm:
+
+- Supply a **stable merchant `checkoutInstanceId`** that you can recreate after reload. Auto-generated session ids are not valid recovery identities.
+- Before confirmation, Easy Payments writes a **Headless-only** pending ownership marker in `sessionStorage` (`hostKind: 'headless'`) correlating method, product, attempt id, host kind, checkout instance id, and a creation timestamp. Markers expire after **24 hours**. No Stripe secrets or client secrets are stored.
+- Return URLs are stamped with `ep_method` and `ep_attempt`. Full Checkout and Buttons Only **cannot** claim Headless markers; Headless sessions cannot claim each other's markers.
+- Markers live in **this browser tab's `sessionStorage`** (single pending key). Overlapping unresolved attempts from different hosts fail closed rather than silently overwriting.
+- **Public Headless return recovery is not available yet (H4.3).** Same-page confirmation still works; after a leave-page redirect, confirm final status on your backend until H4.3. H4 is not complete.
 
 ## PayPal (H3.3)
 
@@ -419,6 +426,6 @@ await session.destroy();
 ## Not supported yet
 
 - Headless demo mode in the playground
-- Complete Headless BNPL redirect recovery after leave-page authorization (**H4**)
+- Public Headless BNPL return recovery after leave-page authorization (**H4.3** — ownership markers exist in H4.2)
 
 Full Checkout and Buttons Only are unchanged; Headless is additive. Live Apple Pay / Google Pay production readiness requires real-device and domain validation beyond mocked tests.

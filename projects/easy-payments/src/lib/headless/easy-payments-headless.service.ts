@@ -29,7 +29,8 @@ import type {
  * H3.3: PayPal official Buttons (create/capture via backend; no session.confirm()).
  * H3.4: Google Pay official button (Stripe gateway; no session.confirm()).
  * H3.5: Apple Pay via Stripe Express Checkout Element (no session.confirm()).
- * BNPL full-page redirect recovery is H4 — not claimed here.
+ * H4.2: Headless Klarna/Affirm pending ownership markers (no public return recovery).
+ * Public Headless BNPL return recovery is H4.3 — not claimed here.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsHeadless {
@@ -61,13 +62,14 @@ export class EasyPaymentsHeadless {
     }
 
     const methods = normalizeSessionMethods(options.methods);
-    const id = resolveSessionId(options.checkoutInstanceId);
+    const { id, stableCheckoutIdentity } = resolveSessionIdentity(options.checkoutInstanceId);
 
     this.registry.claim(id);
 
     try {
       return new HeadlessCheckoutSessionImpl({
         id,
+        stableCheckoutIdentity,
         product: options.product,
         methods,
         checkout: options.checkout,
@@ -92,9 +94,17 @@ export class EasyPaymentsHeadless {
   }
 }
 
-function resolveSessionId(checkoutInstanceId: string | null | undefined): string {
+/**
+ * Session `id` may be merchant-stable or auto-generated.
+ * Klarna/Affirm redirect ownership only uses {@link stableCheckoutIdentity}
+ * (merchant-supplied) — never a freshly minted runtime id after reload.
+ */
+function resolveSessionIdentity(checkoutInstanceId: string | null | undefined): {
+  id: string;
+  stableCheckoutIdentity: string | null;
+} {
   if (checkoutInstanceId === null || checkoutInstanceId === undefined || checkoutInstanceId === '') {
-    return createPaymentOwnerId('headless');
+    return { id: createPaymentOwnerId('headless'), stableCheckoutIdentity: null };
   }
   if (!isValidCheckoutInstanceId(checkoutInstanceId)) {
     throw new PaymentError({
@@ -103,7 +113,7 @@ function resolveSessionId(checkoutInstanceId: string | null | undefined): string
         'checkoutInstanceId must match ^[a-zA-Z0-9_.:-]{1,64}$ when provided.',
     });
   }
-  return checkoutInstanceId;
+  return { id: checkoutInstanceId, stableCheckoutIdentity: checkoutInstanceId };
 }
 
 function normalizeSessionMethods(methods: PaymentMethod[] | undefined): PaymentMethod[] {

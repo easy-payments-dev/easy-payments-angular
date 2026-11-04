@@ -4,7 +4,13 @@
  * Stripe appends `payment_intent` and `payment_intent_client_secret` to return_url.
  * We stamp `ep_method=<method>` and a light sessionStorage marker (no secrets)
  * so Easy Payments can resume the correct method after the page remounts.
+ *
+ * Host kinds:
+ * - `checkout` / `buttons` — Full Checkout and Buttons Only (existing)
+ * - `headless` — Headless Klarna/Affirm (H4.2 ownership; public recovery is H4.3)
  */
+
+import { PaymentError } from '../../errors/payment-error';
 
 export type StripeRedirectMethod = 'klarna' | 'affirm';
 
@@ -17,7 +23,10 @@ export const STRIPE_PENDING_STORAGE_KEY = 'ep.stripe.redirect.pending';
 export const STRIPE_PROCESSING_MAX_ATTEMPTS = 6;
 export const STRIPE_PROCESSING_DELAY_MS = 750;
 
-export type StripeReturnHostKind = 'checkout' | 'buttons';
+/** Pending redirect markers older than this grant no ownership. */
+export const STRIPE_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type StripeReturnHostKind = 'checkout' | 'buttons' | 'headless';
 
 /**
  * Which host on the page started a redirect (no secrets).
@@ -30,6 +39,7 @@ export interface StripeReturnOrigin {
   /**
    * Stable host identity: optional merchant `[checkoutInstanceId]`, or an
    * auto-generated per-mount id. Survives reorder; merchant ids survive reload.
+   * Headless BNPL redirect markers require a merchant-stable id.
    */
   checkoutInstanceId: string;
   /** @deprecated Prefer checkoutInstanceId. Index among same kind+productId. */
@@ -81,6 +91,21 @@ function isRedirectMethod(value: string | null | undefined): value is StripeRedi
   return value === 'klarna' || value === 'affirm';
 }
 
+function isHostKind(value: unknown): value is StripeReturnHostKind {
+  return value === 'checkout' || value === 'buttons' || value === 'headless';
+}
+
+/** True when the marker is past TTL or lacks a usable timestamp. */
+export function isStripePendingReturnExpired(
+  marker: StripePendingReturn,
+  now: number = Date.now(),
+): boolean {
+  if (typeof marker.at !== 'number' || !Number.isFinite(marker.at) || marker.at <= 0) {
+    return true;
+  }
+  return now - marker.at > STRIPE_PENDING_TTL_MS;
+}
+
 /** Build a return_url that preserves merchant params and marks the Stripe redirect method. */
 export function buildStripeReturnUrl(
   method: StripeRedirectMethod,
@@ -125,11 +150,159 @@ export function markStripePendingReturn(
   if (!canUseSessionStorage(store)) {
     return;
   }
-  const payload: StripePendingReturn = { method, productId, at: Date.now(), ...origin };
-  store.setItem(STRIPE_PENDING_STORAGE_KEY, JSON.stringify(payload));
+  try {
+    const payload: StripePendingReturn = { method, productId, at: Date.now(), ...origin };
+    store.setItem(STRIPE_PENDING_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Quota / private mode — callers that require a durable marker must use markHeadlessPendingReturn.
+  }
 }
 
-export function readStripePendingReturn(storage?: Storage): StripePendingReturn | null {
+/**
+ * Write a Headless-owned pending marker. Fails closed when another unresolved
+ * attempt already occupies the shared key (different host or Headless instance).
+ * Same Headless `checkoutInstanceId` may replace its own prior attempt.
+ */
+export function markHeadlessPendingReturn(
+  method: StripeRedirectMethod,
+  productId: string,
+  origin: Pick<StripeReturnOrigin, 'attemptId' | 'checkoutInstanceId'>,
+  storage?: Storage,
+): void {
+  const store =
+    storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined);
+  if (!canUseSessionStorage(store)) {
+    throw new PaymentError({
+      code: 'PROVIDER_UNAVAILABLE',
+      message:
+        'sessionStorage is required to record Headless Klarna/Affirm redirect ownership before confirmation.',
+      method,
+      provider: method,
+    });
+  }
+  if (!origin.attemptId || !isValidCheckoutInstanceId(origin.checkoutInstanceId)) {
+    throw new PaymentError({
+      code: 'CONFIG_INVALID',
+      message:
+        'Headless Klarna/Affirm redirect requires a stable checkoutInstanceId and attempt id for ownership.',
+      method,
+      provider: method,
+    });
+  }
+
+  let existing: StripePendingReturn | null = null;
+  try {
+    existing = readStripePendingReturn(store);
+  } catch {
+    existing = null;
+  }
+
+  if (existing) {
+    const sameHeadlessSession =
+      existing.hostKind === 'headless' &&
+      existing.checkoutInstanceId === origin.checkoutInstanceId;
+    if (!sameHeadlessSession) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message:
+          'A Stripe redirect return is already pending for another checkout attempt. Complete or abandon that attempt before starting another.',
+        method,
+        provider: method,
+      });
+    }
+  }
+
+  try {
+    const payload: StripePendingReturn = {
+      method,
+      productId,
+      at: Date.now(),
+      attemptId: origin.attemptId,
+      hostKind: 'headless',
+      checkoutInstanceId: origin.checkoutInstanceId,
+    };
+    store.setItem(STRIPE_PENDING_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    throw new PaymentError({
+      code: 'PROVIDER_UNAVAILABLE',
+      message: 'Unable to persist Headless redirect ownership marker in sessionStorage.',
+      method,
+      provider: method,
+    });
+  }
+}
+
+/**
+ * Read the pending marker. Expired, malformed, or unreadable markers return null
+ * and do not grant ownership. Expired entries are cleared from storage when possible.
+ */
+export function readStripePendingReturn(
+  storage?: Storage,
+  now: number = Date.now(),
+): StripePendingReturn | null {
+  const store =
+    storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined);
+  if (!canUseSessionStorage(store)) {
+    return null;
+  }
+  try {
+    const raw = store.getItem(STRIPE_PENDING_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as StripePendingReturn;
+    if (!parsed || !isRedirectMethod(parsed.method) || typeof parsed.productId !== 'string') {
+      return null;
+    }
+    if (parsed.hostKind !== undefined && parsed.hostKind !== null && !isHostKind(parsed.hostKind)) {
+      return null;
+    }
+    if (isStripePendingReturnExpired(parsed, now)) {
+      try {
+        store.removeItem(STRIPE_PENDING_STORAGE_KEY);
+      } catch {
+        // ignore clear failures
+      }
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearStripePendingReturn(storage?: Storage): void {
+  const store =
+    storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined);
+  if (!canUseSessionStorage(store)) {
+    return;
+  }
+  try {
+    store.removeItem(STRIPE_PENDING_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clears the pending marker only if it still belongs to `attemptId`
+ * (never a sibling host's or a newer attempt).
+ */
+export function clearStripePendingReturnFor(attemptId: string, storage?: Storage): void {
+  if (!attemptId) {
+    return;
+  }
+  const pending = peekStripePendingReturn(storage);
+  if (pending?.attemptId === attemptId) {
+    clearStripePendingReturn(storage);
+  }
+}
+
+/**
+ * Read without TTL eviction — used only so attempt-scoped clear can still remove
+ * an expired marker that matches the settling attempt.
+ */
+function peekStripePendingReturn(storage?: Storage): StripePendingReturn | null {
   const store =
     storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined);
   if (!canUseSessionStorage(store)) {
@@ -147,22 +320,6 @@ export function readStripePendingReturn(storage?: Storage): StripePendingReturn 
     return parsed;
   } catch {
     return null;
-  }
-}
-
-export function clearStripePendingReturn(storage?: Storage): void {
-  const store =
-    storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined);
-  if (!canUseSessionStorage(store)) {
-    return;
-  }
-  store.removeItem(STRIPE_PENDING_STORAGE_KEY);
-}
-
-/** Clears the pending marker only if it still belongs to `attemptId` (never a sibling host's). */
-export function clearStripePendingReturnFor(attemptId: string, storage?: Storage): void {
-  if (readStripePendingReturn(storage)?.attemptId === attemptId) {
-    clearStripePendingReturn(storage);
   }
 }
 

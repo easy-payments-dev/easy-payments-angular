@@ -10,6 +10,7 @@ import {
   clearStripePendingReturn,
   clearStripeReturnParamsFromUrl,
   detectStripeReturnMethod,
+  isStripePendingReturnExpired,
   isStripeReturnAttempt,
   readStripePendingReturn,
   readStripeReturnParams,
@@ -55,55 +56,140 @@ export interface StripeReturnCandidate<T> {
 /**
  * Pure ownership rule for a Stripe redirect return. Never guesses.
  *
- * Preference order when `ep_attempt` matches the pending marker:
- * 1. `checkoutInstanceId` (stable across reorder / remount; merchant ids across reload)
- * 2. Legacy kind + productId + hostOrdinal (markers from before stable ids)
- * 3. Single eligible host for the marker product (or any eligible when no marker product)
- * 4. Otherwise wait (owner not mounted) or AMBIGUOUS_HOSTS
+ * Preference order when `ep_attempt` matches a live (non-expired) pending marker:
+ * 1. Headless markers — only `hostKind: 'headless'` candidates with matching instance/attempt
+ * 2. `checkoutInstanceId` + host kind (stable across reorder / remount)
+ * 3. Legacy kind + productId + hostOrdinal (markers from before stable ids)
+ * 4. Single eligible non-headless host — only for true legacy returns with no `ep_attempt`
+ * 5. Otherwise wait (owner not mounted) or AMBIGUOUS_HOSTS / STALE_ATTEMPT
+ *
+ * Headless returns and any URL with `ep_attempt` never fall through to the
+ * single-host legacy shortcut (prevents Full Checkout / Buttons claiming Headless).
  */
 export function decideStripeReturnOwner<T>(
   candidates: readonly StripeReturnCandidate<T>[],
   params: StripeReturnParams,
   marker: StripePendingReturn | null,
+  now: number = Date.now(),
 ): StripeReturnDecision<T> {
   const method = params.method ?? marker?.method ?? null;
   if (!method) {
     return { kind: 'unattributed', reason: 'MISSING_METHOD' };
   }
-  const eligible = candidates.filter((c) => c.methods.includes(method));
 
-  if (params.attemptId && marker?.attemptId && params.attemptId !== marker.attemptId) {
+  const markerExpired = !!marker && isStripePendingReturnExpired(marker, now);
+  const liveMarker = marker && !markerExpired ? marker : null;
+
+  // Headless-shaped markers never grant checkout/buttons ownership — including when expired.
+  if (marker?.hostKind === 'headless') {
+    if (!liveMarker) {
+      return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+    }
+    return decideHeadlessReturnOwner(candidates, params, liveMarker, method);
+  }
+
+  // Checkout / Buttons path — never select a Headless candidate.
+  const eligible = candidates.filter(
+    (c) => c.methods.includes(method) && c.kind !== 'headless',
+  );
+
+  if (params.attemptId && liveMarker?.attemptId && params.attemptId !== liveMarker.attemptId) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  // Attempt token without a matching live marker: could be Headless or stale — fail closed.
+  if (params.attemptId && (!liveMarker || !liveMarker.attemptId)) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  if (params.method && liveMarker?.method && params.method !== liveMarker.method) {
     return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
   }
 
   const attemptMatches =
-    !!params.attemptId && !!marker?.attemptId && params.attemptId === marker.attemptId;
+    !!params.attemptId && !!liveMarker?.attemptId && params.attemptId === liveMarker.attemptId;
 
-  if (attemptMatches && marker.checkoutInstanceId) {
-    const match = eligible.find((c) => c.instanceId === marker.checkoutInstanceId);
+  if (attemptMatches && liveMarker.checkoutInstanceId) {
+    const match = eligible.find(
+      (c) =>
+        c.instanceId === liveMarker.checkoutInstanceId &&
+        (!liveMarker.hostKind || c.kind === liveMarker.hostKind),
+    );
     return match ? { kind: 'owner', owner: match.host } : { kind: 'wait' };
   }
 
   if (
     attemptMatches &&
-    marker.hostKind &&
-    typeof marker.hostOrdinal === 'number' &&
-    !marker.checkoutInstanceId
+    liveMarker.hostKind &&
+    typeof liveMarker.hostOrdinal === 'number' &&
+    !liveMarker.checkoutInstanceId
   ) {
     const match = eligible.find(
       (c) =>
-        c.kind === marker.hostKind &&
-        c.productId === marker.productId &&
-        c.ordinal === marker.hostOrdinal,
+        c.kind === liveMarker.hostKind &&
+        c.productId === liveMarker.productId &&
+        c.ordinal === liveMarker.hostOrdinal,
     );
     return match ? { kind: 'owner', owner: match.host } : { kind: 'wait' };
   }
 
-  const pool = marker ? eligible.filter((c) => c.productId === marker.productId) : eligible;
+  // Incomplete marker with ep_attempt (matched attempt but no stable/ordinal path) — fail closed.
+  if (params.attemptId) {
+    return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };
+  }
+
+  // True legacy (no ep_attempt): single eligible non-headless host only.
+  const pool = liveMarker ? eligible.filter((c) => c.productId === liveMarker.productId) : eligible;
   if (pool.length === 1) {
     return { kind: 'owner', owner: pool[0].host };
   }
   if (pool.length === 0) {
+    return { kind: 'wait' };
+  }
+  return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };
+}
+
+function decideHeadlessReturnOwner<T>(
+  candidates: readonly StripeReturnCandidate<T>[],
+  params: StripeReturnParams,
+  marker: StripePendingReturn,
+  method: StripeRedirectMethod,
+): StripeReturnDecision<T> {
+  if (!marker.attemptId || !marker.checkoutInstanceId || marker.hostKind !== 'headless') {
+    return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };
+  }
+
+  if (params.method && params.method !== marker.method) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  if (!params.attemptId || params.attemptId !== marker.attemptId) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  if (method !== marker.method) {
+    return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+  }
+
+  const eligible = candidates.filter(
+    (c) =>
+      c.kind === 'headless' &&
+      c.methods.includes(method) &&
+      c.instanceId === marker.checkoutInstanceId &&
+      (!marker.productId || c.productId === marker.productId),
+  );
+
+  if (eligible.length === 1) {
+    return { kind: 'owner', owner: eligible[0].host };
+  }
+  if (eligible.length === 0) {
+    // Wrong instance / kind / method among candidates → not claimable by checkout/buttons.
+    const foreign = candidates.filter(
+      (c) => c.kind !== 'headless' && c.methods.includes(method),
+    );
+    if (foreign.length > 0) {
+      return { kind: 'unattributed', reason: 'STALE_ATTEMPT' };
+    }
     return { kind: 'wait' };
   }
   return { kind: 'unattributed', reason: 'AMBIGUOUS_HOSTS' };

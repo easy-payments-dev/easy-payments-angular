@@ -27,7 +27,9 @@ import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
 import {
   buildStripeReturnUrl,
+  clearStripePendingReturnFor,
   createStripeReturnAttemptId,
+  markHeadlessPendingReturn,
   type StripeRedirectMethod,
 } from '../adapters/stripe/stripe-redirect-return';
 import {
@@ -95,6 +97,11 @@ interface StripeElementAdapterApi {
 
 export interface HeadlessCheckoutSessionDeps {
   id: string;
+  /**
+   * Merchant-supplied stable id for BNPL redirect ownership (H4.2).
+   * Null when the session id was auto-generated — Klarna/Affirm confirm must fail closed.
+   */
+  stableCheckoutIdentity: string | null;
   product: PaymentProduct;
   methods: readonly PaymentMethod[];
   checkout?: CheckoutOptions;
@@ -143,6 +150,11 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
 
   /** Stripe Element / PayPal / Google Pay owner — equals Headless session id for isolation. */
   private readonly stripeOwnerId: string;
+  /**
+   * Merchant-stable id for Klarna/Affirm pending markers; null when auto-generated.
+   * Distinct from runtime session id — never invent a recovery identity after redirect.
+   */
+  private readonly stableCheckoutIdentity: string | null;
   /** Same as session id — scopes PayPal createOrder concurrency to this session. */
   private readonly paypalOrderOwnerId: string;
   /** Same as session id — scopes Google Pay payWithGooglePay concurrency to this session. */
@@ -206,6 +218,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   constructor(deps: HeadlessCheckoutSessionDeps) {
     this.id = deps.id;
     this.stripeOwnerId = deps.id;
+    this.stableCheckoutIdentity = deps.stableCheckoutIdentity;
     this.paypalOrderOwnerId = deps.id;
     this.googlePayOwnerId = deps.id;
     this.product = deps.product;
@@ -895,12 +908,22 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
     this._state.set('processing');
     this.emitStarted(selected);
 
+    let pendingAttemptId: string | null = null;
+
     try {
-      const returnUrl = this.buildConfirmReturnUrl(selected);
-      const result = await adapter.confirmPayment(returnUrl, this.stripeOwnerId);
+      const prepared = this.prepareStripeConfirm(selected);
+      pendingAttemptId = prepared.attemptId;
+      const result = await adapter.confirmPayment(prepared.returnUrl, this.stripeOwnerId);
 
       if (this.isConfirmStale(mountGen, confirmGen)) {
+        // Leave unresolved redirect ownership intact — a newer attempt may own storage.
         return;
+      }
+
+      // Same-page settle (no leave-page redirect): clear only this attempt's marker.
+      if (pendingAttemptId) {
+        clearStripePendingReturnFor(pendingAttemptId);
+        pendingAttemptId = null;
       }
 
       this.applyPaymentResult(result, confirmGen, selected);
@@ -913,6 +936,12 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
         method: selected,
         provider: this.providerOf(selected),
       });
+
+      // Same-page cancel / error / AUTHENTICATION_REQUIRED settle — clear matching attempt only.
+      if (pendingAttemptId) {
+        clearStripePendingReturnFor(pendingAttemptId);
+        pendingAttemptId = null;
+      }
 
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.applyPaymentResult(
@@ -929,7 +958,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
       }
 
       // BNPL may still require a redirect / customer action. Do not treat as success.
-      // Headless cannot safely resume after a full-page redirect until H4.
+      // Public Headless return recovery remains H4.3 — ownership markers are H4.2 only.
       if (paymentError.code === 'AUTHENTICATION_REQUIRED') {
         this.applyPaymentResult(
           {
@@ -938,7 +967,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
             provider: this.providerOf(selected),
             message:
               paymentError.message +
-              ' Headless redirect recovery is not available until H4 — confirm the final status on your backend.',
+              ' Headless redirect recovery is not available until H4.3 — confirm the final status on your backend.',
           },
           confirmGen,
           selected,
@@ -1613,20 +1642,46 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession {
   }
 
   /**
-   * Stamp `ep_method` (+ attempt id) on the return URL for future H4 ownership.
-   * Does **not** write a Stripe pending sessionStorage marker: claiming
-   * checkout/buttons ownership would misattribute returns before Headless H4.
+   * Card: optional successUrl only.
+   * Klarna/Affirm: require merchant-stable identity, write `hostKind: 'headless'`
+   * pending marker, stamp `ep_method` + `ep_attempt` on return_url before confirm.
    */
-  private buildConfirmReturnUrl(method: HeadlessStripeElementMethod): string | undefined {
+  private prepareStripeConfirm(method: HeadlessStripeElementMethod): {
+    returnUrl: string | undefined;
+    attemptId: string | null;
+  } {
     const base = this.checkout?.successUrl;
     if (method === 'card') {
-      return base;
+      return { returnUrl: base, attemptId: null };
     }
+
+    if (!this.stableCheckoutIdentity) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Klarna/Affirm Headless redirect confirmation requires a stable merchant checkoutInstanceId that can be reused after page reload. Auto-generated session ids cannot own redirect returns.',
+        method,
+        provider: this.providerOf(method),
+      });
+    }
+
     if (!this.browser.isBrowser) {
-      return base;
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Klarna/Affirm Headless confirmation requires a browser context.',
+        method,
+        provider: this.providerOf(method),
+      });
     }
+
     const attemptId = createStripeReturnAttemptId();
-    return buildStripeReturnUrl(method as StripeRedirectMethod, base, undefined, attemptId);
+    const redirectMethod = method as StripeRedirectMethod;
+    markHeadlessPendingReturn(redirectMethod, this.product.id, {
+      attemptId,
+      checkoutInstanceId: this.stableCheckoutIdentity,
+    });
+    const returnUrl = buildStripeReturnUrl(redirectMethod, base, undefined, attemptId);
+    return { returnUrl, attemptId };
   }
 
   private adapterFor(method: HeadlessStripeElementMethod): StripeElementAdapterApi {
