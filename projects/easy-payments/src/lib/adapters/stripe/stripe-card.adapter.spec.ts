@@ -209,6 +209,26 @@ describe('StripeCardAdapter', () => {
     expect(result.transactionId).toBe('pi_123');
   });
 
+  it('marks requires_capture as authorization-only success', async () => {
+    backend.createStripePayment.and.resolveTo({
+      provider: 'stripe',
+      clientSecret: 'pi_test_secret',
+      paymentIntentId: 'pi_auth',
+    });
+    confirmPayment.and.resolveTo({
+      paymentIntent: { id: 'pi_auth', status: 'requires_capture' },
+    });
+
+    await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
+    await adapter.mountPaymentElement(document.createElement('div'), 'pi_test_secret', 'light');
+
+    const result = await adapter.confirmPayment();
+    expect(result.status).toBe('success');
+    expect(result.metadata?.['stripeStatus']).toBe('requires_capture');
+    expect(result.metadata?.['authorizationOnly']).toBe(true);
+    expect(result.message).toContain('requires capture');
+  });
+
   it('prevents duplicate confirmations', async () => {
     backend.createStripePayment.and.resolveTo({
       provider: 'stripe',

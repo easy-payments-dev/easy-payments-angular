@@ -6,11 +6,13 @@ import { PaymentError } from '../../errors/payment-error';
 import { SAMPLE_PRODUCT } from '../../testing/test-doubles';
 import { KlarnaAdapter } from './klarna.adapter';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
+import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
 
 describe('KlarnaAdapter', () => {
   let adapter: KlarnaAdapter;
   let backend: jasmine.SpyObj<BackendService>;
   let sdkLoader: jasmine.SpyObj<StripeSdkLoader>;
+  let recovery: StripeRedirectRecoveryService;
 
   const mount = jasmine.createSpy('mount');
   const unmount = jasmine.createSpy('unmount');
@@ -33,6 +35,7 @@ describe('KlarnaAdapter', () => {
     sdkLoader = jasmine.createSpyObj<StripeSdkLoader>('StripeSdkLoader', ['load']);
     sdkLoader.load.and.resolveTo(stripeMock as never);
     history.replaceState({}, '', '/');
+    sessionStorage.clear();
     confirmPayment.calls.reset();
     retrievePaymentIntent.calls.reset();
     elements.calls.reset();
@@ -55,7 +58,15 @@ describe('KlarnaAdapter', () => {
       ],
     });
 
+    recovery = TestBed.inject(StripeRedirectRecoveryService);
+    recovery.resetForTests();
     adapter = TestBed.inject(KlarnaAdapter);
+  });
+
+  afterEach(() => {
+    recovery.resetForTests();
+    sessionStorage.clear();
+    history.replaceState({}, '', '/');
   });
 
   it('initializes without loading Stripe.js', async () => {

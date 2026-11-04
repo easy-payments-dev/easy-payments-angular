@@ -483,7 +483,7 @@ export class GooglePayAdapter extends BaseProviderAdapter {
         metadata: { processor: 'stripe', stripeStatus: status },
       });
     }
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
       return normalizePaymentResult({
         status: 'success',
         method: 'google-pay',
@@ -494,6 +494,27 @@ export class GooglePayAdapter extends BaseProviderAdapter {
         metadata: {
           processor: 'stripe',
           stripeStatus: status,
+          cardNetwork: paymentData.paymentMethodData?.info?.cardNetwork,
+          cardDetails: paymentData.paymentMethodData?.info?.cardDetails,
+          googlePayEnvironment: this.getEnvironment(),
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public status stays "success" for compatibility; metadata marks authorization-only.
+      return normalizePaymentResult({
+        status: 'success',
+        method: 'google-pay',
+        provider: 'googlePay',
+        transactionId: paymentIntent?.id ?? paymentIntentId,
+        sessionId: paymentIntent?.id ?? paymentIntentId,
+        message:
+          'Google Pay payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.',
+        metadata: {
+          processor: 'stripe',
+          stripeStatus: status,
+          authorizationOnly: true,
           cardNetwork: paymentData.paymentMethodData?.info?.cardNetwork,
           cardDetails: paymentData.paymentMethodData?.info?.cardDetails,
           googlePayEnvironment: this.getEnvironment(),

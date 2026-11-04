@@ -159,7 +159,9 @@ Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](doc
 
 **Is:** Angular payment integration library · unified checkout UI · per-method provider abstraction · normalized payment events/errors · developer readiness diagnostics · built-in UI localization (`en` / `es` / `pt`) · Easy Payments–owned visual customization (`theme`, `appearance`, `[visualStyle]`)
 
-**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · a headless-only checkout API · ACH or other unfinished roadmap methods
+**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · ACH or other unfinished roadmap methods
+
+Headless Checkout (`EasyPaymentsHeadless`) is an **additional** integration mode alongside Full Checkout and Buttons Only — see [docs/headless.md](docs/headless.md).
 
 Money settles to **your** Stripe / PayPal (and related) merchant accounts.
 

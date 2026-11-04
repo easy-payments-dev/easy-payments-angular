@@ -399,7 +399,22 @@ export class StripeCardAdapter extends BaseProviderAdapter {
       });
     }
 
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
+      return normalizePaymentResult({
+        status: 'success',
+        method: 'card',
+        provider: 'stripe',
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message: 'Card payment completed successfully.',
+        metadata: {
+          stripeStatus: status,
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public status stays "success" for compatibility; metadata marks authorization-only.
       return normalizePaymentResult({
         status: 'success',
         method: 'card',
@@ -407,11 +422,10 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         transactionId: paymentIntent?.id ?? session.paymentIntentId,
         sessionId: session.sessionId,
         message:
-          status === 'succeeded'
-            ? 'Card payment completed successfully.'
-            : `Card payment accepted (status: ${status}).`,
+          'Card payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.',
         metadata: {
           stripeStatus: status,
+          authorizationOnly: true,
         },
       });
     }

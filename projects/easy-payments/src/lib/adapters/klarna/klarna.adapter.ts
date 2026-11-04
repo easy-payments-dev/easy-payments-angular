@@ -418,7 +418,7 @@ export class KlarnaAdapter extends BaseProviderAdapter {
 
     // Terminal success only. Do not treat `processing` as success — Klarna may
     // still be settling asynchronously after customer authorization.
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
       return normalizePaymentResult({
         status: 'success',
         method: 'klarna',
@@ -429,6 +429,24 @@ export class KlarnaAdapter extends BaseProviderAdapter {
         metadata: {
           stripeStatus: status,
           gateway: 'stripe',
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public status stays "success" for compatibility; metadata marks authorization-only.
+      return normalizePaymentResult({
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message:
+          'Klarna payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.',
+        metadata: {
+          stripeStatus: status,
+          gateway: 'stripe',
+          authorizationOnly: true,
         },
       });
     }

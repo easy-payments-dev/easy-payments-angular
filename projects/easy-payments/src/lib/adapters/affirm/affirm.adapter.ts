@@ -420,7 +420,7 @@ export class AffirmAdapter extends BaseProviderAdapter {
 
     // Terminal success only. Do not treat `processing` as success — Affirm may
     // still be settling asynchronously after customer authorization.
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
       return normalizePaymentResult({
         status: 'success',
         method: 'affirm',
@@ -431,6 +431,24 @@ export class AffirmAdapter extends BaseProviderAdapter {
         metadata: {
           stripeStatus: status,
           gateway: 'stripe',
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public status stays "success" for compatibility; metadata marks authorization-only.
+      return normalizePaymentResult({
+        status: 'success',
+        method: 'affirm',
+        provider: 'affirm',
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message:
+          'Affirm payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.',
+        metadata: {
+          stripeStatus: status,
+          gateway: 'stripe',
+          authorizationOnly: true,
         },
       });
     }

@@ -43,8 +43,10 @@ export interface HeadlessMountHandle {
 }
 
 /**
- * How the merchant will interact with a method once H3 mounts provider UI.
- * Accurate for current Easy Payments adapters — not a claim that H2 can pay.
+ * How the merchant interacts with a Headless method after mount.
+ * - `confirm` — merchant CTA calls {@link HeadlessCheckoutSession.confirm}
+ * - `wallet-button` / `paypal-buttons` — official SDK button starts payment
+ * - `mock` — mock adapters when `enableMockMode` is on
  */
 export type HeadlessMethodInteraction =
   | 'confirm'
@@ -55,10 +57,11 @@ export type HeadlessMethodInteraction =
 /**
  * Options for {@link EasyPaymentsHeadless.createSession}.
  *
- * `locale` / `translations` are accepted and retained for H3 provider messaging;
- * H2 does not localize a Headless UI surface (there is none yet).
- * `theme` affects Stripe appearance context passed into availability checks only;
- * it does not mutate the shared root {@link ThemeService}.
+ * `locale` is passed into provider availability / Stripe Elements context.
+ * `translations` are accepted for forward compatibility; Headless does not own
+ * a localized chrome surface (merchants own layout copy).
+ * `theme` affects Stripe appearance context; it does not mutate the shared root
+ * {@link ThemeService}.
  */
 export interface HeadlessSessionOptions {
   product: PaymentProduct;
@@ -86,7 +89,7 @@ export interface HeadlessMethodStatus {
   diagnosticCode?: string;
   /**
    * Always true for real interactive methods in Easy Payments.
-   * Official provider UI mounting arrives in H3 — H2 never mounts.
+   * Merchants must call {@link HeadlessCheckoutSession.mount} before paying.
    */
   requiresMount: boolean;
   interaction: HeadlessMethodInteraction;
@@ -117,11 +120,9 @@ export interface HeadlessCheckoutEvents {
 /**
  * Public Headless Checkout session.
  *
- * H2: initialize, readiness, selection, destroy.
- * H3.1–H3.2: mount/confirm for `card`, `klarna`, and `affirm` (official Stripe Payment Element).
- * H3.3: mount PayPal official Buttons (buyer clicks Buttons — do **not** call `confirm()` for PayPal).
- * H3.4: mount Google Pay official button (buyer clicks button — do **not** call `confirm()` for Google Pay).
- * H4.3: {@link HeadlessCheckoutSession.recoverReturn} for Klarna/Affirm after leave-page redirect.
+ * Supports Card / Klarna / Affirm (Payment Element + `confirm()`), PayPal Buttons,
+ * Google Pay, and Apple Pay Express Checkout. Klarna/Affirm leave-page returns use
+ * {@link HeadlessCheckoutSession.recoverReturn} with a stable `checkoutInstanceId`.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;

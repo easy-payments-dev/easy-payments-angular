@@ -338,12 +338,17 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
       method: 'klarna',
       provider: 'klarna',
       transactionId: 'pi_ret',
-      metadata: { stripeStatus: 'requires_capture', gateway: 'stripe' },
+      metadata: {
+        stripeStatus: 'requires_capture',
+        gateway: 'stripe',
+        authorizationOnly: true,
+      },
     });
     const session = await readySession();
     const result = await session.recoverReturn();
     expect(result?.status).toBe('success');
     expect(result?.metadata?.['stripeStatus']).toBe('requires_capture');
+    expect(result?.metadata?.['authorizationOnly']).toBe(true);
     await session.destroy();
   });
 

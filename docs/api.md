@@ -131,7 +131,7 @@ Selecting a method tile does not fire `started`. A repeated click or a second SD
 
 ### Success, failure, and cancellation
 
-`success` still fires only after the existing provider flow confirms success. PayPal `success` fires after capture, not when the order is created. Stripe card, Google Pay, and Apple Pay `success` fires for PaymentIntent statuses `succeeded` and `requires_capture`.
+`success` still fires only after the existing provider flow confirms success. PayPal `success` fires after capture, not when the order is created. Stripe card, Google Pay, Apple Pay, Klarna, and Affirm `success` fires for PaymentIntent statuses `succeeded` and `requires_capture`. For `requires_capture`, public status remains `success` for compatibility, and `metadata.authorizationOnly` / `metadata.stripeStatus` mark authorization-only (not proof of captured funds).
 
 #### Pending / processing payments
 
@@ -220,7 +220,7 @@ Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backe
 
 #### Klarna / Affirm redirects
 
-Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records method, product id, attempt token, host kind (`checkout` or `buttons`), and a **stable `checkoutInstanceId`**. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `pending` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed.
+Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records method, product id, attempt token, host kind (`checkout`, `buttons`, or `headless`), and a **stable `checkoutInstanceId`**. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `pending` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed. Headless hosts recover via `session.recoverReturn()` (see [headless.md](./headless.md)); Full Checkout and Buttons Only cannot claim Headless markers (and the reverse).
 
 **Stable identity (recommended on multi-host pages).** Set optional `[checkoutInstanceId]` to a merchant-stable string that is the same before redirect and after return (for example your cart or checkout session id). Ownership then survives host reorder, conditional render, and `@defer` / delayed mount. Auto-generated ids work within a single SPA lifetime but do **not** survive a full-page Stripe redirect reload — use a merchant id when more than one host can show the same product.
 
