@@ -87,22 +87,43 @@ Never put `sk_...` or PayPal Client Secret in Angular.
 | Provider wiring | `projects/demo/src/app/app.config.ts` + Real-mode config in `app.ts` |
 | Template bindings | `projects/demo/src/app/app.html` |
 | Product / methods / theme / appearance / maxWidth | `projects/demo/src/app/app.ts` |
-| Headless checkout panel (H5.1–H5.2) | `projects/demo/src/app/headless-demo/` |
+| Headless checkout panel (H5.1–H5.3) | `projects/demo/src/app/headless-demo/` |
 | Placeholders | `projects/demo/src/environments/environment.example.ts` |
 
-### Headless Checkout demo (H5.1–H5.2)
+### Headless Checkout demo (H5.1–H5.3)
 
 Select **Headless Checkout** in the Experience control. The panel:
 
 - Injects public `EasyPaymentsHeadless` from `@easy-payments/angular`
 - Creates a session with the playground product/methods and stable `checkoutInstanceId` `demo-headless-1`
 - Shows a merchant-owned product summary and method selector
-- Calls `initialize()` and displays live availability + session state
-- Mounts official Stripe Payment Element UI for **Card / Klarna / Affirm** via `selectMethod()` + `mount()`
-- Defers interactive **PayPal / Google Pay / Apple Pay** mounts (official buttons start payment on click)
-- Recreates the session when product / methods / theme / locale change (skips while `processing` / `pending`)
+- Calls `initialize()`, then `recoverReturn()` before any new mount/payment attempt
+- Mounts official Stripe Payment Element UI for **Card / Klarna / Affirm**, then pays with a merchant **Pay / Continue** control that calls `session.confirm()`
+- Mounts official **PayPal / Google Pay / Apple Pay** controls (buyer click starts payment; the demo never calls `confirm()` for these)
+- Displays processing / success / pending / cancelled / error, authorization-only notes, and bounded lifecycle events
+- Recreates the session when product / methods / theme / locale change; defers recreate while processing, pending, or recovering, with an explicit “Apply pending configuration” action
 - Unmounts provider UI and destroys the session when you leave the mode
 
-**Not in H5.2:** `confirm()`, wallet/PayPal interactive mounts, or `recoverReturn()` (H5.3). The disabled “Pay” control is a placeholder only. The stable checkout id remains reserved for H5.3 Klarna/Affirm return recovery.
+#### Interaction model
+
+| Method | Mount | Start payment |
+|--------|-------|----------------|
+| Card / Klarna / Affirm | Stripe Payment Element | Merchant button → `session.confirm()` |
+| PayPal | Official PayPal Buttons | Buyer clicks PayPal |
+| Google Pay | Official Google Pay button | Buyer clicks Google Pay |
+| Apple Pay | Stripe Express Checkout Element | Buyer authorizes Apple Pay |
+
+#### Redirect recovery
+
+On Headless boot, after `initialize()`, the demo calls `recoverReturn()` for the stable `demo-headless-1` identity. Success requires Stripe retrieval via the library (not `redirect_status` alone). Transient `NETWORK_ERROR` / `SDK_LOAD_FAILED` keep correlation data and expose **Retry recoverReturn**. Null means non-owner / absent — the demo does not claim Full Checkout or Buttons Only returns.
+
+#### Semantics
+
+- **Pending / processing** is not success — do not retry a charge; verify backend/webhooks.
+- **authorizationOnly** means authorization, not captured funds.
+- Frontend Headless events are **not** authoritative fulfillment.
+- Prerequisites match Real / Test Providers (Stripe TEST publishable key, PayPal Sandbox, NestJS URLs, Apple Pay domain verification where applicable).
+
+Mock Mode still uses library mocks — it does not prove live Stripe/PayPal production readiness.
 
 Screenshots in docs were captured from this demo using browser viewport emulation (not physical device claims).

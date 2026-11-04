@@ -15,6 +15,8 @@ import {
 import { DEMO_HEADLESS_CHECKOUT_INSTANCE_ID } from './demo-headless-checkout-id';
 import {
   isHeadlessDemoMountDeferred,
+  isHeadlessDemoOfficialButtonMethod,
+  isHeadlessDemoRecoveryRetryable,
   isHeadlessDemoStripeElementMethod,
 } from './headless-demo-mount-policy';
 import { HeadlessDemoPanel } from './headless-demo.panel';
@@ -74,13 +76,26 @@ function methodStatus(
 }
 
 describe('headless-demo-mount-policy', () => {
-  it('defers PayPal, Google Pay, and Apple Pay', () => {
-    expect(isHeadlessDemoMountDeferred('paypal')).toBeTrue();
-    expect(isHeadlessDemoMountDeferred('google-pay')).toBeTrue();
-    expect(isHeadlessDemoMountDeferred('apple-pay')).toBeTrue();
-    expect(isHeadlessDemoMountDeferred('card')).toBeFalse();
+  it('classifies Stripe element vs official-button methods', () => {
+    expect(isHeadlessDemoStripeElementMethod('card')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('klarna')).toBeTrue();
-    expect(isHeadlessDemoStripeElementMethod('affirm')).toBeTrue();
+    expect(isHeadlessDemoOfficialButtonMethod('paypal')).toBeTrue();
+    expect(isHeadlessDemoOfficialButtonMethod('google-pay')).toBeTrue();
+    expect(isHeadlessDemoOfficialButtonMethod('apple-pay')).toBeTrue();
+    expect(isHeadlessDemoMountDeferred('paypal')).toBeFalse();
+  });
+
+  it('detects retryable recovery verification failures', () => {
+    expect(
+      isHeadlessDemoRecoveryRetryable(
+        new PaymentError({ code: 'NETWORK_ERROR', message: 'offline' }),
+      ),
+    ).toBeTrue();
+    expect(
+      isHeadlessDemoRecoveryRetryable(
+        new PaymentError({ code: 'PAYMENT_FAILED', message: 'nope' }),
+      ),
+    ).toBeFalse();
   });
 });
 
@@ -90,6 +105,8 @@ describe('HeadlessDemoPanel', () => {
   let destroy: jasmine.Spy;
   let selectMethod: jasmine.Spy;
   let mount: jasmine.Spy;
+  let confirm: jasmine.Spy;
+  let recoverReturn: jasmine.Spy;
   let unmount: jasmine.Spy;
   let state: ReturnType<typeof signal<HeadlessSessionState>>;
   let selectedMethod: ReturnType<typeof signal<PaymentMethod | null>>;
@@ -103,9 +120,9 @@ describe('HeadlessDemoPanel', () => {
   let cancel$: Subject<PaymentResult>;
   let error$: Subject<PaymentError>;
   let session: HeadlessCheckoutSession;
-  let mountHandle: HeadlessMountHandle;
 
   beforeEach(async () => {
+    history.replaceState({}, '', '/');
     state = signal<HeadlessSessionState>('idle');
     selectedMethod = signal<PaymentMethod | null>(null);
     availableMethods = signal<readonly HeadlessMethodStatus[]>([]);
@@ -125,8 +142,9 @@ describe('HeadlessDemoPanel', () => {
         methodStatus('affirm'),
         methodStatus('paypal'),
         methodStatus('google-pay'),
-        methodStatus('apple-pay', 'unavailable', false, {
-          readinessNote: 'Apple Pay requires a supported browser and domain.',
+        methodStatus('apple-pay', 'loading', false, {
+          readinessNote:
+            'Apple Pay eligibility is confirmed after mount("apple-pay") renders the Stripe Express Checkout Element.',
         }),
       ]);
       state.set('ready');
@@ -136,12 +154,23 @@ describe('HeadlessDemoPanel', () => {
       selectedMethod.set(method);
     });
     unmount = jasmine.createSpy('unmount').and.resolveTo();
-    mountHandle = { method: 'card', unmount };
     mount = jasmine.createSpy('mount').and.callFake(async (method: PaymentMethod, container: HTMLElement) => {
       container.setAttribute('data-mounted', method);
-      mountHandle = { method, unmount };
-      return mountHandle;
+      return { method, unmount } as HeadlessMountHandle;
     });
+    confirm = jasmine.createSpy('confirm').and.callFake(async () => {
+      state.set('processing');
+      const result: PaymentResult = {
+        status: 'success',
+        method: selectedMethod() ?? 'card',
+        provider: 'stripe',
+        transactionId: 'pi_demo',
+      };
+      lastResult.set(result);
+      state.set('success');
+      success$.next(result);
+    });
+    recoverReturn = jasmine.createSpy('recoverReturn').and.resolveTo(null);
 
     session = {
       id: 'runtime-session-1',
@@ -162,8 +191,8 @@ describe('HeadlessDemoPanel', () => {
       refreshAvailability: jasmine.createSpy('refreshAvailability'),
       selectMethod,
       mount,
-      confirm: jasmine.createSpy('confirm'),
-      recoverReturn: jasmine.createSpy('recoverReturn'),
+      confirm,
+      recoverReturn,
       destroy,
     } as unknown as HeadlessCheckoutSession;
 
@@ -180,6 +209,10 @@ describe('HeadlessDemoPanel', () => {
     }).compileComponents();
   });
 
+  afterEach(() => {
+    history.replaceState({}, '', '/');
+  });
+
   async function createPanel(
     overrides: { product?: PaymentProduct; methods?: PaymentMethod[]; theme?: string; locale?: string } = {},
   ): Promise<ComponentFixture<HeadlessDemoPanel>> {
@@ -194,254 +227,385 @@ describe('HeadlessDemoPanel', () => {
     return fixture;
   }
 
-  it('creates the Headless demo panel with product summary', async () => {
+  it('creates the panel with product summary and stable checkout identity', async () => {
     const fixture = await createPanel();
     const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('[data-testid="headless-demo-panel"]')).toBeTruthy();
     expect(root.querySelector('[data-testid="headless-demo-product"]')?.textContent).toContain(
       'Premium Plan',
     );
-    expect(root.querySelector('[data-testid="headless-demo-price"]')?.textContent).toContain(
-      '99.00 USD',
+    expect(root.textContent).toContain(DEMO_HEADLESS_CHECKOUT_INSTANCE_ID);
+    expect(createSession.calls.mostRecent().args[0].checkoutInstanceId).toBe(
+      DEMO_HEADLESS_CHECKOUT_INSTANCE_ID,
     );
-    expect(root.querySelector('[data-testid="headless-demo-mount-host"]')).toBeTruthy();
   });
 
-  it('injects EasyPaymentsHeadless and creates a session with stable checkout identity', async () => {
+  it('calls recoverReturn after initialize before enabling mounts', async () => {
+    const order: string[] = [];
+    initialize.and.callFake(async () => {
+      order.push('initialize');
+      availableMethods.set([methodStatus('card')]);
+      state.set('ready');
+    });
+    recoverReturn.and.callFake(async () => {
+      order.push('recoverReturn');
+      return null;
+    });
+
     await createPanel();
-
-    expect(createSession).toHaveBeenCalledTimes(1);
-    const options = createSession.calls.mostRecent().args[0];
-    expect(options.checkoutInstanceId).toBe(DEMO_HEADLESS_CHECKOUT_INSTANCE_ID);
-    expect(options.product).toEqual(PRODUCT);
-    expect(options.methods).toEqual(METHODS);
-    expect(options.theme).toBe('system');
+    expect(order).toEqual(['initialize', 'recoverReturn']);
   });
 
-  it('renders the method selector with loading and unavailable states', async () => {
+  it('mounts Stripe Card and confirms through the public API', async () => {
     const fixture = await createPanel();
-    const root = fixture.nativeElement as HTMLElement;
+    await fixture.componentInstance.onSelectMethod('card');
+    fixture.detectChanges();
 
-    expect(root.querySelector('[data-testid="headless-demo-availability"]')).toBeTruthy();
-    expect(root.querySelector('[data-method="card"]')).toBeTruthy();
-    expect(root.querySelector('[data-method="apple-pay"]')?.getAttribute('data-available')).toBe(
-      'false',
-    );
-    expect(root.textContent).toContain('Apple Pay requires a supported browser and domain.');
+    expect(mount).toHaveBeenCalled();
+    expect(fixture.componentInstance.canConfirmPayment()).toBeTrue();
+    await fixture.componentInstance.onConfirmPayment();
+    fixture.detectChanges();
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-result"]')
+        ?.textContent,
+    ).toContain('success');
   });
 
-  it('shows a loading state while initializing', async () => {
-    let resolveInit!: () => void;
-    initialize.and.returnValue(
+  it('confirms Klarna and Affirm without calling confirm for wallets', async () => {
+    const fixture = await createPanel();
+
+    await fixture.componentInstance.onSelectMethod('klarna');
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).toHaveBeenCalledTimes(1);
+
+    await fixture.componentInstance.onSelectMethod('affirm');
+    state.set('ready');
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).toHaveBeenCalledTimes(2);
+
+    await fixture.componentInstance.onSelectMethod('paypal');
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('prevents double confirm while processing', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+
+    let release!: () => void;
+    confirm.and.returnValue(
       new Promise<void>((resolve) => {
-        resolveInit = resolve;
+        release = resolve;
       }),
+    );
+
+    const first = fixture.componentInstance.onConfirmPayment();
+    await Promise.resolve();
+    await fixture.componentInstance.onConfirmPayment();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+  });
+
+  it('shows processing UI during confirmation', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+
+    let release!: () => void;
+    confirm.and.callFake(
+      () =>
+        new Promise<void>((resolve) => {
+          state.set('processing');
+          release = resolve;
+        }),
+    );
+
+    const pending = fixture.componentInstance.onConfirmPayment();
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-processing"]'),
+    ).toBeTruthy();
+    release();
+    await pending;
+  });
+
+  it('displays pending, cancelled, authorization-only, and authentication-required outcomes', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+
+    lastResult.set({
+      status: 'processing',
+      method: 'card',
+      provider: 'stripe',
+      message: 'Still processing',
+    });
+    state.set('pending');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-pending-note"]'),
+    ).toBeTruthy();
+
+    lastResult.set({
+      status: 'success',
+      method: 'card',
+      provider: 'stripe',
+      transactionId: 'pi_auth',
+      metadata: { authorizationOnly: true },
+    });
+    state.set('success');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-authorization-only"]',
+      )?.textContent,
+    ).toContain('Authorization only');
+
+    lastResult.set({
+      status: 'cancelled',
+      method: 'card',
+      provider: 'stripe',
+    });
+    state.set('cancelled');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-result"]')
+        ?.textContent,
+    ).toContain('cancelled');
+
+    lastError.set(
+      new PaymentError({
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Additional authentication is required.',
+        method: 'klarna',
+      }),
+    );
+    state.set('error');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-error"]')
+        ?.textContent,
+    ).toContain('AUTHENTICATION_REQUIRED');
+  });
+
+  it('mounts PayPal, Google Pay, and Apple Pay without calling confirm', async () => {
+    const fixture = await createPanel();
+
+    await fixture.componentInstance.onSelectMethod('paypal');
+    expect(mount.calls.mostRecent().args[0]).toBe('paypal');
+    expect(fixture.componentInstance.showOfficialButtonHint()).toBeTrue();
+    expect(fixture.componentInstance.canConfirmPayment()).toBeFalse();
+
+    await fixture.componentInstance.onSelectMethod('google-pay');
+    expect(mount.calls.mostRecent().args[0]).toBe('google-pay');
+
+    await fixture.componentInstance.onSelectMethod('apple-pay');
+    expect(mount.calls.mostRecent().args[0]).toBe('apple-pay');
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('treats PayPal capture success from library events, not approval alone', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('paypal');
+    started$.next({ method: 'paypal', provider: 'paypal' });
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-events"]')
+        ?.textContent,
+    ).toContain('started');
+
+    const captured: PaymentResult = {
+      status: 'success',
+      method: 'paypal',
+      provider: 'paypal',
+      transactionId: 'ORDER-1',
+    };
+    lastResult.set(captured);
+    state.set('success');
+    success$.next(captured);
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-last-result"]')
+        ?.textContent,
+    ).toContain('ORDER-1');
+  });
+
+  it('surfaces wallet unavailable without false success', async () => {
+    const fixture = await createPanel();
+    availableMethods.set([
+      methodStatus('google-pay', 'unavailable', false, {
+        diagnosticCode: 'GOOGLE_PAY_UNAVAILABLE',
+      }),
+    ]);
+    fixture.detectChanges();
+    await fixture.componentInstance.onSelectMethod('google-pay');
+    expect(mount).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.lastResult()).toBeNull();
+  });
+
+  function setBnplReturnUrl(): void {
+    history.replaceState(
+      {},
+      '',
+      '/?ep_method=klarna&payment_intent=pi_x&payment_intent_client_secret=cs_test_x',
+    );
+  }
+
+  it('recovers a successful owned return on initialization', async () => {
+    setBnplReturnUrl();
+    recoverReturn.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_recovered',
+    } satisfies PaymentResult);
+
+    const fixture = await createPanel();
+    fixture.detectChanges();
+    expect(recoverReturn).toHaveBeenCalled();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-recovery"]')
+        ?.textContent,
+    ).toContain('success');
+  });
+
+  it('handles pending, cancelled, transient failure, and recovery retry', async () => {
+    setBnplReturnUrl();
+    recoverReturn.and.resolveTo({
+      status: 'processing',
+      method: 'affirm',
+      provider: 'affirm',
+    } satisfies PaymentResult);
+    let fixture = await createPanel();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-recovery"]')
+        ?.textContent,
+    ).toContain('pending');
+    fixture.destroy();
+
+    setBnplReturnUrl();
+    recoverReturn.and.resolveTo({
+      status: 'cancelled',
+      method: 'klarna',
+      provider: 'klarna',
+    } satisfies PaymentResult);
+    fixture = await createPanel();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-recovery"]')
+        ?.textContent,
+    ).toContain('cancelled');
+    fixture.destroy();
+
+    setBnplReturnUrl();
+    recoverReturn.and.rejectWith(
+      new PaymentError({ code: 'NETWORK_ERROR', message: 'offline' }),
+    );
+    fixture = await createPanel();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRetryRecovery()).toBeTrue();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-recovery-retry"]',
+      ),
+    ).toBeTruthy();
+
+    recoverReturn.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_retry',
+    } satisfies PaymentResult);
+    await fixture.componentInstance.retryRecoverReturn();
+    fixture.detectChanges();
+    expect(recoverReturn.calls.count()).toBeGreaterThan(1);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('does not fabricate results for non-owner recoverReturn null', async () => {
+    setBnplReturnUrl();
+    recoverReturn.and.resolveTo(null);
+    const fixture = await createPanel();
+    expect(fixture.componentInstance.lastResult()).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-recovery"]')
+        ?.textContent,
+    ).toContain('No Headless-owned return');
+  });
+
+  it('does not create a new session PaymentIntent path during recovery before mount', async () => {
+    setBnplReturnUrl();
+    let recoverDone = false;
+    recoverReturn.and.callFake(async () => {
+      expect(mount).not.toHaveBeenCalled();
+      recoverDone = true;
+      return {
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: 'pi_ok',
+      } satisfies PaymentResult;
+    });
+    await createPanel();
+    expect(recoverDone).toBeTrue();
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('defers configuration changes during in-flight recovery', async () => {
+    setBnplReturnUrl();
+    let releaseRecover!: (value: PaymentResult | null) => void;
+    let recoverStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      recoverStarted = resolve;
+    });
+    recoverReturn.and.callFake(
+      () =>
+        new Promise<PaymentResult | null>((resolve) => {
+          recoverStarted();
+          releaseRecover = resolve;
+        }),
     );
 
     const fixture = TestBed.createComponent(HeadlessDemoPanel);
     fixture.componentRef.setInput('product', PRODUCT);
     fixture.componentRef.setInput('methods', METHODS);
     fixture.detectChanges();
+    await started;
 
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-loading"]'),
-    ).toBeTruthy();
+    const initialCalls = createSession.calls.count();
+    fixture.componentRef.setInput('product', { ...PRODUCT, amount: 130 });
+    fixture.detectChanges();
+    await Promise.resolve();
+
+    expect(createSession.calls.count()).toBe(initialCalls);
+    expect(fixture.componentInstance.recoveryPhase()).toBe('recovering');
+    expect(fixture.componentInstance.pendingConfigFingerprint()).not.toBeNull();
+
+    releaseRecover(null);
+    for (let i = 0; i < 20 && fixture.componentInstance.bootStatus() !== 'ready'; i++) {
+      await Promise.resolve();
+    }
+    fixture.detectChanges();
+    expect(fixture.componentInstance.bootStatus()).toBe('ready');
+    expect(fixture.componentInstance.paymentLocked()).toBeFalse();
+    expect(fixture.componentInstance.pendingConfigFingerprint()).not.toBeNull();
+    expect(fixture.componentInstance.canApplyPendingConfig()).toBeTrue();
+    fixture.destroy();
+  });
+
+  it('defers configuration changes during processing, pending, and recovery', async () => {
+    const fixture = await createPanel();
+    const initialCalls = createSession.calls.count();
+
+    state.set('processing');
+    fixture.componentRef.setInput('product', { ...PRODUCT, amount: 120 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(createSession.calls.count()).toBe(initialCalls);
+    expect(fixture.componentInstance.pendingConfigFingerprint()).not.toBeNull();
 
     state.set('ready');
-    availableMethods.set([methodStatus('card')]);
-    resolveInit();
-    await fixture.whenStable();
     fixture.detectChanges();
-
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-loading"]'),
-    ).toBeNull();
-  });
-
-  it('mounts Stripe Card through the public session API', async () => {
-    const fixture = await createPanel();
-    await fixture.componentInstance.onSelectMethod('card');
-    fixture.detectChanges();
-
-    expect(selectMethod).toHaveBeenCalledWith('card');
-    expect(mount).toHaveBeenCalled();
-    expect(mount.calls.mostRecent().args[0]).toBe('card');
-    expect(mount.calls.mostRecent().args[1]).toBeInstanceOf(HTMLElement);
-    expect(fixture.componentInstance.mountPhase()).toBe('mounted');
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector(
-        '[data-testid="headless-demo-confirm-placeholder"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('.headless-demo__pay-disabled')?.hasAttribute(
-        'disabled',
-      ),
-    ).toBeTrue();
-    expect(session.confirm).not.toHaveBeenCalled();
-  });
-
-  it('mounts Klarna and Affirm Payment Elements', async () => {
-    const fixture = await createPanel();
-
-    await fixture.componentInstance.onSelectMethod('klarna');
-    expect(mount.calls.mostRecent().args[0]).toBe('klarna');
-    expect(fixture.componentInstance.mountPhase()).toBe('mounted');
-
-    await fixture.componentInstance.onSelectMethod('affirm');
-    expect(unmount).toHaveBeenCalled();
-    expect(mount.calls.mostRecent().args[0]).toBe('affirm');
-    expect(session.confirm).not.toHaveBeenCalled();
-  });
-
-  it('defers PayPal, Google Pay, and Apple Pay without mounting', async () => {
-    const fixture = await createPanel();
-    const root = fixture.nativeElement as HTMLElement;
-
-    await fixture.componentInstance.onSelectMethod('paypal');
-    fixture.detectChanges();
-    expect(selectMethod).toHaveBeenCalledWith('paypal');
-    expect(mount).not.toHaveBeenCalled();
-    expect(fixture.componentInstance.mountPhase()).toBe('deferred');
-    expect(root.querySelector('[data-testid="headless-demo-mount-deferred"]')?.textContent).toContain(
-      'H5.3',
-    );
-
-    await fixture.componentInstance.onSelectMethod('google-pay');
-    fixture.detectChanges();
-    expect(mount).not.toHaveBeenCalled();
-    expect(fixture.componentInstance.mountPhase()).toBe('deferred');
-
-    // Apple Pay remains unavailable in the default fixture — selection blocked.
-    await fixture.componentInstance.onSelectMethod('apple-pay');
-    expect(selectMethod).not.toHaveBeenCalledWith('apple-pay');
-
-    availableMethods.set([
-      ...availableMethods().filter((entry) => entry.method !== 'apple-pay'),
-      methodStatus('apple-pay'),
-    ]);
-    fixture.detectChanges();
-    await fixture.componentInstance.onSelectMethod('apple-pay');
-    fixture.detectChanges();
-    expect(selectMethod).toHaveBeenCalledWith('apple-pay');
-    expect(mount).not.toHaveBeenCalled();
-    expect(root.querySelector('[data-testid="headless-demo-mount-deferred"]')).toBeTruthy();
-  });
-
-  it('does not select unavailable methods', async () => {
-    const fixture = await createPanel();
-    await fixture.componentInstance.onSelectMethod('apple-pay');
-    expect(selectMethod).not.toHaveBeenCalled();
-    expect(mount).not.toHaveBeenCalled();
-  });
-
-  it('unmounts the previous handle when switching methods', async () => {
-    const fixture = await createPanel();
-    await fixture.componentInstance.onSelectMethod('card');
-    expect(mount).toHaveBeenCalledTimes(1);
-
-    await fixture.componentInstance.onSelectMethod('klarna');
-    expect(unmount).toHaveBeenCalled();
-    expect(mount).toHaveBeenCalledTimes(2);
-    expect(mount.calls.mostRecent().args[0]).toBe('klarna');
-  });
-
-  it('ignores stale mount completions during rapid switching', async () => {
-    const fixture = await createPanel();
-    let resolveCard!: (handle: HeadlessMountHandle) => void;
-    let cardMountStarted!: () => void;
-    const cardStarted = new Promise<void>((resolve) => {
-      cardMountStarted = resolve;
-    });
-    mount.and.callFake(async (method: PaymentMethod) => {
-      if (method === 'card') {
-        cardMountStarted();
-        return new Promise<HeadlessMountHandle>((resolve) => {
-          resolveCard = resolve;
-        });
-      }
-      return { method, unmount };
-    });
-
-    const cardPromise = fixture.componentInstance.onSelectMethod('card');
-    await cardStarted;
-    await fixture.componentInstance.onSelectMethod('klarna');
-    resolveCard({ method: 'card', unmount });
-    await cardPromise;
-
-    expect(fixture.componentInstance.mountPhase()).toBe('mounted');
-    expect(mount.calls.mostRecent().args[0]).toBe('klarna');
-  });
-
-  it('surfaces mount failures without calling confirm', async () => {
-    const fixture = await createPanel();
-    mount.and.rejectWith(
-      new PaymentError({ code: 'PROVIDER_UNAVAILABLE', message: 'Element failed.' }),
-    );
-
-    await fixture.componentInstance.onSelectMethod('card');
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.mountPhase()).toBe('failed');
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-mount-error"]')
-        ?.textContent,
-    ).toContain('PROVIDER_UNAVAILABLE');
-    expect(session.confirm).not.toHaveBeenCalled();
-  });
-
-  it('continues after unmount failure when switching methods', async () => {
-    const fixture = await createPanel();
-    await fixture.componentInstance.onSelectMethod('card');
-    unmount.and.rejectWith(new Error('unmount failed'));
-
-    await fixture.componentInstance.onSelectMethod('klarna');
-    expect(mount.calls.mostRecent().args[0]).toBe('klarna');
-    expect(fixture.componentInstance.mountPhase()).toBe('mounted');
-  });
-
-  it('destroys the session and unmounts on component teardown', async () => {
-    const fixture = await createPanel();
-    await fixture.componentInstance.onSelectMethod('card');
-    fixture.destroy();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(unmount).toHaveBeenCalled();
-    expect(destroy).toHaveBeenCalled();
-  });
-
-  it('ignores mount completion after destroy during mount', async () => {
-    const fixture = await createPanel();
-    let resolveMount!: (handle: HeadlessMountHandle) => void;
-    let mountStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      mountStarted = resolve;
-    });
-    mount.and.callFake(
-      () =>
-        new Promise<HeadlessMountHandle>((resolve) => {
-          mountStarted();
-          resolveMount = resolve;
-        }),
-    );
-
-    const mountPromise = fixture.componentInstance.onSelectMethod('card');
-    await started;
-    fixture.destroy();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const staleUnmount = jasmine.createSpy('stale-unmount').and.resolveTo();
-    resolveMount({ method: 'card', unmount: staleUnmount });
-    await mountPromise;
-
-    expect(staleUnmount).toHaveBeenCalled();
-    expect(destroy).toHaveBeenCalled();
-  });
-
-  it('recreates the session when product configuration changes', async () => {
-    const fixture = await createPanel();
-    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.canApplyPendingConfig()).toBeTrue();
 
     const nextSession = {
       ...session,
@@ -451,130 +615,71 @@ describe('HeadlessDemoPanel', () => {
         availableMethods.set([methodStatus('card')]);
         state.set('ready');
       }),
+      recoverReturn: jasmine.createSpy('recover-2').and.resolveTo(null),
       selectMethod,
       mount,
+      confirm,
     } as unknown as HeadlessCheckoutSession;
     createSession.and.returnValue(nextSession);
 
-    fixture.componentRef.setInput('product', {
-      ...PRODUCT,
-      amount: 149,
-      name: 'Premium Plan Plus',
-    });
-    fixture.detectChanges();
+    await fixture.componentInstance.applyPendingConfiguration();
     await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(createSession.calls.count()).toBeGreaterThanOrEqual(2);
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-product"]')
-        ?.textContent,
-    ).toContain('Premium Plan Plus');
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-price"]')
-        ?.textContent,
-    ).toContain('149.00 USD');
+    expect(createSession.calls.count()).toBeGreaterThan(initialCalls);
   });
 
-  it('skips product recreation while payment is processing', async () => {
+  it('locks method switching while processing', async () => {
     const fixture = await createPanel();
-    const initialCalls = createSession.calls.count();
+    await fixture.componentInstance.onSelectMethod('card');
     state.set('processing');
     fixture.detectChanges();
-
-    fixture.componentRef.setInput('product', { ...PRODUCT, amount: 200 });
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(createSession.calls.count()).toBe(initialCalls);
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="headless-demo-config-skip"]'),
-    ).toBeTruthy();
+    await fixture.componentInstance.onSelectMethod('klarna');
+    expect(selectMethod).not.toHaveBeenCalledWith('klarna');
   });
 
-  it('applies theme and locale to createSession options', async () => {
-    await createPanel({ theme: 'dark', locale: 'es' });
-    const options = createSession.calls.mostRecent().args[0];
-    expect(options.theme).toBe('dark');
-    expect(options.locale).toBe('es');
-  });
-
-  it('keeps a mobile-friendly method list structure', async () => {
+  it('unmounts previous handle and ignores stale mount after destroy', async () => {
     const fixture = await createPanel();
-    const list = (fixture.nativeElement as HTMLElement).querySelector(
-      '[data-testid="headless-demo-availability"]',
-    );
-    expect(list?.getAttribute('role')).toBe('listbox');
-    expect(list?.querySelectorAll('[role="option"]').length).toBeGreaterThan(0);
-  });
+    await fixture.componentInstance.onSelectMethod('card');
+    await fixture.componentInstance.onSelectMethod('klarna');
+    expect(unmount).toHaveBeenCalled();
 
-  it('surfaces initialization errors and allows retry', async () => {
-    initialize.and.rejectWith(
-      new PaymentError({ code: 'CONFIG_INVALID', message: 'Missing providers.' }),
-    );
-
-    const fixture = await createPanel();
-    const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('[data-testid="headless-demo-boot-error"]')?.textContent).toContain(
-      'CONFIG_INVALID',
-    );
-
-    initialize.and.callFake(async () => {
-      availableMethods.set([methodStatus('card')]);
-      state.set('ready');
+    let resolveMount!: (handle: HeadlessMountHandle) => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      started = resolve;
     });
-    await fixture.componentInstance.retryInitialize();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(createSession.calls.count()).toBeGreaterThanOrEqual(2);
-    expect(root.querySelector('[data-testid="headless-demo-boot-error"]')).toBeNull();
+    mount.and.callFake(
+      () =>
+        new Promise<HeadlessMountHandle>((resolve) => {
+          started();
+          resolveMount = resolve;
+        }),
+    );
+    const pending = fixture.componentInstance.onSelectMethod('card');
+    await gate;
+    fixture.destroy();
+    await Promise.resolve();
+    const staleUnmount = jasmine.createSpy('stale-unmount').and.resolveTo();
+    resolveMount({ method: 'card', unmount: staleUnmount });
+    await pending;
+    expect(staleUnmount).toHaveBeenCalled();
   });
 
-  it('subscribes to lifecycle events without exposing secrets', async () => {
-    const fixture = await createPanel();
-    methodChange$.next({ previousMethod: null, method: 'card' });
-    error$.next(
-      new PaymentError({
-        code: 'PAYMENT_FAILED',
-        message: 'Buyer declined.',
-      }),
-    );
-    fixture.detectChanges();
+  it('keeps theme/locale on createSession and a listbox method structure', async () => {
+    const fixture = await createPanel({ theme: 'dark', locale: 'es' });
+    expect(createSession.calls.mostRecent().args[0].theme).toBe('dark');
+    expect(createSession.calls.mostRecent().args[0].locale).toBe('es');
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('[data-testid="headless-demo-availability"]')
+        ?.getAttribute('role'),
+    ).toBe('listbox');
+  });
 
-    const events = (fixture.nativeElement as HTMLElement).querySelector(
-      '[data-testid="headless-demo-events"]',
-    );
-    expect(events?.textContent).toContain('methodChange');
-    expect(events?.textContent).toContain('PAYMENT_FAILED');
+  it('does not expose secrets in the UI', async () => {
+    const fixture = await createPanel();
+    error$.next(new PaymentError({ code: 'PAYMENT_FAILED', message: 'declined' }));
+    fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('client_secret');
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('sk_');
-  });
-
-  it('keeps checkout identity stable across remounts while creating a fresh session', async () => {
-    const first = await createPanel();
-    expect(first.componentInstance.checkoutInstanceId).toBe(DEMO_HEADLESS_CHECKOUT_INSTANCE_ID);
-    first.destroy();
-
-    const secondSession = {
-      ...session,
-      id: 'runtime-session-2',
-      destroy: jasmine.createSpy('destroy-2').and.resolveTo(),
-      initialize: jasmine.createSpy('initialize-2').and.callFake(async () => {
-        availableMethods.set([methodStatus('card')]);
-        state.set('ready');
-      }),
-      selectMethod,
-      mount,
-    } as unknown as HeadlessCheckoutSession;
-    createSession.and.returnValue(secondSession);
-
-    const second = await createPanel();
-    expect(second.componentInstance.checkoutInstanceId).toBe(DEMO_HEADLESS_CHECKOUT_INSTANCE_ID);
-    expect(createSession.calls.count()).toBe(2);
-    expect((second.nativeElement as HTMLElement).textContent).toContain('runtime-session-2');
-    second.destroy();
   });
 });

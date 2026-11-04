@@ -3,9 +3,10 @@
     <p class="headless-demo__kicker">Merchant-owned UI</p>
     <h3 class="headless-demo__title">Headless Checkout</h3>
     <p class="headless-demo__lede">
-      H5.2: select a method and mount official Stripe Payment Element UI. PayPal / Google Pay /
-      Apple Pay interactive mounts are deferred until H5.3. Payment confirmation and redirect
-      recovery are not wired yet.
+      H5.3: mount official provider UI, confirm Card/Klarna/Affirm via the public session API, use
+      official PayPal / Google Pay / Apple Pay controls, and recover Klarna/Affirm returns with
+      <code>recoverReturn()</code>. Frontend outcomes are not authoritative fulfillment — use
+      backend / webhooks.
     </p>
   </header>
 
@@ -48,9 +49,13 @@
     </div>
   </dl>
 
-  @if (isInitializing()) {
+  @if (isInitializing() || recoveryPhase() === 'recovering' || recoveryPhase() === 'checking') {
     <p class="headless-demo__status" role="status" data-testid="headless-demo-loading">
-      Initializing Headless session…
+      @if (recoveryPhase() === 'recovering') {
+        Recovering Klarna/Affirm return…
+      } @else {
+        Initializing Headless session…
+      }
     </p>
   }
 
@@ -63,9 +68,52 @@
     </div>
   }
 
+  @if (recoveryMessage(); as recovery) {
+    <div
+      class="headless-demo__notice"
+      role="status"
+      data-testid="headless-demo-recovery"
+      [attr.data-recovery-phase]="recoveryPhase()"
+    >
+      <p>{{ recovery }}</p>
+      @if (canRetryRecovery()) {
+        <button
+          type="button"
+          class="headless-demo__retry headless-demo__retry--notice"
+          data-testid="headless-demo-recovery-retry"
+          (click)="retryRecoverReturn()"
+        >
+          Retry recoverReturn
+        </button>
+      }
+    </div>
+  }
+
   @if (configSkipMessage(); as skip) {
-    <p class="headless-demo__notice" role="status" data-testid="headless-demo-config-skip">
-      {{ skip }}
+    <div class="headless-demo__notice" role="status" data-testid="headless-demo-config-skip">
+      <p>{{ skip }}</p>
+      @if (canApplyPendingConfig()) {
+        <button
+          type="button"
+          class="headless-demo__retry headless-demo__retry--notice"
+          data-testid="headless-demo-apply-config"
+          (click)="applyPendingConfiguration()"
+        >
+          Apply pending configuration
+        </button>
+      }
+    </div>
+  }
+
+  @if (sessionState() === 'processing' || confirmInFlight()) {
+    <p class="headless-demo__status" role="status" data-testid="headless-demo-processing">
+      Payment processing…
+    </p>
+  }
+
+  @if (lastActionError(); as actionError) {
+    <p class="headless-demo__error" role="status" data-testid="headless-demo-action-error">
+      {{ actionError }}
     </p>
   }
 
@@ -76,19 +124,37 @@
   }
 
   @if (lastResult(); as result) {
-    <p class="headless-demo__result" role="status" data-testid="headless-demo-last-result">
-      Last result: {{ result.status }} · {{ result.method }}
-      @if (result.transactionId) {
-        · {{ result.transactionId }}
+    <div class="headless-demo__result" role="status" data-testid="headless-demo-last-result">
+      <p>
+        Last result: {{ result.status }} · {{ result.method }}
+        @if (result.transactionId) {
+          · {{ result.transactionId }}
+        }
+      </p>
+      @if (authorizationOnly()) {
+        <p data-testid="headless-demo-authorization-only">
+          Authorization only — funds are not captured. Confirm capture/fulfillment on your backend.
+        </p>
       }
-    </p>
+      @if (resultIsPending()) {
+        <p data-testid="headless-demo-pending-note">
+          Pending / processing — not success. Do not retry a charge; verify via backend/webhooks.
+        </p>
+      }
+      @if (result.message) {
+        <p>{{ result.message }}</p>
+      }
+      <p class="headless-demo__fulfillment-note">
+        Demo UI outcomes are not authoritative fulfillment.
+      </p>
+    </div>
   }
 
   <section class="headless-demo__selector" aria-label="Payment method selector">
     <h4 class="headless-demo__subtitle">Payment methods</h4>
     <p class="headless-demo__hint">
-      Choose an available method to mount its official provider UI. Unavailable methods stay visible
-      with a reason. Wallet and PayPal buttons are listed but not mounted in H5.2.
+      Card / Klarna / Affirm mount a Payment Element and use the merchant Pay control.
+      PayPal / Google Pay / Apple Pay mount official provider buttons (buyer click starts payment).
     </p>
 
     @if (availabilityEmpty()) {
@@ -129,8 +195,10 @@
               >
                 {{ entry.available ? 'available' : 'unavailable' }}
               </span>
-              @if (isDeferredMethod(entry.method)) {
-                <span class="headless-demo__badge" data-deferred="yes">H5.3 mount</span>
+              @if (isOfficialButtonMethod(entry.method)) {
+                <span class="headless-demo__badge" data-interaction="official">Official button</span>
+              } @else if (isStripeElementMethod(entry.method)) {
+                <span class="headless-demo__badge" data-interaction="confirm">Merchant confirm</span>
               }
             </span>
             <span class="headless-demo__method-meta">
@@ -165,22 +233,14 @@
       </p>
     }
 
-    @if (mountPhase() === 'deferred') {
-      <div class="headless-demo__notice" role="status" data-testid="headless-demo-mount-deferred">
-        @if (uiSelectedMethod(); as deferredMethod) {
-          <p>
-            <strong>{{ methodLabels[deferredMethod] ?? deferredMethod }}</strong>
-            is available, but interactive mounting is deferred.
-          </p>
-        }
-        <p>{{ mountNotice() }}</p>
-      </div>
-    }
-
     @if (mountError(); as error) {
       <p class="headless-demo__error" role="alert" data-testid="headless-demo-mount-error">
         {{ error }}
       </p>
+    }
+
+    @if (mountNotice(); as notice) {
+      <p class="headless-demo__hint" data-testid="headless-demo-mount-notice">{{ notice }}</p>
     }
 
     <div
@@ -197,15 +257,36 @@
       [attr.aria-hidden]="mountPhase() !== 'mounted' && mountPhase() !== 'mounting'"
     ></div>
 
-    @if (showConfirmPlaceholder()) {
-      <div class="headless-demo__confirm-placeholder" data-testid="headless-demo-confirm-placeholder">
-        <button type="button" class="headless-demo__pay-disabled" disabled>
-          Pay — not available yet (H5.3)
+    @if (showConfirmControl()) {
+      <div class="headless-demo__confirm" data-testid="headless-demo-confirm">
+        <button
+          type="button"
+          class="headless-demo__pay"
+          data-testid="headless-demo-pay"
+          [disabled]="!canConfirmPayment()"
+          (click)="onConfirmPayment()"
+        >
+          @if (confirmInFlight() || sessionState() === 'processing') {
+            Processing…
+          } @else if (uiSelectedMethod() === 'klarna') {
+            Continue with Klarna
+          } @else if (uiSelectedMethod() === 'affirm') {
+            Continue with Affirm
+          } @else {
+            Pay with card
+          }
         </button>
         <p class="headless-demo__hint">
-          Stripe Payment Element is mounted. The demo does not call <code>confirm()</code> in H5.2.
+          Calls public <code>session.confirm()</code> for the selected Stripe method only.
         </p>
       </div>
+    }
+
+    @if (showOfficialButtonHint()) {
+      <p class="headless-demo__hint" data-testid="headless-demo-official-hint">
+        Official provider control is mounted above. Payment starts only from that control — not from
+        a demo-owned Pay button.
+      </p>
     }
   </section>
 
@@ -213,7 +294,7 @@
     <h4 class="headless-demo__subtitle">Lifecycle events</h4>
     @if (lifecycleEvents().length === 0) {
       <p class="headless-demo__hint" data-testid="headless-demo-events-empty">
-        No Headless payment terminal events yet (confirm / wallet pay arrive in H5.3).
+        No Headless lifecycle events yet.
       </p>
     } @else {
       <ul class="headless-demo__event-list" data-testid="headless-demo-events">

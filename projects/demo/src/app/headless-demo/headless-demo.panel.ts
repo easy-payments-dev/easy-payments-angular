@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   effect,
   inject,
@@ -9,13 +10,13 @@ import {
   signal,
   untracked,
   viewChild,
-  ElementRef,
 } from '@angular/core';
 import { Subscription } from 'rxjs';
 import {
   EasyPaymentsHeadless,
   PAYMENT_METHOD_LABELS,
   PaymentError,
+  isAnyStripeBnplReturnAttempt,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
   type HeadlessCheckoutSession,
@@ -23,22 +24,25 @@ import {
   type HeadlessMountHandle,
   type PaymentMethod,
   type PaymentProduct,
+  type PaymentResult,
   type PaymentTheme,
 } from '@easy-payments/angular';
 import { DEMO_HEADLESS_CHECKOUT_INSTANCE_ID } from './demo-headless-checkout-id';
 import {
-  isHeadlessDemoMountDeferred,
+  isHeadlessDemoOfficialButtonMethod,
+  isHeadlessDemoRecoveryRetryable,
   isHeadlessDemoStripeElementMethod,
 } from './headless-demo-mount-policy';
 
-type MountPhase = 'idle' | 'mounting' | 'mounted' | 'deferred' | 'failed';
+type MountPhase = 'idle' | 'mounting' | 'mounted' | 'failed';
+type RecoveryPhase = 'idle' | 'checking' | 'recovering' | 'settled' | 'retryable';
 
 /**
- * H5.2 Headless Checkout playground — merchant-owned UI + safe provider mounts.
+ * H5.3 Headless Checkout playground — payment execution + redirect recovery.
  *
- * Mounts Stripe Card / Klarna / Affirm Payment Elements. Defers PayPal / Google Pay /
- * Apple Pay interactive mounts until H5.3 (official buttons initiate payment on click).
- * Does not call confirm() or recoverReturn().
+ * Card/Klarna/Affirm: Payment Element + merchant `confirm()`.
+ * PayPal/Google Pay/Apple Pay: official provider buttons (no `confirm()`).
+ * Klarna/Affirm returns: `recoverReturn()` before any new mount/payment attempt.
  */
 @Component({
   selector: 'app-headless-demo',
@@ -63,6 +67,8 @@ export class HeadlessDemoPanel {
   private eventSubscriptions = new Subscription();
   private bootGeneration = 0;
   private mountGeneration = 0;
+  private confirmGeneration = 0;
+  private recoveryGeneration = 0;
   private mountHandle: HeadlessMountHandle | null = null;
   private appliedFingerprint: string | null = null;
 
@@ -74,7 +80,12 @@ export class HeadlessDemoPanel {
   readonly mountError = signal<string | null>(null);
   readonly mountNotice = signal<string | null>(null);
   readonly configSkipMessage = signal<string | null>(null);
+  readonly pendingConfigFingerprint = signal<string | null>(null);
   readonly uiSelectedMethod = signal<PaymentMethod | null>(null);
+  readonly confirmInFlight = signal(false);
+  readonly recoveryPhase = signal<RecoveryPhase>('idle');
+  readonly recoveryMessage = signal<string | null>(null);
+  readonly lastActionError = signal<string | null>(null);
 
   readonly methodLabels = PAYMENT_METHOD_LABELS;
 
@@ -100,7 +111,33 @@ export class HeadlessDemoPanel {
     return `${total.toFixed(2)} ${product.currency}`;
   });
 
-  readonly showConfirmPlaceholder = computed(() => {
+  readonly paymentLocked = computed(() => {
+    const state = this.sessionState();
+    return (
+      this.confirmInFlight() ||
+      this.recoveryPhase() === 'checking' ||
+      this.recoveryPhase() === 'recovering' ||
+      state === 'processing' ||
+      state === 'pending'
+    );
+  });
+
+  readonly canConfirmPayment = computed(() => {
+    const method = this.uiSelectedMethod();
+    const state = this.sessionState();
+    return (
+      this.mountPhase() === 'mounted' &&
+      method !== null &&
+      isHeadlessDemoStripeElementMethod(method) &&
+      this.selectedMethod() === method &&
+      (state === 'ready' || state === 'error') &&
+      !this.confirmInFlight() &&
+      this.recoveryPhase() !== 'recovering' &&
+      this.recoveryPhase() !== 'checking'
+    );
+  });
+
+  readonly showConfirmControl = computed(() => {
     const method = this.uiSelectedMethod();
     return (
       this.mountPhase() === 'mounted' &&
@@ -109,10 +146,34 @@ export class HeadlessDemoPanel {
     );
   });
 
-  readonly paymentLocked = computed(() => {
-    const state = this.sessionState();
-    return state === 'processing' || state === 'pending';
+  readonly showOfficialButtonHint = computed(() => {
+    const method = this.uiSelectedMethod();
+    return (
+      this.mountPhase() === 'mounted' &&
+      method !== null &&
+      isHeadlessDemoOfficialButtonMethod(method)
+    );
   });
+
+  readonly authorizationOnly = computed(() => {
+    const result = this.lastResult();
+    return result?.metadata?.['authorizationOnly'] === true;
+  });
+
+  readonly resultIsPending = computed(() => {
+    const result = this.lastResult();
+    return result?.status === 'processing' || this.sessionState() === 'pending';
+  });
+
+  readonly canApplyPendingConfig = computed(() => {
+    return (
+      this.pendingConfigFingerprint() !== null &&
+      !this.paymentLocked() &&
+      this.bootStatus() === 'ready'
+    );
+  });
+
+  readonly canRetryRecovery = computed(() => this.recoveryPhase() === 'retryable');
 
   private readonly configFingerprint = computed(() => {
     const product = this.product();
@@ -143,21 +204,39 @@ export class HeadlessDemoPanel {
     });
   }
 
-  /** Safe initialize retry after a failed boot (public API supports re-initialize). */
   async retryInitialize(): Promise<void> {
-    if (this.bootStatus() === 'starting') {
+    if (this.bootStatus() === 'starting' || this.paymentLocked()) {
       return;
     }
     this.appliedFingerprint = null;
     await this.applyCheckoutConfig(this.configFingerprint());
   }
 
-  isDeferredMethod(method: PaymentMethod): boolean {
-    return isHeadlessDemoMountDeferred(method);
+  async applyPendingConfiguration(): Promise<void> {
+    const pending = this.pendingConfigFingerprint();
+    if (!pending || this.paymentLocked()) {
+      return;
+    }
+    this.pendingConfigFingerprint.set(null);
+    this.configSkipMessage.set(null);
+    this.appliedFingerprint = null;
+    await this.applyCheckoutConfig(pending);
+  }
+
+  async retryRecoverReturn(): Promise<void> {
+    const session = this.activeSession();
+    if (!session || !this.canRetryRecovery()) {
+      return;
+    }
+    await this.runRecoverReturn(session, this.bootGeneration);
   }
 
   isStripeElementMethod(method: PaymentMethod): boolean {
     return isHeadlessDemoStripeElementMethod(method);
+  }
+
+  isOfficialButtonMethod(method: PaymentMethod): boolean {
+    return isHeadlessDemoOfficialButtonMethod(method);
   }
 
   methodStatus(method: PaymentMethod): HeadlessMethodStatus | undefined {
@@ -175,7 +254,9 @@ export class HeadlessDemoPanel {
       return entry.diagnosticCode.trim();
     }
     if (entry.readiness === 'loading') {
-      return 'Still checking provider availability.';
+      return entry.method === 'apple-pay'
+        ? 'Apple Pay eligibility is confirmed after mounting the Express Checkout Element.'
+        : 'Still checking provider availability.';
     }
     if (entry.readiness === 'misconfigured') {
       return 'Provider configuration is incomplete for this method.';
@@ -186,6 +267,16 @@ export class HeadlessDemoPanel {
   canSelectMethod(entry: HeadlessMethodStatus): boolean {
     if (this.paymentLocked() || this.isInitializing() || this.bootStatus() !== 'ready') {
       return false;
+    }
+    if (entry.readiness === 'unavailable' || entry.readiness === 'misconfigured') {
+      return false;
+    }
+    if (entry.method === 'apple-pay') {
+      return (
+        entry.readiness === 'loading' ||
+        entry.readiness === 'ready' ||
+        entry.available === true
+      );
     }
     if (entry.readiness === 'loading') {
       return false;
@@ -203,6 +294,7 @@ export class HeadlessDemoPanel {
     const op = ++this.mountGeneration;
     this.mountError.set(null);
     this.mountNotice.set(null);
+    this.lastActionError.set(null);
     this.uiSelectedMethod.set(method);
 
     try {
@@ -212,19 +304,7 @@ export class HeadlessDemoPanel {
       }
 
       session.selectMethod(method);
-
-      if (isHeadlessDemoMountDeferred(method)) {
-        this.mountPhase.set('deferred');
-        this.mountNotice.set(
-          'Interactive provider mounting will be enabled in H5.3. Official PayPal / Google Pay / Apple Pay controls start payment on click, so H5.2 only shows verified availability.',
-        );
-        return;
-      }
-
       this.mountPhase.set('mounting');
-      if (op !== this.mountGeneration) {
-        return;
-      }
 
       const container = this.mountHost()?.nativeElement;
       if (!container) {
@@ -248,6 +328,12 @@ export class HeadlessDemoPanel {
 
       this.mountHandle = handle;
       this.mountPhase.set('mounted');
+
+      if (isHeadlessDemoOfficialButtonMethod(method)) {
+        this.mountNotice.set(
+          'Use the official provider control above to pay. The demo never calls confirm() for PayPal, Google Pay, or Apple Pay.',
+        );
+      }
     } catch (error) {
       if (op !== this.mountGeneration) {
         return;
@@ -258,23 +344,53 @@ export class HeadlessDemoPanel {
     }
   }
 
-  private async applyCheckoutConfig(fingerprint: string): Promise<void> {
-    if (fingerprint === this.appliedFingerprint && this.activeSession()) {
+  async onConfirmPayment(): Promise<void> {
+    const session = this.activeSession();
+    const method = this.uiSelectedMethod();
+    if (!session || !method || !this.canConfirmPayment()) {
+      return;
+    }
+    if (!isHeadlessDemoStripeElementMethod(method)) {
       return;
     }
 
-    const state = this.sessionState();
-    if (
-      this.appliedFingerprint !== null &&
-      (state === 'processing' || state === 'pending')
-    ) {
+    const op = ++this.confirmGeneration;
+    this.confirmInFlight.set(true);
+    this.lastActionError.set(null);
+
+    try {
+      await session.confirm();
+    } catch (error) {
+      if (op !== this.confirmGeneration) {
+        return;
+      }
+      this.lastActionError.set(formatPublicError(error));
+    } finally {
+      if (op === this.confirmGeneration) {
+        this.confirmInFlight.set(false);
+      }
+    }
+  }
+
+  private async applyCheckoutConfig(fingerprint: string): Promise<void> {
+    if (fingerprint === this.appliedFingerprint && this.activeSession()) {
+      if (this.pendingConfigFingerprint() === fingerprint) {
+        this.pendingConfigFingerprint.set(null);
+        this.configSkipMessage.set(null);
+      }
+      return;
+    }
+
+    if (this.appliedFingerprint !== null && this.paymentLocked()) {
+      this.pendingConfigFingerprint.set(fingerprint);
       this.configSkipMessage.set(
-        'Checkout configuration changed while a payment is processing or pending. Finish that attempt or leave Headless before applying updates.',
+        'Checkout configuration changed while a payment or return recovery is in progress. Apply the pending update after this attempt settles — do not replace an active payment.',
       );
       return;
     }
 
     this.configSkipMessage.set(null);
+    this.pendingConfigFingerprint.set(null);
     this.appliedFingerprint = fingerprint;
     await this.startSession();
   }
@@ -282,6 +398,8 @@ export class HeadlessDemoPanel {
   private async startSession(): Promise<void> {
     const generation = ++this.bootGeneration;
     this.mountGeneration += 1;
+    this.confirmGeneration += 1;
+    this.recoveryGeneration += 1;
     this.bootStatus.set('starting');
     this.bootError.set(null);
     this.lifecycleEvents.set([]);
@@ -289,6 +407,10 @@ export class HeadlessDemoPanel {
     this.mountPhase.set('idle');
     this.mountError.set(null);
     this.mountNotice.set(null);
+    this.lastActionError.set(null);
+    this.confirmInFlight.set(false);
+    this.recoveryPhase.set('idle');
+    this.recoveryMessage.set(null);
 
     await this.clearMountHandle();
     await this.destroyActiveSession();
@@ -322,6 +444,13 @@ export class HeadlessDemoPanel {
         return;
       }
 
+      // Recover Klarna/Affirm returns before any mount or new payment attempt.
+      await this.runRecoverReturn(created, generation);
+
+      if (generation !== this.bootGeneration || this.activeSession() !== created) {
+        return;
+      }
+
       this.bootStatus.set('ready');
     } catch (error) {
       if (generation !== this.bootGeneration) {
@@ -335,6 +464,94 @@ export class HeadlessDemoPanel {
     }
   }
 
+  private async runRecoverReturn(
+    session: HeadlessCheckoutSession,
+    bootGeneration: number,
+  ): Promise<void> {
+    const op = ++this.recoveryGeneration;
+    const maybeReturn =
+      typeof window !== 'undefined' ? isAnyStripeBnplReturnAttempt() : false;
+
+    if (!maybeReturn) {
+      this.recoveryPhase.set('idle');
+      this.recoveryMessage.set(null);
+      // Still probe once — returns null for non-owners / absent returns without claiming.
+      try {
+        const result = await session.recoverReturn();
+        if (bootGeneration !== this.bootGeneration || op !== this.recoveryGeneration) {
+          return;
+        }
+        if (result) {
+          this.recoveryPhase.set('settled');
+          this.recoveryMessage.set(formatRecoveryResult(result));
+          this.pushLifecycleLine(
+            `recoverReturn · ${result.status} · ${result.method}${
+              result.metadata?.['authorizationOnly'] === true ? ' · authorizationOnly' : ''
+            }`,
+          );
+        }
+      } catch (error) {
+        if (bootGeneration !== this.bootGeneration || op !== this.recoveryGeneration) {
+          return;
+        }
+        this.handleRecoveryFailure(error);
+      }
+      return;
+    }
+
+    this.recoveryPhase.set('recovering');
+    this.recoveryMessage.set('Verifying Klarna/Affirm return with Stripe…');
+
+    try {
+      const result = await session.recoverReturn();
+      if (bootGeneration !== this.bootGeneration || op !== this.recoveryGeneration) {
+        return;
+      }
+
+      if (!result) {
+        this.recoveryPhase.set('settled');
+        this.recoveryMessage.set(
+          'No Headless-owned return for this checkout identity (unrelated or absent). Other checkout modes were not claimed.',
+        );
+        return;
+      }
+
+      this.recoveryPhase.set('settled');
+      this.recoveryMessage.set(formatRecoveryResult(result));
+      this.pushLifecycleLine(
+        `recoverReturn · ${result.status} · ${result.method}${
+          result.metadata?.['authorizationOnly'] === true ? ' · authorizationOnly' : ''
+        }`,
+      );
+    } catch (error) {
+      if (bootGeneration !== this.bootGeneration || op !== this.recoveryGeneration) {
+        return;
+      }
+      this.handleRecoveryFailure(error);
+    }
+  }
+
+  private handleRecoveryFailure(error: unknown): void {
+    const message = formatPublicError(error, 'Return recovery failed.');
+    this.lastActionError.set(message);
+    this.pushLifecycleLine(`recoverReturn · error · ${message}`);
+
+    if (isHeadlessDemoRecoveryRetryable(error)) {
+      this.recoveryPhase.set('retryable');
+      this.recoveryMessage.set(
+        'Transient verification failure. Pending return data was preserved — retry recoverReturn() without confirming again or creating a new PaymentIntent.',
+      );
+      return;
+    }
+
+    this.recoveryPhase.set('settled');
+    this.recoveryMessage.set(message);
+  }
+
+  private pushLifecycleLine(line: string): void {
+    this.lifecycleEvents.update((entries) => [line, ...entries].slice(0, 12));
+  }
+
   private bindLifecycleEvents(session: HeadlessCheckoutSession): void {
     this.eventSubscriptions.unsubscribe();
     this.eventSubscriptions = new Subscription();
@@ -343,7 +560,7 @@ export class HeadlessDemoPanel {
       if (this.activeSession() !== session) {
         return;
       }
-      this.lifecycleEvents.update((entries) => [line, ...entries].slice(0, 12));
+      this.pushLifecycleLine(line);
     };
 
     this.eventSubscriptions.add(
@@ -365,7 +582,9 @@ export class HeadlessDemoPanel {
     );
     this.eventSubscriptions.add(
       session.events.success.subscribe((result) => {
-        push(`success · ${result.method} · ${result.transactionId ?? 'n/a'}`);
+        const auth =
+          result.metadata?.['authorizationOnly'] === true ? ' · authorizationOnly' : '';
+        push(`success · ${result.method} · ${result.transactionId ?? 'n/a'}${auth}`);
       }),
     );
     this.eventSubscriptions.add(
@@ -414,6 +633,8 @@ export class HeadlessDemoPanel {
   private async teardown(): Promise<void> {
     this.bootGeneration += 1;
     this.mountGeneration += 1;
+    this.confirmGeneration += 1;
+    this.recoveryGeneration += 1;
     await this.clearMountHandle();
     await this.destroyActiveSession();
     this.bootStatus.set('idle');
@@ -423,6 +644,12 @@ export class HeadlessDemoPanel {
     this.mountError.set(null);
     this.mountNotice.set(null);
     this.uiSelectedMethod.set(null);
+    this.confirmInFlight.set(false);
+    this.recoveryPhase.set('idle');
+    this.recoveryMessage.set(null);
+    this.lastActionError.set(null);
+    this.pendingConfigFingerprint.set(null);
+    this.configSkipMessage.set(null);
     this.appliedFingerprint = null;
   }
 }
@@ -435,4 +662,21 @@ function formatPublicError(error: unknown, fallback = 'Operation failed.'): stri
     return error.message;
   }
   return fallback;
+}
+
+function formatRecoveryResult(result: PaymentResult): string {
+  const auth =
+    result.metadata?.['authorizationOnly'] === true
+      ? ' Authorization only — not captured funds; fulfill via backend/webhooks.'
+      : '';
+  if (result.status === 'processing') {
+    return `Return recovered as pending/processing for ${result.method}. Confirm final fulfillment on your backend.${auth}`;
+  }
+  if (result.status === 'success') {
+    return `Return recovered as success for ${result.method}.${auth} Frontend results are not authoritative fulfillment.`;
+  }
+  if (result.status === 'cancelled') {
+    return `Return recovered as cancelled for ${result.method}.`;
+  }
+  return `Return recovered: ${result.status} · ${result.method}.${auth}`;
 }

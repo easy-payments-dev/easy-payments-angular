@@ -140,7 +140,7 @@
 
 .headless-demo__retry:focus-visible,
 .headless-demo__method:focus-visible,
-.headless-demo__pay-disabled:focus-visible {
+.headless-demo__pay:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
@@ -230,10 +230,16 @@
   color: #c2410c;
 }
 
-.headless-demo__badge[data-deferred='yes'] {
+.headless-demo__badge[data-interaction='official'] {
   background: #f5f3ff;
   border-color: #ddd6fe;
   color: #5b21b6;
+}
+
+.headless-demo__badge[data-interaction='confirm'] {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+  color: #0e7490;
 }
 
 .headless-demo__method-meta,
@@ -256,21 +262,40 @@
   display: block;
 }
 
-.headless-demo__confirm-placeholder {
+.headless-demo__confirm {
   margin-top: 12px;
 }
 
-.headless-demo__pay-disabled {
+.headless-demo__pay {
   width: 100%;
   max-width: 320px;
   padding: 12px 16px;
   border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  background: #e2e8f0;
-  color: #64748b;
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #fff;
   font: inherit;
   font-weight: 650;
+  cursor: pointer;
+}
+
+.headless-demo__pay:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #64748b;
   cursor: not-allowed;
+}
+
+.headless-demo__retry--notice {
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
+
+.headless-demo__fulfillment-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #166534;
+  opacity: 0.9;
 }
 
 .headless-demo__event-list li {
@@ -287,7 +312,7 @@
     grid-template-columns: 1fr;
   }
 
-  .headless-demo__pay-disabled {
+  .headless-demo__pay {
     max-width: none;
   }
 }

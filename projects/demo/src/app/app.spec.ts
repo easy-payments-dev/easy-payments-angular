@@ -252,7 +252,7 @@ describe('App', () => {
     expect(compiled.querySelector('[data-testid="headless-demo-availability"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="headless-demo-product"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="headless-demo-mount-host"]')).toBeTruthy();
-    expect(compiled.textContent).toContain('H5.2');
+    expect(compiled.textContent).toContain('H5.3');
     expect(compiled.textContent).not.toContain('client_secret');
   });
 
