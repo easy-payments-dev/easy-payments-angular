@@ -258,6 +258,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens (including theme `--ep-cta-*` used by Klarna/Affirm confirm CTAs). Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
 | `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button only (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |
+| `bnplConfirmMode` | `BnplConfirmMode` | — | — | **Planned / not wired.** Type exported; no live `[bnplConfirmMode]` input yet. Klarna/Affirm still use Payment Element + Continue. See [CheckoutOptions](#checkoutoptions). |
 
 #### Button customization summary
 
@@ -529,12 +530,31 @@ In the Stripe test dashboard, open the PaymentIntent and read **Metadata**. In t
 ```ts
 type CheckoutSuccessBehavior = 'confirmation' | 'event-only';
 
+interface EasyPaymentsAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  /** ISO 3166-1 alpha-2 (for example `US`, `CA`, `DE`). */
+  country: string;
+}
+
 interface CheckoutOptions {
   successUrl?: string;
   cancelUrl?: string;
   successBehavior?: CheckoutSuccessBehavior;
-  customer?: { email?: string; name?: string };
-  shipping?: { required?: boolean };
+  customer?: {
+    email?: string;
+    name?: string;
+    phone?: string;
+    address?: EasyPaymentsAddress;
+  };
+  shipping?: {
+    required?: boolean;
+    name?: string;
+    address?: EasyPaymentsAddress;
+  };
 }
 ```
 
@@ -542,11 +562,74 @@ Notes:
 
 - `successUrl` / `cancelUrl` are **merchant hints**. Easy Payments does **not** auto-redirect on them.
 - `successBehavior` on `checkout` overrides the `successBehavior` input when present.
+- `customer.phone`, `customer.address`, `shipping.name`, and `shipping.address` are **additive optional** fields for future BNPL Direct readiness. They are **not** sent to create-payment backends in this release and do not change Full Checkout, Buttons Only, or Headless payment execution.
+- Country codes must be **ISO 3166-1 alpha-2**. Do not log raw customer PII from these fields.
 
 | Value | Meaning |
 |-------|---------|
 | `confirmation` | Show built-in success screen; emit `success`, then `successContinue` when Continue is clicked. |
 | `event-only` | Emit `success` only; merchant owns post-payment UX. |
+
+### Planned Buttons Only BNPL confirm mode (not wired yet)
+
+```ts
+type BnplConfirmMode = 'auto' | 'direct' | 'element';
+
+// Planned future input on <easy-payment-buttons> — NOT implemented as a live input yet:
+// [bnplConfirmMode]="mode"
+```
+
+| Mode | Planned meaning |
+|------|-----------------|
+| `auto` | Use Direct when `evaluateBnplDirectReadiness` is ready; otherwise keep Payment Element. |
+| `direct` | Require Direct readiness; otherwise a clear configuration error (no silent Element fallback). |
+| `element` | Always use the existing Payment Element + Continue flow. |
+
+**Current behavior:** Klarna and Affirm in Buttons Only still use Stripe Payment Element and the secondary Continue CTA, regardless of any `BnplConfirmMode` value a merchant may prepare in application code. Direct payment execution is **not** enabled in production components in this milestone.
+
+Exported helper (pure, no network):
+
+```ts
+import {
+  evaluateBnplDirectReadiness,
+  type BnplConfirmMode,
+  type BnplReadinessResult,
+} from '@easy-payments/angular';
+
+const readiness: BnplReadinessResult = evaluateBnplDirectReadiness({
+  provider: 'klarna', // or 'affirm'
+  mode: 'auto',
+  checkout: {
+    customer: {
+      email: 'buyer@example.com',
+      name: 'Jenny Rosen',
+      address: {
+        line1: '509 Amsterdam Ave',
+        city: 'New York',
+        state: 'NY',
+        postalCode: '10024',
+        country: 'US',
+      },
+    },
+    shipping: { required: false },
+  },
+});
+```
+
+#### Library Direct readiness policy (UX rules)
+
+These are **Easy Payments readiness rules** for a future Buttons Only Direct path. They are **not** identical to Stripe’s absolute API minimums (Stripe may accept thinner payloads; EP may require more for a reliable one-click UX).
+
+| Provider | Library Direct-ready when |
+|----------|---------------------------|
+| Klarna | `customer.email` + `customer.name`; if `shipping.required`, also `shipping.name` + complete `shipping.address`. Billing address is optional; if supplied it must be complete with a valid country. |
+| Affirm | `customer.email` + `customer.name` + complete `customer.address`; if `shipping.required`, also `shipping.name` + complete `shipping.address`. |
+
+Complete address (library policy): `line1`, `city`, `postalCode`, and ISO alpha-2 `country` (`state` / `line2` optional).
+
+`evaluateBnplDirectReadiness` returns `ready`, `selectedFlow` (`direct` \| `element` \| `configuration-error`), `missingFields` (paths only, no PII values), and stable `reasonCodes`. It never creates PaymentIntents or calls Stripe.
+
+One-click BNPL is **not** guaranteed across all countries, currencies, browsers, or eligibility checks — provider and Stripe eligibility still apply at payment time.
 
 ---
 

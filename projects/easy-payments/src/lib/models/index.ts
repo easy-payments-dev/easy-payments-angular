@@ -1,7 +1,10 @@
 export * from './payment-method.model';
 export * from './payment-product.model';
+export * from './easy-payments-address.model';
+export * from './bnpl-confirm-mode.model';
 export * from './checkout-options.model';
 export * from './payment-result.model';
+
 export * from './payment-theme.model';
 export * from './easy-payments-appearance.model';
 export * from './easy-payments-visual-style.model';
