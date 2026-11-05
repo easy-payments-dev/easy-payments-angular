@@ -21,6 +21,8 @@ http://localhost:4200/?ep_qa=bnpl-direct
 - A human operator clicks **Test Klarna Direct** / **Test Affirm Direct**.
 - Do not paste real customer PII or live keys.
 - Client secrets are never displayed.
+- Create requests must not send reserved merchant metadata keys (for example `source`).
+  Allowed demo metadata uses `orderId` / `customerReference` only.
 
 ## Removal
 

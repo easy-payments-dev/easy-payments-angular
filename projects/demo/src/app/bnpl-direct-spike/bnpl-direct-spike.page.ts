@@ -15,6 +15,14 @@ import {
 } from '@stripe/stripe-js';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
+import {
+  BNPL_SPIKE_ENVIRONMENT,
+  buildCreateBnplPaymentBody,
+  describeSpikeConfig,
+  formatSpikeFailure,
+  resolveSpikeCreateUrl,
+  type SpikeBnplProvider,
+} from './bnpl-direct-spike-request';
 
 /**
  * H6.2.4.1 — Development-only Stripe Direct confirmation spike.
@@ -31,7 +39,7 @@ import { environment } from '../../environments/environment';
  * - Client secrets are never rendered or logged.
  */
 
-type SpikeProvider = 'klarna' | 'affirm';
+type SpikeProvider = SpikeBnplProvider;
 
 interface SpikeStatus {
   level: 'info' | 'ok' | 'warn' | 'error';
@@ -58,6 +66,12 @@ const SPIKE_PROVIDER_PARAM = 'ep_spike_method';
 })
 export class BnplDirectSpikePage implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly env = inject(BNPL_SPIKE_ENVIRONMENT, { optional: true }) ?? {
+    stripePublishableKey: environment.stripePublishableKey,
+    backendBaseUrl: environment.backendBaseUrl,
+    klarnaCreatePaymentUrl: environment.klarnaCreatePaymentUrl,
+    affirmCreatePaymentUrl: environment.affirmCreatePaymentUrl,
+  };
 
   readonly busy = signal(false);
   readonly status = signal<SpikeStatus>({
@@ -86,7 +100,7 @@ export class BnplDirectSpikePage implements OnInit {
   private inFlight = false;
 
   ngOnInit(): void {
-    this.configNotes.set(this.validateLocalConfig());
+    this.configNotes.set(describeSpikeConfig(this.env).notes);
     this.handleReturnIfPresent();
   }
 
@@ -96,36 +110,6 @@ export class BnplDirectSpikePage implements OnInit {
 
   async onTestAffirm(): Promise<void> {
     await this.runDirect('affirm');
-  }
-
-  private validateLocalConfig(): string[] {
-    const notes: string[] = [];
-    const pk = environment.stripePublishableKey?.trim() ?? '';
-    if (!pk) {
-      notes.push('Missing stripePublishableKey in demo environment.');
-    } else if (!/^pk_test_/i.test(pk)) {
-      notes.push('stripePublishableKey must be a Stripe TEST publishable key (pk_test_...).');
-    } else {
-      notes.push('Stripe TEST publishable key present (value not shown).');
-    }
-
-    const base = environment.backendBaseUrl?.trim() ?? '';
-    if (!base) {
-      notes.push('backendBaseUrl is empty — relative create URLs may fail.');
-    } else {
-      notes.push(`Backend base: ${base}`);
-    }
-
-    if (!environment.klarnaCreatePaymentUrl?.trim()) {
-      notes.push('klarnaCreatePaymentUrl is missing.');
-    }
-    if (!environment.affirmCreatePaymentUrl?.trim()) {
-      notes.push('affirmCreatePaymentUrl is missing.');
-    }
-
-    notes.push('Catalog product default: premium-plan / USD / qty 1 (server-priced).');
-    notes.push('This page never mounts Stripe Payment Element.');
-    return notes;
   }
 
   /**
@@ -172,17 +156,11 @@ export class BnplDirectSpikePage implements OnInit {
       return;
     }
 
-    const configErrors = this.validateLocalConfig().filter(
-      (n) =>
-        n.includes('Missing') ||
-        n.includes('must be') ||
-        n.includes('empty') ||
-        n.includes('missing'),
-    );
-    if (configErrors.length > 0) {
+    const { blockers } = describeSpikeConfig(this.env);
+    if (blockers.length > 0) {
       this.status.set({
         level: 'error',
-        message: `Config blocked: ${configErrors.join(' ')}`,
+        message: `Config blocked: ${blockers.join(' ')}`,
       });
       return;
     }
@@ -225,11 +203,14 @@ export class BnplDirectSpikePage implements OnInit {
             );
 
       if (result.error) {
+        const detail = [
+          result.error.type ?? 'unknown',
+          result.error.message ?? 'no message',
+          `code=${result.error.code ?? 'n/a'}`,
+        ].join(' — ');
         this.status.set({
           level: 'error',
-          message: `Stripe confirm error: ${result.error.type ?? 'unknown'} — ${
-            result.error.message ?? 'no message'
-          } (code=${result.error.code ?? 'n/a'})`,
+          message: formatSpikeFailure(new Error(detail), 'stripe'),
         });
         return;
       }
@@ -240,10 +221,9 @@ export class BnplDirectSpikePage implements OnInit {
         message: `Confirm returned without error. paymentIntent.status=${status}. If a redirect was required, the browser should navigate away.`,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
       this.status.set({
         level: 'error',
-        message: `Spike failed: ${message}`,
+        message: formatSpikeFailure(err),
       });
     } finally {
       // Drop secret from local scope intentionally; never assign to signals.
@@ -256,20 +236,16 @@ export class BnplDirectSpikePage implements OnInit {
   private async createPaymentIntent(provider: SpikeProvider): Promise<CreateBnplResponse> {
     const path =
       provider === 'klarna'
-        ? environment.klarnaCreatePaymentUrl
-        : environment.affirmCreatePaymentUrl;
-    const url = this.resolveUrl(path);
+        ? this.env.klarnaCreatePaymentUrl
+        : this.env.affirmCreatePaymentUrl;
+    const url = resolveSpikeCreateUrl(path, this.env.backendBaseUrl);
 
-    const body = {
+    const body = buildCreateBnplPaymentBody({
       provider,
-      productId: this.productId.trim() || 'premium-plan',
-      quantity: Number(this.quantity) || 1,
-      currency: (this.currency || 'USD').trim().toUpperCase(),
-      metadata: {
-        source: 'ep-bnpl-direct-spike',
-        spike: 'H6.2.4.1',
-      },
-    };
+      productId: this.productId,
+      quantity: Number(this.quantity),
+      currency: this.currency,
+    });
 
     const response = await firstValueFrom(this.http.post<CreateBnplResponse>(url, body));
 
@@ -278,7 +254,7 @@ export class BnplDirectSpikePage implements OnInit {
       typeof response.clientSecret !== 'string' ||
       !response.clientSecret.trim()
     ) {
-      throw new Error(`Invalid ${provider} create response (provider/clientSecret).`);
+      throw new Error(`Invalid ${provider} create response (provider/clientSecret check failed).`);
     }
 
     return response;
@@ -288,7 +264,7 @@ export class BnplDirectSpikePage implements OnInit {
     if (this.stripe) {
       return this.stripe;
     }
-    const key = environment.stripePublishableKey.trim();
+    const key = this.env.stripePublishableKey.trim();
     const stripe = await loadStripe(key);
     if (!stripe) {
       throw new Error('Stripe.js failed to initialize.');
@@ -406,13 +382,4 @@ export class BnplDirectSpikePage implements OnInit {
     return url.toString();
   }
 
-  private resolveUrl(path: string): string {
-    const trimmed = path.trim();
-    if (/^https?:\/\//i.test(trimmed)) {
-      return trimmed;
-    }
-    const base = (environment.backendBaseUrl ?? '').replace(/\/$/, '');
-    const suffix = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    return `${base}${suffix}`;
-  }
 }
