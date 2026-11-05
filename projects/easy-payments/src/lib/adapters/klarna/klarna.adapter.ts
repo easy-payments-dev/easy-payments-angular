@@ -23,6 +23,8 @@ import { StripeElementSession, StripeElementSessionStore } from '../stripe/strip
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
+import { buildKlarnaDirectConfirmParams } from '../../bnpl/bnpl-direct-confirm-params';
+import type { BnplDirectConfirmationRequest } from '../../bnpl/bnpl-direct-confirm.types';
 import { buildKlarnaReturnUrl } from './klarna-return';
 import {
   KLARNA_PAYMENT_ELEMENT_OPTIONS,
@@ -337,6 +339,77 @@ export class KlarnaAdapter extends BaseProviderAdapter {
 
       // When Klarna redirects, confirmPayment does not resolve in this page —
       // the return path uses retrieveReturningPayment instead.
+      return this.normalizeIntent(paymentIntent, session);
+    } finally {
+      session.confirming = false;
+      release();
+    }
+  }
+
+  /**
+   * Explicit Stripe Direct confirmation (no Payment Element).
+   *
+   * Not invoked by Full Checkout, Buttons Only, or Headless in this milestone.
+   * Future Buttons Only orchestration must:
+   * - create the method-locked PaymentIntent
+   * - stamp/own redirect return markers before calling this
+   * - treat redirect initiation as non-terminal (recover via existing return path)
+   */
+  async confirmDirectPayment(
+    request: BnplDirectConfirmationRequest,
+    ownerId?: string,
+  ): Promise<PaymentResult> {
+    const clientSecret = request?.clientSecret?.trim() ?? '';
+    const returnUrl = request?.returnUrl?.trim() ?? '';
+    if (!clientSecret) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Klarna Direct confirmation requires a PaymentIntent client secret.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+    if (!returnUrl) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Klarna Direct confirmation requires a return URL.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+
+    const session = this.sessions.get(ownerId);
+    if (session.confirming) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'A Klarna payment confirmation is already in progress.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+
+    const release = this.gate.acquire(`klarna:${ownerId ?? 'legacy'}`, 'klarna', 'klarna');
+    session.confirming = true;
+    session.clientSecret = clientSecret;
+
+    try {
+      const stripe = await this.ensureStripeLoaded();
+      const confirmParams = buildKlarnaDirectConfirmParams(
+        returnUrl,
+        request.customer,
+        request.shipping,
+      );
+
+      const { error, paymentIntent } = await stripe.confirmKlarnaPayment(
+        clientSecret,
+        confirmParams,
+      );
+
+      if (error) {
+        throw mapKlarnaStripeError(error);
+      }
+
+      // Redirect-based Klarna often does not resolve here; when it does, reuse PE status mapping.
       return this.normalizeIntent(paymentIntent, session);
     } finally {
       session.confirming = false;

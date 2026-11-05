@@ -585,7 +585,7 @@ type BnplConfirmMode = 'auto' | 'direct' | 'element';
 | `direct` | Require Direct readiness; otherwise a clear configuration error (no silent Element fallback). |
 | `element` | Always use the existing Payment Element + Continue flow. |
 
-**Current behavior:** Klarna and Affirm in Buttons Only still use Stripe Payment Element and the secondary Continue CTA, regardless of any `BnplConfirmMode` value a merchant may prepare in application code. Direct payment execution is **not** enabled in production components in this milestone.
+**Current behavior:** Klarna and Affirm in Buttons Only still use Stripe Payment Element and the secondary Continue CTA, regardless of any `BnplConfirmMode` value a merchant may prepare in application code. Direct payment execution is **not** enabled in production components yet. Internal adapter methods `confirmDirectPayment()` exist for a future Buttons Only orchestration milestone; they are not public merchant APIs and are not invoked by Full Checkout, Buttons Only, or Headless today.
 
 Exported helper (pure, no network):
 

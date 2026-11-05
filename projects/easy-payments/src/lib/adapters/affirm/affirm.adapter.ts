@@ -23,6 +23,8 @@ import { StripeElementSession, StripeElementSessionStore } from '../stripe/strip
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
+import { buildAffirmDirectConfirmParams } from '../../bnpl/bnpl-direct-confirm-params';
+import type { BnplDirectConfirmationRequest } from '../../bnpl/bnpl-direct-confirm.types';
 import { buildStripeReturnUrl } from '../stripe/stripe-redirect-return';
 import {
   AFFIRM_PAYMENT_ELEMENT_OPTIONS,
@@ -346,6 +348,73 @@ export class AffirmAdapter extends BaseProviderAdapter {
 
       // When Affirm redirects, confirmPayment does not resolve in this page —
       // the return path uses StripeRedirectRecoveryService.
+      return this.normalizeIntent(paymentIntent, session);
+    } finally {
+      session.confirming = false;
+      release();
+    }
+  }
+
+  /**
+   * Explicit Stripe Direct confirmation (no Payment Element).
+   *
+   * Not invoked by Full Checkout, Buttons Only, or Headless in this milestone.
+   * Future Buttons Only orchestration must own Intent creation and redirect markers.
+   */
+  async confirmDirectPayment(
+    request: BnplDirectConfirmationRequest,
+    ownerId?: string,
+  ): Promise<PaymentResult> {
+    const clientSecret = request?.clientSecret?.trim() ?? '';
+    const returnUrl = request?.returnUrl?.trim() ?? '';
+    if (!clientSecret) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Affirm Direct confirmation requires a PaymentIntent client secret.',
+        method: 'affirm',
+        provider: 'affirm',
+      });
+    }
+    if (!returnUrl) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Affirm Direct confirmation requires a return URL.',
+        method: 'affirm',
+        provider: 'affirm',
+      });
+    }
+
+    const session = this.sessions.get(ownerId);
+    if (session.confirming) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'An Affirm payment confirmation is already in progress.',
+        method: 'affirm',
+        provider: 'affirm',
+      });
+    }
+
+    const release = this.gate.acquire(`affirm:${ownerId ?? 'legacy'}`, 'affirm', 'affirm');
+    session.confirming = true;
+    session.clientSecret = clientSecret;
+
+    try {
+      const stripe = await this.ensureStripeLoaded();
+      const confirmParams = buildAffirmDirectConfirmParams(
+        returnUrl,
+        request.customer,
+        request.shipping,
+      );
+
+      const { error, paymentIntent } = await stripe.confirmAffirmPayment(
+        clientSecret,
+        confirmParams,
+      );
+
+      if (error) {
+        throw mapAffirmStripeError(error);
+      }
+
       return this.normalizeIntent(paymentIntent, session);
     } finally {
       session.confirming = false;
