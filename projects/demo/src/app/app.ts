@@ -59,6 +59,14 @@ function isMultiInstanceQaQuery(): boolean {
   return new URLSearchParams(window.location.search).get('ep_qa') === 'multi';
 }
 
+/** H6.2.4.1 — isolated BNPL Direct confirmation spike. Open `/?ep_qa=bnpl-direct`. */
+function isBnplDirectSpikeQuery(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(window.location.search).get('ep_qa') === 'bnpl-direct';
+}
+
 interface MethodRow {
   method: PaymentMethod;
   enabled: boolean;
@@ -227,8 +235,15 @@ export class App {
    * Not part of the published library API.
    */
   readonly multiInstanceQa = isMultiInstanceQaQuery();
+  /**
+   * H6.2.4.1 — Dev-only BNPL Direct spike. Open `/?ep_qa=bnpl-direct`.
+   * Isolated from library adapters; not part of the published package.
+   */
+  readonly bnplDirectSpike = isBnplDirectSpikeQuery();
   /** Set only when `?ep_qa=multi` — keeps MultiInstanceQaPage out of the initial bundle. */
   readonly qaPage = signal<Type<unknown> | null>(null);
+  /** Set only when `?ep_qa=bnpl-direct` — keeps BnplDirectSpikePage out of the initial bundle. */
+  readonly bnplDirectSpikePage = signal<Type<unknown> | null>(null);
 
   private readonly mockController = inject(MockPaymentController);
   private readonly configValidator = inject(EasyPaymentsConfigValidator);
@@ -650,7 +665,11 @@ ${cardAppearanceBlock}
   constructor() {
     this.mockController.setDelay(350);
     this.applyThemeFromQuery();
-    if (this.multiInstanceQa) {
+    if (this.bnplDirectSpike) {
+      void import('./bnpl-direct-spike/bnpl-direct-spike.page').then((m) => {
+        this.bnplDirectSpikePage.set(m.BnplDirectSpikePage);
+      });
+    } else if (this.multiInstanceQa) {
       void import('./multi-instance-qa/multi-instance-qa.page').then((m) => {
         this.qaPage.set(m.MultiInstanceQaPage);
       });

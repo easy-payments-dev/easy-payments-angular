@@ -1,4 +1,10 @@
-@if (multiInstanceQa) {
+@if (bnplDirectSpike) {
+  @if (bnplDirectSpikePage(); as page) {
+    <ng-container [ngComponentOutlet]="page" />
+  } @else {
+    <p class="qa-loading" role="status">Loading BNPL Direct spike…</p>
+  }
+} @else if (multiInstanceQa) {
   @if (qaPage(); as page) {
     <ng-container [ngComponentOutlet]="page" />
   } @else {

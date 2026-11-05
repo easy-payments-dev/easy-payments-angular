@@ -1,0 +1,132 @@
+<div class="spike" data-testid="bnpl-direct-spike">
+  <header class="spike__header">
+    <p class="spike__eyebrow">H6.2.4.1 · Development only</p>
+    <h1>BNPL Direct Confirmation Spike</h1>
+    <p class="spike__warning" role="alert">
+      STRIPE TEST ONLY. This page is not part of the published library. It does not run payments on
+      load. Cursor must not click the test buttons. A human operator starts each TEST flow
+      intentionally. Do not use live keys or real customer data.
+    </p>
+  </header>
+
+  <section class="spike__panel" aria-labelledby="spike-config-heading">
+    <h2 id="spike-config-heading">Local TEST configuration</h2>
+    <ul class="spike__notes">
+      @for (note of configNotes(); track note) {
+        <li>{{ note }}</li>
+      }
+    </ul>
+  </section>
+
+  @if (returnSummary(); as summary) {
+    <section class="spike__panel spike__panel--return" aria-labelledby="spike-return-heading">
+      <h2 id="spike-return-heading">Redirect return</h2>
+      <p role="status">{{ summary }}</p>
+    </section>
+  }
+
+  <section class="spike__panel" aria-labelledby="spike-customer-heading">
+    <h2 id="spike-customer-heading">TEST customer fields (manual entry)</h2>
+    <p class="spike__hint">
+      Leave fields empty to observe missing-data behavior. Use Stripe-documented sandbox identities
+      for successful redirects (for example Klarna US approve email
+      <code>customer&#64;email.us</code>). Do not paste real PII.
+    </p>
+
+    <div class="spike__grid">
+      <label>
+        Email
+        <input name="email" type="email" autocomplete="off" [(ngModel)]="email" />
+      </label>
+      <label>
+        Name
+        <input name="name" type="text" autocomplete="off" [(ngModel)]="name" />
+      </label>
+      <label>
+        Phone
+        <input name="phone" type="tel" autocomplete="off" [(ngModel)]="phone" />
+      </label>
+      <label>
+        Address line1
+        <input name="line1" type="text" autocomplete="off" [(ngModel)]="line1" />
+      </label>
+      <label>
+        City
+        <input name="city" type="text" autocomplete="off" [(ngModel)]="city" />
+      </label>
+      <label>
+        State
+        <input name="state" type="text" autocomplete="off" [(ngModel)]="state" />
+      </label>
+      <label>
+        Postal code
+        <input name="postalCode" type="text" autocomplete="off" [(ngModel)]="postalCode" />
+      </label>
+      <label>
+        Country (ISO)
+        <input name="country" type="text" autocomplete="off" [(ngModel)]="country" maxlength="2" />
+      </label>
+      <label>
+        Product ID
+        <input name="productId" type="text" autocomplete="off" [(ngModel)]="productId" />
+      </label>
+      <label>
+        Currency
+        <input name="currency" type="text" autocomplete="off" [(ngModel)]="currency" maxlength="3" />
+      </label>
+      <label>
+        Quantity
+        <input name="quantity" type="number" min="1" max="1000" [(ngModel)]="quantity" />
+      </label>
+    </div>
+
+    <div class="spike__toggles">
+      <label class="spike__check">
+        <input type="checkbox" [(ngModel)]="includeBilling" />
+        Include billing_details on confirm
+      </label>
+      <label class="spike__check">
+        <input type="checkbox" [(ngModel)]="includeShipping" />
+        Include shipping on confirm (requires name + full address)
+      </label>
+    </div>
+  </section>
+
+  <section class="spike__actions" aria-label="Manual TEST actions">
+    <button
+      type="button"
+      class="spike__btn"
+      data-testid="spike-test-klarna"
+      [disabled]="busy()"
+      (click)="onTestKlarna()"
+    >
+      Test Klarna Direct
+    </button>
+    <button
+      type="button"
+      class="spike__btn"
+      data-testid="spike-test-affirm"
+      [disabled]="busy()"
+      (click)="onTestAffirm()"
+    >
+      Test Affirm Direct
+    </button>
+  </section>
+
+  <section class="spike__panel" aria-live="polite" aria-labelledby="spike-status-heading">
+    <h2 id="spike-status-heading">Status</h2>
+    <p class="spike__status" [attr.data-level]="status().level">{{ status().message }}</p>
+    @if (busy()) {
+      <p class="spike__busy" role="status">Busy — repeated clicks are ignored.</p>
+    }
+  </section>
+
+  <footer class="spike__footer">
+    <p>
+      Open via <code>/?ep_qa=bnpl-direct</code>. Remove
+      <code>projects/demo/src/app/bnpl-direct-spike/</code> and the
+      <code>ep_qa=bnpl-direct</code> wiring in <code>app.ts</code> / <code>app.html</code> when the
+      spike is done. Library package output is unaffected.
+    </p>
+  </footer>
+</div>
