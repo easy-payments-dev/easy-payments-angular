@@ -19,7 +19,7 @@ Source: [`projects/demo`](../projects/demo)
 - Phase 3 **Visual style QA** (`[visualStyle]` fields, presets, dual-instance theme check) — see [phase-3-visual-qa.md](./phase-3-visual-qa.md)
 - `maxWidth` presets and slider (320–1200)
 - Event log (`started` / `methodChange` / `success` / `cancel` / `error` / `pending`)
-- **Buttons Only host outcome banner** outside the library component (demo-app UI only) — shows how a merchant can present outcomes from events
+- **Buttons Only host outcome banner** outside the library component (demo-app UI only) — shows how a merchant can present outcomes from events. `<easy-payment-buttons>` itself stays event-driven after Klarna/Affirm recovery (no built-in “Payment completed.” CTA); the demo banner is the merchant-owned notification.
 - **Demo Mode** (mocks) vs **Real / Test Providers**
 
 ---

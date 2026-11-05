@@ -222,6 +222,8 @@ Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backe
 
 Klarna and Affirm may redirect the buyer. Return URLs are stamped with `ep_method=klarna|affirm` and a random, non-secret `ep_attempt` token. A `sessionStorage` marker records method, product id, attempt token, host kind (`checkout`, `buttons`, or `headless`), and a **stable `checkoutInstanceId`**. It never stores secrets. After return, the shared `StripeRedirectRecoveryService` hands the return to exactly one host, which retrieves the PaymentIntent and emits `success` / `pending` / `cancel` / `error`. **Pending/processing** outcomes are **not** emitted as `success`. Duplicate terminal events after reload are suppressed. Headless hosts recover via `session.recoverReturn()` (see [headless.md](./headless.md)); Full Checkout and Buttons Only cannot claim Headless markers (and the reverse).
 
+After a successful Buttons Only recovery, the host emits `success` and keeps an internal **settled** lock so the Affirm/Klarna panel does **not** create another PaymentIntent. Buttons Only does **not** render “Payment completed.” (or a disabled success CTA) — the consuming application owns outcome UI. A nonterminal recovered `processing` Intent uses a short **awaiting provider** status (not active-submit “Processing payment…”) while remaining locked against duplicate confirmation.
+
 **Stable identity (recommended on multi-host pages).** Set optional `[checkoutInstanceId]` to a merchant-stable string that is the same before redirect and after return (for example your cart or checkout session id). Ownership then survives host reorder, conditional render, and `@defer` / delayed mount. Auto-generated ids work within a single SPA lifetime but do **not** survive a full-page Stripe redirect reload — use a merchant id when more than one host can show the same product.
 
 **Return ownership.** Only the host that started the redirect recovers it. Other hosts revert silently and emit nothing. Easy Payments never guesses an owner:
@@ -254,8 +256,17 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `theme` | `PaymentTheme` | `'system'` | No | `light` \| `dark` \| `system`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `auto` (same resolver as checkout). French (`fr`) is planned for Phase 5 — not implemented yet. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
-| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens. Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
-| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button. |
+| `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens (including theme `--ep-cta-*` used by Klarna/Affirm confirm CTAs). Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button only (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |
+
+#### Button customization summary
+
+| Surface | Supported customization | Not supported |
+|---------|-------------------------|---------------|
+| Library-owned strip selectors (Card / Klarna / Affirm) | `buttonsAppearance`, `theme`, `visualStyle`, focus/hover/disabled via EP tokens | Replacing official wallet SDK buttons |
+| Card confirm CTA | `cardButtonAppearance` (`--ep-card-cta-*`) | Restyling Stripe Payment Element fields |
+| Klarna / Affirm Continue CTAs | Theme / `visualStyle` `--ep-cta-*`, or scoped CSS on `.ep-klarna__pay` / `.ep-affirm__pay` | Treating them as free-form success screens |
+| PayPal / Google Pay / Apple Pay | Strip `layout` / slot width / gap; SDK-supported style options only | Arbitrary recoloring or unofficial replicas |
 
 ### Localization notes
 

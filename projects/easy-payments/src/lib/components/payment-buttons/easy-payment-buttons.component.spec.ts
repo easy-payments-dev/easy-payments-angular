@@ -2344,11 +2344,14 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
       'settled',
     );
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Payment completed');
+    // Duplicate Intent protection is returnPhase `settled`, not the strip busy lock.
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
 
     fixture.destroy();
   });
 
-  it('recovers Affirm success and clears Processing payment UI', async () => {
+  it('recovers Affirm success without built-in completed UI while keeping settled lock', async () => {
     history.replaceState(
       {},
       '',
@@ -2401,7 +2404,11 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
       'settled',
     );
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Payment completed');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Payment completed');
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.ep-affirm__pay'),
+    ).toBeNull();
 
     fixture.destroy();
   });
