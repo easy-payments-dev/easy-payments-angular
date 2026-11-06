@@ -970,7 +970,8 @@ ${cardAppearanceBlock}
   }
 
   onMerchantButtonsPending(result: PaymentResult): void {
-    this.merchantButtonsBusy.set(false);
+    // The host keeps the page lock. Leave the buttons disabled until canRequestPayment is true.
+    this.merchantButtonsBusy.set(true);
     this.merchantButtonsStatus.set('pending');
     this.merchantButtonsDetail.set(result.method);
   }

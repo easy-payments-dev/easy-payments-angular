@@ -652,7 +652,7 @@ Headless Checkout remains the API for a fully custom page that mounts Payment El
 
 - `card`, `klarna`, and `affirm` use the same selection, `bnplConfirmMode`, Direct lock, and redirect marker path as a library selector click.
 - `paypal`, `google-pay`, and `apple-pay` emit `CONFIG_INVALID` and do not start a payment. Render those methods with `selectorVisibility` left as `library`, or use Headless `mount`.
-- `canRequestPayment(method)` is a read. It does not create a PaymentIntent.
+- `canRequestPayment(method)` is a read. It does not create a PaymentIntent. It stays false while the host is locked, including `pending` and an ambiguous network or unknown result. Disable your button with it. Do not re-enable from the `pending` event, or from `error` alone, because some errors keep the lock.
 - A locked or destroyed host ignores a second `requestPayment`. Ambiguous and `pending` results keep the page lock. There is no automatic retry.
 - Keep `checkoutInstanceId` stable across reloads when Klarna or Affirm can redirect. The merchant host still owns return recovery for that id.
 - You own accessible names, contrast, focus, and disabled state for your buttons. Easy Payments still emits `started`, `methodChange`, `success`, `error`, `cancel`, and `pending`. Do not fulfill an order from those events alone.

@@ -24,29 +24,21 @@
 .ep-payment-buttons__selector:hover:not(:disabled) {
   border-color: var(--ep-buttons-selector-hover-border, var(--ep-border-strong, #cbd5e1));
   background-color: var(--ep-buttons-selector-hover-bg, var(--ep-buttons-selector-bg, var(--ep-surface, #fff)));
-  color: var(--ep-buttons-selector-hover-text, inherit);
+  color: var(--ep-buttons-selector-hover-text, var(--ep-buttons-selector-text, var(--ep-text, #0f172a)));
 }
 
 .ep-payment-buttons__selector--selected {
   border-color: var(--ep-buttons-selector-selected-border, var(--ep-accent, #2563eb));
   background: var(--ep-buttons-selector-selected-bg, color-mix(in srgb, var(--ep-accent, #2563eb) 12%, var(--ep-surface, #fff)));
-  color: var(--ep-buttons-selector-selected-text, var(--ep-text, #0f172a));
+  color: var(--ep-buttons-selector-selected-text, var(--ep-buttons-selector-text, var(--ep-text, #0f172a)));
   box-shadow: 0 0 0 1px var(--ep-buttons-selector-selected-border, var(--ep-accent, #2563eb));
 }
 
 .ep-payment-buttons__selector:focus-visible {
   outline: 2px solid var(--ep-buttons-selector-focus-color, var(--ep-focus, #2563eb));
   outline-offset: 2px;
-}
-
-.ep-payment-buttons__selector:disabled {
-  background: var(--ep-buttons-selector-disabled-bg, var(--ep-buttons-selector-bg, var(--ep-surface, #fff)));
-  color: var(--ep-buttons-selector-disabled-text, var(--ep-buttons-selector-text, var(--ep-text, #0f172a)));
-}
-
-.ep-payment-buttons__selector[aria-busy='true'] {
-  background: var(--ep-buttons-selector-loading-bg, var(--ep-buttons-selector-bg, var(--ep-surface, #fff)));
-  color: var(--ep-buttons-selector-loading-text, var(--ep-buttons-selector-text, var(--ep-text, #0f172a)));
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--ep-buttons-selector-focus-color, var(--ep-focus, #2563eb)) 28%, transparent);
 }
 
 .ep-payment-buttons__status {

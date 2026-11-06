@@ -93,6 +93,7 @@ describe('EasyPaymentButtonsComponent customization', () => {
       selectorSelectedBackgroundColor: '#14532d',
       selectorDisabledBackgroundColor: '#334155',
       selectorLoadingBackgroundColor: '#0f172a',
+      selectorLoadingTextColor: '#e2e8f0',
     });
     await settle();
     const host = fixture.nativeElement as HTMLElement;
@@ -107,6 +108,11 @@ describe('EasyPaymentButtonsComponent customization', () => {
     expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('18px');
     expect(host.style.getPropertyValue('--ep-buttons-height')).toBe('48px');
     expect(host.style.getPropertyValue('--ep-buttons-selector-bg')).not.toContain('url(');
+    fixture.componentInstance.processingMethod.set('card');
+    fixture.detectChanges();
+    const card = selector('card');
+    expect(card?.style.backgroundColor).toBe('rgb(15, 23, 42)');
+    expect(card?.style.color).toBe('rgb(226, 232, 240)');
   });
 
   it('rejects unsafe style values and markup labels', async () => {
@@ -136,6 +142,8 @@ describe('EasyPaymentButtonsComponent customization', () => {
     const button = selector('klarna');
     expect(button?.disabled).toBeTrue();
     expect(button?.getAttribute('aria-busy')).toBe('true');
+    expect(button?.style.backgroundColor).toBe('');
+    expect(button?.style.color).toBe('');
     expect(started.length).toBe(0);
     expect(
       (fixture.nativeElement as HTMLElement).querySelector(

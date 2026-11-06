@@ -59,6 +59,8 @@
             [attr.aria-pressed]="selectedMethod() === slot.method"
             [attr.aria-label]="slotAriaLabel(slot)"
             [attr.aria-busy]="processingMethod() === slot.method ? 'true' : null"
+            [style.background]="selectorStateBackground(slot.method)"
+            [style.color]="selectorStateColor(slot.method)"
             [disabled]="methodsLocked()"
             (click)="selectMethod(slot.method)"
           >

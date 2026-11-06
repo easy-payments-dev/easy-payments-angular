@@ -721,6 +721,30 @@ export class EasyPaymentButtonsComponent {
     return this.selectorVisibility() === 'merchant' && slot.interactive;
   }
 
+  /**
+   * Custom disabled/loading fills apply only when the merchant set them.
+   * Otherwise the default selected fill and opacity stay in place.
+   */
+  selectorStateBackground(method: PaymentMethod): string | null {
+    if (this.processingMethod() === method && this.selectorLoadingBackgroundCss()) {
+      return this.selectorLoadingBackgroundCss();
+    }
+    if (this.methodsLocked() && this.selectorDisabledBackgroundCss()) {
+      return this.selectorDisabledBackgroundCss();
+    }
+    return null;
+  }
+
+  selectorStateColor(method: PaymentMethod): string | null {
+    if (this.processingMethod() === method && this.selectorLoadingTextCss()) {
+      return this.selectorLoadingTextCss();
+    }
+    if (this.methodsLocked() && this.selectorDisabledTextCss()) {
+      return this.selectorDisabledTextCss();
+    }
+    return null;
+  }
+
   slotAriaLabel(slot: EasyPaymentButtonSlot): string {
     const base = slot.label;
     const msgs = this.msgs();
