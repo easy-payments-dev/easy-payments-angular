@@ -349,11 +349,10 @@ export class KlarnaAdapter extends BaseProviderAdapter {
   /**
    * Explicit Stripe Direct confirmation (no Payment Element).
    *
-   * Not invoked by Full Checkout, Buttons Only, or Headless in this milestone.
-   * Future Buttons Only orchestration must:
-   * - create the method-locked PaymentIntent
-   * - stamp/own redirect return markers before calling this
-   * - treat redirect initiation as non-terminal (recover via existing return path)
+   * Invoked by Buttons Only when `[bnplConfirmMode]` is `auto`/`direct` and
+   * {@link evaluateBnplDirectReadiness} is ready. Not used by Full Checkout or Headless.
+   * Callers must create the method-locked PaymentIntent, stamp redirect markers,
+   * and treat redirect initiation as non-terminal (recover via existing return path).
    */
   async confirmDirectPayment(
     request: BnplDirectConfirmationRequest,

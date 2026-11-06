@@ -258,7 +258,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens (including theme `--ep-cta-*` used by Klarna/Affirm confirm CTAs). Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
 | `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button only (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |
-| `bnplConfirmMode` | `BnplConfirmMode` | — | — | **Planned / not wired.** Type exported; no live `[bnplConfirmMode]` input yet. Klarna/Affirm still use Payment Element + Continue. See [CheckoutOptions](#checkoutoptions). |
+| `bnplConfirmMode` | `BnplConfirmMode` | `'element'` | No | **Buttons Only only.** Opt-in Klarna/Affirm confirmation strategy. Default `element` preserves Payment Element + Continue. `auto` uses Stripe Direct when readiness is met, otherwise PE. `direct` requires Direct readiness or emits `CONFIG_INVALID` (no Intent). Not available on Full Checkout or Headless. See [BNPL confirm mode](#buttons-only-bnpl-confirm-mode). |
 
 #### Button customization summary
 
@@ -562,7 +562,7 @@ Notes:
 
 - `successUrl` / `cancelUrl` are **merchant hints**. Easy Payments does **not** auto-redirect on them.
 - `successBehavior` on `checkout` overrides the `successBehavior` input when present.
-- `customer.phone`, `customer.address`, `shipping.name`, and `shipping.address` are **additive optional** fields for future BNPL Direct readiness. They are **not** sent to create-payment backends in this release and do not change Full Checkout, Buttons Only, or Headless payment execution.
+- `customer` / `shipping` fields feed Buttons Only Direct readiness and Stripe Direct confirm params when `[bnplConfirmMode]` is `auto` or `direct`. They are **not** sent to create-payment backends in this release. Full Checkout and Headless ignore Direct orchestration and keep Payment Element / existing flows.
 - Country codes must be **ISO 3166-1 alpha-2**. Do not log raw customer PII from these fields.
 
 | Value | Meaning |
@@ -570,22 +570,29 @@ Notes:
 | `confirmation` | Show built-in success screen; emit `success`, then `successContinue` when Continue is clicked. |
 | `event-only` | Emit `success` only; merchant owns post-payment UX. |
 
-### Planned Buttons Only BNPL confirm mode (not wired yet)
+### Buttons Only BNPL confirm mode
 
 ```ts
 type BnplConfirmMode = 'auto' | 'direct' | 'element';
 
-// Planned future input on <easy-payment-buttons> — NOT implemented as a live input yet:
+// Opt-in on <easy-payment-buttons> only (default element):
 // [bnplConfirmMode]="mode"
+// [checkout]="checkoutWithCustomer"
 ```
 
-| Mode | Planned meaning |
-|------|-----------------|
-| `auto` | Use Direct when `evaluateBnplDirectReadiness` is ready; otherwise keep Payment Element. |
-| `direct` | Require Direct readiness; otherwise a clear configuration error (no silent Element fallback). |
-| `element` | Always use the existing Payment Element + Continue flow. |
+| Mode | Behavior |
+|------|----------|
+| `element` (**default**) | Always Payment Element + Continue. Existing merchants unchanged. |
+| `auto` | Stripe Direct on Klarna/Affirm click when `evaluateBnplDirectReadiness` is ready; otherwise PE + Continue. |
+| `direct` | Stripe Direct when ready; otherwise emit `CONFIG_INVALID` with machine-readable `reasonCodes` / field paths (no PII). **No PaymentIntent** is created. |
 
-**Current behavior:** Klarna and Affirm in Buttons Only still use Stripe Payment Element and the secondary Continue CTA, regardless of any `BnplConfirmMode` value a merchant may prepare in application code. Direct payment execution is **not** enabled in production components yet. Internal adapter methods `confirmDirectPayment()` exist for a future Buttons Only orchestration milestone; they are not public merchant APIs and are not invoked by Full Checkout, Buttons Only, or Headless today.
+**One-click Direct (when eligible):** A single Klarna/Affirm selector click creates the method-locked Intent, stamps redirect ownership (`ep_method`, attempt id, `checkoutInstanceId`), and calls Stripe Direct confirmation. No second Continue button and no Payment Element mount. `started` / `methodChange` keep existing semantics. `success` is emitted only after a verified terminal result (including post-redirect recovery) — never merely because confirmation was initiated.
+
+**Redirects:** Same Stripe return recovery as PE (`returnPhase`, owner markers, consume-once). Recovery never re-confirms. `processing` → `pending` (not success). `requires_capture` → success with `authorizationOnly: true` (authorized, not captured). Declines/cancels allow safe manual retry; ambiguous network outcomes after confirm starts do **not** auto-retry or silently create a second Intent.
+
+**Page lock:** One Buttons Only Direct attempt may be in flight per page, because Klarna/Affirm redirect the whole page and share one return marker. A second Buttons Only host is refused until that attempt reaches success, a definitive decline, or cancellation, or until the owning host is destroyed. `pending` and ambiguous network/unknown results keep the lock. This does not change Card, PayPal, Google Pay, or Apple Pay, and it does not apply to Full Checkout or Headless.
+
+**Not universal:** Direct availability still depends on Stripe eligibility, currency/country support, and browser behavior. Do not advertise Direct as always available. Card, PayPal, Google Pay, and Apple Pay are unchanged. Full Checkout and Headless do not expose `[bnplConfirmMode]`.
 
 Exported helper (pure, no network):
 
@@ -618,7 +625,7 @@ const readiness: BnplReadinessResult = evaluateBnplDirectReadiness({
 
 #### Library Direct readiness policy (UX rules)
 
-These are **Easy Payments readiness rules** for a future Buttons Only Direct path. They are **not** identical to Stripe’s absolute API minimums (Stripe may accept thinner payloads; EP may require more for a reliable one-click UX).
+These are **Easy Payments readiness rules** for Buttons Only Direct. They are **not** identical to Stripe’s absolute API minimums (Stripe may accept thinner payloads; EP may require more for a reliable one-click UX).
 
 | Provider | Library Direct-ready when |
 |----------|---------------------------|
@@ -628,8 +635,6 @@ These are **Easy Payments readiness rules** for a future Buttons Only Direct pat
 Complete address (library policy): `line1`, `city`, `postalCode`, and ISO alpha-2 `country` (`state` / `line2` optional).
 
 `evaluateBnplDirectReadiness` returns `ready`, `selectedFlow` (`direct` \| `element` \| `configuration-error`), `missingFields` (paths only, no PII values), and stable `reasonCodes`. It never creates PaymentIntents or calls Stripe.
-
-One-click BNPL is **not** guaranteed across all countries, currencies, browsers, or eligibility checks — provider and Stripe eligibility still apply at payment time.
 
 ---
 

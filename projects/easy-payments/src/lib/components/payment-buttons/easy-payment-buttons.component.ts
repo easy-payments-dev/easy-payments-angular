@@ -27,6 +27,7 @@ import type { EasyPaymentButtonsLayout } from '../../models/easy-payment-buttons
 import type { EasyPaymentButtonsAppearance } from '../../models/easy-payment-buttons-appearance.model';
 import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
+import type { BnplConfirmMode } from '../../models/bnpl-confirm-mode.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import { CheckoutAvailabilitySession } from '../../services/checkout-availability-session';
 import { CheckoutHostContext } from '../../services/checkout-host-context';
@@ -41,16 +42,33 @@ import { getPaymentMethodPresentation } from '../../branding/payment-method-pres
 import {
   EasyPaymentsI18nService,
   interpolate,
+  toAffirmPreferredLocale,
+  toKlarnaPreferredLocale,
   type EasyPaymentsLocale,
+  type EasyPaymentsResolvedLocale,
   type EasyPaymentsTranslationOverrides,
 } from '../../i18n';
+import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
+import {
+  evaluateBnplDirectReadiness,
+  type BnplReadinessResult,
+} from '../../bnpl/bnpl-direct-readiness';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
+import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
+import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
 import {
+  buildStripeReturnUrl,
+  clearStripePendingReturnFor,
+  createStripeReturnAttemptId,
   detectStripeReturnMethod,
   isStripeReturnAttempt,
+  markStripePendingReturn,
   type StripeRedirectMethod,
 } from '../../adapters/stripe/stripe-redirect-return';
+import { createPaymentOwnerId } from '../../utils/payment-owner-id';
+import { validatePaymentProduct } from '../../validators/product.validator';
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
 import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
@@ -155,6 +173,8 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-apple-pay-ready]': 'hasAvailableApplePay() ? "true" : "false"',
     '[attr.data-klarna-ready]': 'hasAvailableKlarna() ? "true" : "false"',
     '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
+    '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
+    '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -184,13 +204,26 @@ export class EasyPaymentButtonsComponent {
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly themeService = inject(ThemeService);
   private readonly i18n = inject(EasyPaymentsI18nService);
+  private readonly configService = inject(EasyPaymentsConfigService);
   private readonly applePayAdapter = inject(ApplePayAdapter);
+  private readonly klarnaAdapter = inject(KlarnaAdapter);
+  private readonly affirmAdapter = inject(AffirmAdapter);
+  private readonly confirmationGate = inject(StripeConfirmationGate);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
   private readonly hostContext = inject(CheckoutHostContext);
   private readonly pendingTasks = inject(PendingTasks);
   private readonly ngZone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
   private destroyed = false;
+  private readonly klarnaDirectOwnerId = createPaymentOwnerId('klarna-direct');
+  private readonly affirmDirectOwnerId = createPaymentOwnerId('affirm-direct');
+  private directAttemptGeneration = 0;
+  /**
+   * Page-level mutex for Buttons Only Direct Intent create+confirm.
+   * Prevents parallel Klarna/Affirm Direct attempts across multiple hosts
+   * before `StripeConfirmationGate` is acquired inside the adapter.
+   */
+  private static directPageLock: string | null = null;
 
   private readonly availabilitySession = new CheckoutAvailabilitySession();
   private availabilityGeneration = 0;
@@ -238,6 +271,13 @@ export class EasyPaymentButtonsComponent {
    * Stripe Payment Element iframe or official wallet SDK buttons.
    */
   readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
+  /**
+   * Klarna/Affirm confirmation strategy for Buttons Only only.
+   * Default `element` preserves Payment Element + Continue for existing merchants.
+   * Opt in to `auto` / `direct` for one-click Stripe Direct when checkout customer
+   * data satisfies {@link evaluateBnplDirectReadiness}.
+   */
+  readonly bnplConfirmMode = input<BnplConfirmMode>('element');
 
   readonly started = output<PaymentStartedEvent>();
   readonly methodChange = output<PaymentMethodChangeEvent>();
@@ -259,6 +299,8 @@ export class EasyPaymentButtonsComponent {
   readonly selectedMethod = signal<PaymentMethod | null>(null);
   readonly providerBusy = signal(false);
   readonly processingMethod = signal<PaymentMethod | null>(null);
+  /** True while Buttons Only is running (or has locked) a Direct BNPL attempt — suppresses PE panels. */
+  readonly bnplDirectActive = signal(false);
 
   readonly visualStyleCssVars = computed(() => resolveVisualStyleCssVars(this.visualStyle()));
   readonly msgs = computed(() => this.i18n.messages());
@@ -451,7 +493,7 @@ export class EasyPaymentButtonsComponent {
 
   readonly showKlarnaPanel = computed(() => {
     const entry = this.selectedKlarnaEntry();
-    return !!entry && !entry.isMock;
+    return !!entry && !entry.isMock && this.shouldShowBnplElementPanel('klarna');
   });
 
   readonly showMockKlarnaPanel = computed(() => {
@@ -470,7 +512,7 @@ export class EasyPaymentButtonsComponent {
 
   readonly showAffirmPanel = computed(() => {
     const entry = this.selectedAffirmEntry();
-    return !!entry && !entry.isMock;
+    return !!entry && !entry.isMock && this.shouldShowBnplElementPanel('affirm');
   });
 
   readonly showMockAffirmPanel = computed(() => {
@@ -511,6 +553,15 @@ export class EasyPaymentButtonsComponent {
 
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
+      this.directAttemptGeneration += 1;
+      if (
+        EasyPaymentButtonsComponent.directPageLock === this.klarnaDirectOwnerId ||
+        EasyPaymentButtonsComponent.directPageLock === this.affirmDirectOwnerId
+      ) {
+        EasyPaymentButtonsComponent.directPageLock = null;
+      }
+      void this.klarnaAdapter.destroy(this.klarnaDirectOwnerId);
+      void this.affirmAdapter.destroy(this.affirmDirectOwnerId);
       removeApplePayListener();
     });
 
@@ -625,6 +676,17 @@ export class EasyPaymentButtonsComponent {
     if (!slot || !SELECTOR_SLOT_KINDS.has(slot.kind)) {
       return;
     }
+
+    if (
+      (method === 'klarna' || method === 'affirm') &&
+      slot.state === 'available' &&
+      !slot.isMock &&
+      this.beginBnplSelectorClick(method)
+    ) {
+      return;
+    }
+
+    this.bnplDirectActive.set(false);
     this.updateSelectedMethod(method);
   }
 
@@ -1055,6 +1117,7 @@ export class EasyPaymentButtonsComponent {
     }
     this.providerBusy.set(false);
     this.processingMethod.set(null);
+    this.bnplDirectActive.set(false);
     this.success.emit(result);
     this.paymentAttempt = 'idle';
   }
@@ -1076,6 +1139,7 @@ export class EasyPaymentButtonsComponent {
     }
     this.providerBusy.set(false);
     this.processingMethod.set(null);
+    this.bnplDirectActive.set(false);
     this.cancel.emit(result);
     this.paymentAttempt = 'idle';
   }
@@ -1086,8 +1150,281 @@ export class EasyPaymentButtonsComponent {
     }
     this.providerBusy.set(false);
     this.processingMethod.set(null);
+    this.bnplDirectActive.set(false);
     this.error.emit(error);
     this.paymentAttempt = 'idle';
+  }
+
+  /**
+   * Payment Element panels are shown for `element` / `auto` fallback only.
+   * `direct` never mounts PE (config error or one-click Direct).
+   */
+  private shouldShowBnplElementPanel(_provider: 'klarna' | 'affirm'): boolean {
+    if (this.bnplDirectActive()) {
+      return false;
+    }
+    return this.bnplConfirmMode() !== 'direct';
+  }
+
+  /**
+   * Klarna/Affirm selector click: Direct, PE fallback, or configuration error.
+   * @returns true when the click was fully handled (caller must not open PE).
+   */
+  private beginBnplSelectorClick(method: 'klarna' | 'affirm'): boolean {
+    const mode = this.bnplConfirmMode();
+    if (mode === 'element') {
+      return false;
+    }
+
+    const readiness = evaluateBnplDirectReadiness({
+      provider: method,
+      mode,
+      checkout: this.checkout(),
+    });
+
+    if (readiness.selectedFlow === 'element') {
+      return false;
+    }
+
+    if (readiness.selectedFlow === 'configuration-error') {
+      this.bnplDirectActive.set(false);
+      this.updateSelectedMethod(method);
+      this.emitBnplDirectConfigurationError(method, readiness);
+      return true;
+    }
+
+    void this.runBnplDirectPayment(method);
+    return true;
+  }
+
+  private emitBnplDirectConfigurationError(
+    method: 'klarna' | 'affirm',
+    readiness: BnplReadinessResult,
+  ): void {
+    const label = method === 'affirm' ? 'Affirm' : 'Klarna';
+    const reasons = readiness.reasonCodes.join(', ');
+    const fields = readiness.missingFields.join(', ');
+    const detailParts = [
+      reasons ? `reasons=${reasons}` : null,
+      fields ? `fields=${fields}` : null,
+    ].filter((part): part is string => !!part);
+
+    this.handlePaymentError(
+      new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: `${label} Direct confirmation is not ready (${detailParts.join('; ')}).`,
+        method,
+        provider: method,
+        originalError: {
+          selectedFlow: readiness.selectedFlow,
+          reasonCodes: readiness.reasonCodes,
+          missingFields: readiness.missingFields,
+        },
+      }),
+    );
+  }
+
+  private async runBnplDirectPayment(method: 'klarna' | 'affirm'): Promise<void> {
+    if (this.methodsLocked() || this.destroyed || this.stripeReturnRecovering) {
+      return;
+    }
+
+    const ownerId =
+      method === 'klarna' ? this.klarnaDirectOwnerId : this.affirmDirectOwnerId;
+    const adapter = method === 'klarna' ? this.klarnaAdapter : this.affirmAdapter;
+    const product = this.product();
+    const checkout = this.checkout();
+    const validation = validatePaymentProduct(product);
+    if (!validation.valid) {
+      this.updateSelectedMethod(method);
+      this.handlePaymentError(
+        new PaymentError({
+          code: 'PRODUCT_INVALID',
+          message: validation.errors.join(' '),
+          method,
+          provider: method,
+        }),
+      );
+      return;
+    }
+
+    if (
+      this.confirmationGate.isHeld() ||
+      EasyPaymentButtonsComponent.directPageLock !== null
+    ) {
+      // Do not select the method — that would mount Payment Element and create another Intent.
+      this.handlePaymentError(
+        new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message:
+            'Another payment is already being confirmed on this page. Wait for it to finish, then try again.',
+          method,
+          provider: method,
+        }),
+      );
+      return;
+    }
+
+    EasyPaymentButtonsComponent.directPageLock = ownerId;
+
+    // Lock before any await so double-clicks and alternating BNPL clicks cannot race.
+    this.bnplDirectActive.set(true);
+    this.updateSelectedMethod(method);
+    this.processingMethod.set(method);
+    this.providerBusy.set(true);
+    this.onPaymentStarted(method);
+
+    const generation = ++this.directAttemptGeneration;
+    const attemptId = createStripeReturnAttemptId();
+    let intentCreated = false;
+    let confirmStarted = false;
+
+    try {
+      await adapter.ensureStripeLoaded();
+      if (this.destroyed || generation !== this.directAttemptGeneration) {
+        return;
+      }
+
+      const preferredLocale = this.resolveBnplPreferredLocale(method);
+      const session = await adapter.createPaymentSession(
+        product,
+        checkout,
+        preferredLocale,
+        ownerId,
+      );
+      if (this.destroyed || generation !== this.directAttemptGeneration) {
+        return;
+      }
+      intentCreated = true;
+
+      // Stamp ownership only when this host is allowed to confirm (mirrors PE Continue).
+      if (!this.confirmationGate.isHeld()) {
+        markStripePendingReturn(
+          method,
+          product.id,
+          undefined,
+          this.hostContext.describeReturnOrigin(attemptId),
+        );
+      }
+
+      const returnUrl = buildStripeReturnUrl(
+        method,
+        checkout?.successUrl,
+        undefined,
+        attemptId,
+      );
+
+      confirmStarted = true;
+      const result = await adapter.confirmDirectPayment(
+        {
+          clientSecret: session.clientSecret,
+          returnUrl,
+          customer: checkout?.customer,
+          shipping: checkout?.shipping,
+        },
+        ownerId,
+      );
+
+      // Redirect-based BNPL typically unloads before this resolves. When it does resolve,
+      // clear our marker and emit the terminal outcome (never treat initiation as success).
+      clearStripePendingReturnFor(attemptId);
+      if (this.destroyed || generation !== this.directAttemptGeneration) {
+        return;
+      }
+
+      if (result.status === 'success' || result.status === 'processing') {
+        this.handleSuccess(result);
+      } else if (result.status === 'cancelled') {
+        this.handleCancelled(result);
+      } else {
+        this.handlePaymentError(
+          new PaymentError({
+            code: 'PAYMENT_FAILED',
+            message: result.message ?? `${method === 'affirm' ? 'Affirm' : 'Klarna'} payment failed.`,
+            method,
+            provider: method,
+          }),
+        );
+      }
+    } catch (err) {
+      clearStripePendingReturnFor(attemptId);
+      if (this.destroyed || generation !== this.directAttemptGeneration) {
+        return;
+      }
+
+      const paymentError = normalizeError(err, { method, provider: method });
+
+      // Ambiguous: Intent created and confirm was invoked, but outcome is unclear (e.g. network).
+      // Do not auto-retry or fall back to PE. Keep methods locked for merchant-driven recovery.
+      if (
+        intentCreated &&
+        confirmStarted &&
+        (paymentError.code === 'NETWORK_ERROR' || paymentError.code === 'UNKNOWN')
+      ) {
+        this.providerBusy.set(false);
+        if (this.acceptTerminalEvent()) {
+          this.error.emit(paymentError);
+          // Keep processingMethod so a second click cannot create another Intent.
+          this.paymentAttempt = 'settled';
+        }
+        return;
+      }
+
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.handleCancelled({
+          status: 'cancelled',
+          method,
+          provider: method,
+          message: paymentError.message,
+        });
+      } else {
+        this.handlePaymentError(paymentError);
+      }
+    } finally {
+      if (!this.destroyed && generation === this.directAttemptGeneration) {
+        this.providerBusy.set(false);
+        // Definitive cancel/error clears processingMethod inside handlers; ambiguous keeps it.
+        if (this.paymentAttempt === 'idle') {
+          this.bnplDirectActive.set(false);
+          if (this.processingMethod() === method) {
+            this.processingMethod.set(null);
+          }
+          // Clear selection so Payment Element cannot mount and create a new Intent
+          // after a completed Direct attempt on this host.
+          if (this.selectedMethod() === method) {
+            this.updateSelectedMethod(null);
+          }
+        }
+      }
+      // Keep the page lock after ambiguous confirm outcomes so no host creates another Intent.
+      const retainLockForAmbiguous =
+        this.paymentAttempt === 'settled' && this.processingMethod() === method;
+      if (
+        !retainLockForAmbiguous &&
+        EasyPaymentButtonsComponent.directPageLock === ownerId
+      ) {
+        EasyPaymentButtonsComponent.directPageLock = null;
+      }
+    }
+  }
+
+  private resolveBnplPreferredLocale(method: 'klarna' | 'affirm'): string {
+    const locale = this.effectiveLocale() as EasyPaymentsResolvedLocale;
+    const snapshot = this.configService.getSnapshot();
+    if (method === 'klarna') {
+      const klarna = snapshot.providers?.klarna;
+      const configured = klarna?.locale?.trim();
+      if (configured) {
+        return configured;
+      }
+      return toKlarnaPreferredLocale(locale, klarna?.purchaseCountry ?? 'US');
+    }
+    const affirm = snapshot.providers?.affirm;
+    const configured = affirm?.locale?.trim();
+    if (configured) {
+      return configured;
+    }
+    return toAffirmPreferredLocale(locale, affirm?.purchaseCountry ?? 'US');
   }
 
   private async refreshInstanceAvailability(

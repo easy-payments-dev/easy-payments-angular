@@ -229,6 +229,8 @@ export class StripeRedirectRecoveryService {
   private readonly hosts: StripeReturnHost[] = [];
   private pendingClaims: PendingClaim[] = [];
   private claimScheduled = false;
+  /** Bumped by {@link resetForTests} so a queued claim microtask cannot clear a later test's URL. */
+  private claimEpoch = 0;
   private returnOwner: StripeReturnHost | null = null;
   private returnClosed = false;
   private waitWarned = false;
@@ -244,8 +246,11 @@ export class StripeRedirectRecoveryService {
     this.returnOwner = null;
     this.returnClosed = false;
     this.waitWarned = false;
+    const abandoned = this.pendingClaims;
     this.pendingClaims = [];
     this.claimScheduled = false;
+    this.claimEpoch += 1;
+    abandoned.forEach((claim) => claim.resolve('not-owner'));
     this.hosts.length = 0;
     this.stripe = null;
     this.loadPromise = null;
@@ -286,11 +291,17 @@ export class StripeRedirectRecoveryService {
     if (!this.browser.isBrowser) {
       return Promise.resolve('not-owner');
     }
+    const epoch = this.claimEpoch;
     return new Promise((resolve) => {
       this.pendingClaims.push({ host, methods, resolve });
       if (!this.claimScheduled) {
         this.claimScheduled = true;
-        queueMicrotask(() => this.resolveClaims());
+        queueMicrotask(() => {
+          if (epoch !== this.claimEpoch) {
+            return;
+          }
+          this.resolveClaims();
+        });
       }
     });
   }

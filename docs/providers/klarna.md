@@ -3,7 +3,7 @@
 Klarna in Easy Payments is **Stripe-backed** (Klarna-only PaymentIntent + Stripe Payment Element).  
 You do **not** configure a separate Klarna Web SDK / Klarna API secret in Angular for this integration.
 
-**Direct confirmation:** Stripe’s Direct API was validated in a demo-only spike. The library adapter now exposes an **internal** `KlarnaAdapter.confirmDirectPayment()` capability (`stripe.confirmKlarnaPayment`, no Payment Element). It is **not** called by Full Checkout, Buttons Only, or Headless yet. Orchestration (Intent create, redirect markers, Buttons Only click path) remains for a later milestone. `evaluateBnplDirectReadiness` / `BnplConfirmMode` describe planned Buttons Only policy — see [api.md](../api.md#checkoutoptions). Backend/webhooks remain authoritative for fulfillment.
+**Direct confirmation (Buttons Only opt-in):** When `<easy-payment-buttons [bnplConfirmMode]="'auto'|'direct'">` is set and [`evaluateBnplDirectReadiness`](../api.md#buttons-only-bnpl-confirm-mode) is ready, a Klarna selector click runs Stripe Direct (`confirmKlarnaPayment`) without mounting Payment Element or showing Continue. Default `element` keeps the existing PE flow. Full Checkout and Headless always use Payment Element. Direct is **not** universally available (Stripe eligibility / country / browser limits). Backend/webhooks remain authoritative for fulfillment.
 
 ## What you need
 

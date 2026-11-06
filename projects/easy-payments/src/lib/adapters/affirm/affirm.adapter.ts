@@ -358,8 +358,9 @@ export class AffirmAdapter extends BaseProviderAdapter {
   /**
    * Explicit Stripe Direct confirmation (no Payment Element).
    *
-   * Not invoked by Full Checkout, Buttons Only, or Headless in this milestone.
-   * Future Buttons Only orchestration must own Intent creation and redirect markers.
+   * Invoked by Buttons Only when `[bnplConfirmMode]` is `auto`/`direct` and
+   * readiness is satisfied. Not used by Full Checkout or Headless.
+   * Callers own Intent creation and redirect markers.
    */
   async confirmDirectPayment(
     request: BnplDirectConfirmationRequest,

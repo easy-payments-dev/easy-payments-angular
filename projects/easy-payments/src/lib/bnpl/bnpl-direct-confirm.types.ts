@@ -6,7 +6,7 @@ import type {
 /**
  * Explicit Direct confirmation request for Klarna/Affirm adapters.
  *
- * Caller (future Buttons Only orchestration) owns:
+ * Caller (Buttons Only Direct orchestration) owns:
  * - PaymentIntent creation (method-locked, server-priced)
  * - Redirect marker / ownership lifecycle
  * - Readiness checks via {@link evaluateBnplDirectReadiness}

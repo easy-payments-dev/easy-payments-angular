@@ -21,6 +21,7 @@ import {
   persistDemoLocale,
   readPersistedDemoLocale,
 } from './demo-locale-persistence';
+import { DEMO_BNPL_BUTTONS_STORAGE_KEY } from './demo-bnpl-buttons-persistence';
 
 function createMemoryStorage(): { memory: Record<string, string>; storage: Storage } {
   const memory: Record<string, string> = {};
@@ -155,6 +156,7 @@ describe('App', () => {
     clearPersistedDemoMode();
     clearPersistedDemoLocale();
     clearPersistedDemoExperience();
+    sessionStorage.removeItem(DEMO_BNPL_BUTTONS_STORAGE_KEY);
     history.replaceState({}, '', '/');
 
     await TestBed.configureTestingModule({
@@ -171,6 +173,7 @@ describe('App', () => {
     clearPersistedDemoMode();
     clearPersistedDemoLocale();
     clearPersistedDemoExperience();
+    sessionStorage.removeItem(DEMO_BNPL_BUTTONS_STORAGE_KEY);
     history.replaceState({}, '', '/');
   });
 
@@ -273,6 +276,14 @@ describe('App', () => {
     expect(compiled.querySelector('easy-payments')).toBeNull();
     expect(compiled.querySelector('easy-payment-buttons')).toBeTruthy();
     expect(compiled.querySelector('app-headless-demo')).toBeNull();
+    expect(compiled.querySelector('[data-testid="config-section-buttons-bnpl-direct"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="buttons-bnpl-confirm-mode"]')).toBeTruthy();
+    expect(app.buttonsBnplConfirmMode()).toBe('element');
+    expect(
+      (compiled.querySelector('easy-payment-buttons') as HTMLElement).getAttribute(
+        'data-bnpl-confirm-mode',
+      ),
+    ).toBe('element');
     expect(compiled.querySelector('[data-testid="easy-payment-buttons-demo-notice"]')).toBeTruthy();
     expect(compiled.querySelector('.ep-payment-buttons__demo')).toBeNull();
     expect(compiled.querySelector('.buttons-code__pre')?.textContent).toContain(
@@ -282,6 +293,30 @@ describe('App', () => {
     expect(compiled.querySelector('.buttons-code__pre')?.textContent).toContain('separators');
     expect(app.buttonsAppearance().border).toBe('none');
     expect(app.buttonsAppearance().gap).toBe('16px');
+  });
+
+  it('does not start a payment when Buttons BNPL mode or customer fields change', async () => {
+    const fixture = TestBed.createComponent(App);
+    await settle(fixture);
+    const app = fixture.componentInstance;
+    app.setPlaygroundExperience('buttons');
+    fixture.detectChanges();
+
+    const host = () =>
+      (fixture.nativeElement as HTMLElement).querySelector(
+        'easy-payment-buttons',
+      ) as HTMLElement | null;
+    expect(host()?.getAttribute('data-bnpl-direct-active')).toBe('false');
+
+    app.setButtonsBnplConfirmMode('auto');
+    app.fillButtonsBnplTestSample();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(app.buttonsBnplConfirmMode()).toBe('auto');
+    expect(app.buttonsCheckout()?.customer?.email).toBe('jenny.rosen@example.com');
+    expect(host()?.getAttribute('data-bnpl-direct-active')).toBe('false');
+    expect(host()?.getAttribute('data-bnpl-confirm-mode')).toBe('auto');
   });
 
   it('switches to Headless Checkout with merchant-owned panel and mount host', async () => {

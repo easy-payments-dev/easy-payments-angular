@@ -346,8 +346,235 @@
         </div>
       </details>
 
-      <!-- 5. Payment method buttons appearance (Buttons Only) -->
+      <!-- 5. Buttons Only BNPL Direct + appearance -->
       @if (playgroundExperience() === 'buttons') {
+        <details class="config-section" open data-testid="config-section-buttons-bnpl-direct">
+          <summary class="config-section__summary">
+            <span class="config-section__heading">
+              <span class="config-section__title">Klarna / Affirm Direct (Buttons Only)</span>
+              <span class="config-section__scope">Buttons Only · opt-in</span>
+            </span>
+          </summary>
+          <div class="config-section__body">
+            <p class="hint">
+              <code>[bnplConfirmMode]</code> defaults to <code>element</code> (Payment Element +
+              Continue). Opt in to <code>auto</code> or <code>direct</code> for one-click Stripe
+              Direct when customer data is ready. Changing mode or fields never starts a payment.
+              Direct is not universally available — Stripe eligibility and browser limits still
+              apply.
+            </p>
+
+            <h3 class="subheading">bnplConfirmMode</h3>
+            <fieldset class="choice-group" data-testid="buttons-bnpl-confirm-mode">
+              <legend class="visually-hidden">BNPL confirm mode</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="element"
+                  [checked]="buttonsBnplConfirmMode() === 'element'"
+                  (change)="setButtonsBnplConfirmMode('element')"
+                />
+                <span>element (default)</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="auto"
+                  [checked]="buttonsBnplConfirmMode() === 'auto'"
+                  (change)="setButtonsBnplConfirmMode('auto')"
+                />
+                <span>auto (Direct when ready)</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="direct"
+                  [checked]="buttonsBnplConfirmMode() === 'direct'"
+                  (change)="setButtonsBnplConfirmMode('direct')"
+                />
+                <span>direct (fail fast if not ready)</span>
+              </label>
+            </fieldset>
+
+            <h3 class="subheading">TEST customer / billing</h3>
+            <p class="hint">
+              Use Stripe TEST placeholders only. Affirm Direct needs email, name, and a complete
+              billing address. Klarna Direct needs email and name (billing optional). Shipping is
+              required only when “Shipping required” is checked.
+            </p>
+            <div class="field-row">
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-bnpl-fill-test-sample"
+                (click)="fillButtonsBnplTestSample()"
+              >
+                Fill Stripe TEST sample
+              </button>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-bnpl-clear-customer"
+                (click)="clearButtonsBnplCustomerFields()"
+              >
+                Clear customer fields
+              </button>
+            </div>
+            <label class="field">
+              <span>Customer email</span>
+              <input
+                type="email"
+                [value]="buttonsCustomerEmail()"
+                (input)="buttonsCustomerEmail.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-email"
+              />
+            </label>
+            <label class="field">
+              <span>Customer name</span>
+              <input
+                type="text"
+                [value]="buttonsCustomerName()"
+                (input)="buttonsCustomerName.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-name"
+              />
+            </label>
+            <label class="field">
+              <span>Customer phone (optional)</span>
+              <input
+                type="tel"
+                [value]="buttonsCustomerPhone()"
+                (input)="buttonsCustomerPhone.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-phone"
+              />
+            </label>
+            <label class="field">
+              <span>Billing line1</span>
+              <input
+                type="text"
+                [value]="buttonsBillingLine1()"
+                (input)="buttonsBillingLine1.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-line1"
+              />
+            </label>
+            <label class="field">
+              <span>Billing line2</span>
+              <input
+                type="text"
+                [value]="buttonsBillingLine2()"
+                (input)="buttonsBillingLine2.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Billing city</span>
+              <input
+                type="text"
+                [value]="buttonsBillingCity()"
+                (input)="buttonsBillingCity.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-city"
+              />
+            </label>
+            <label class="field">
+              <span>Billing state</span>
+              <input
+                type="text"
+                [value]="buttonsBillingState()"
+                (input)="buttonsBillingState.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Billing postalCode</span>
+              <input
+                type="text"
+                [value]="buttonsBillingPostalCode()"
+                (input)="buttonsBillingPostalCode.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-postal"
+              />
+            </label>
+            <label class="field">
+              <span>Billing country (ISO alpha-2)</span>
+              <input
+                type="text"
+                maxlength="2"
+                [value]="buttonsBillingCountry()"
+                (input)="buttonsBillingCountry.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-country"
+              />
+            </label>
+
+            <h3 class="subheading">Shipping (optional)</h3>
+            <label class="choice">
+              <input
+                type="checkbox"
+                [checked]="buttonsShippingRequired()"
+                (change)="
+                  buttonsShippingRequired.set($any($event.target).checked);
+                  onButtonsBnplFieldChange()
+                "
+                data-testid="buttons-bnpl-shipping-required"
+              />
+              <span>Shipping required</span>
+            </label>
+            <label class="field">
+              <span>Shipping name</span>
+              <input
+                type="text"
+                [value]="buttonsShippingName()"
+                (input)="buttonsShippingName.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping line1</span>
+              <input
+                type="text"
+                [value]="buttonsShippingLine1()"
+                (input)="buttonsShippingLine1.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping city</span>
+              <input
+                type="text"
+                [value]="buttonsShippingCity()"
+                (input)="buttonsShippingCity.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping postalCode</span>
+              <input
+                type="text"
+                [value]="buttonsShippingPostalCode()"
+                (input)="buttonsShippingPostalCode.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping country (ISO alpha-2)</span>
+              <input
+                type="text"
+                maxlength="2"
+                [value]="buttonsShippingCountry()"
+                (input)="buttonsShippingCountry.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+        </details>
+
         <details class="config-section" open data-testid="config-section-buttons-appearance">
           <summary class="config-section__summary">
             <span class="config-section__heading">
@@ -1302,6 +1529,8 @@
               [layout]="buttonsLayout()"
               [buttonsAppearance]="buttonsAppearance()"
               [cardButtonAppearance]="cardButtonAppearance()"
+              [checkout]="buttonsCheckout()"
+              [bnplConfirmMode]="buttonsBnplConfirmMode()"
               [checkoutInstanceId]="buttonsCheckoutInstanceId()"
               (started)="onPaymentStarted($event)"
               (success)="onPaymentSuccess($event)"

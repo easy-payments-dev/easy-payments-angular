@@ -34,9 +34,8 @@ export interface BnplReadinessResult {
   /** True when library Direct readiness policy is satisfied for the provider. */
   ready: boolean;
   /**
-   * Flow the library would select for the given mode.
-   * Production Buttons Only does not execute Direct yet — callers must not treat
-   * `direct` as an active payment path until a later milestone.
+   * Flow Buttons Only selects for the given mode when `[bnplConfirmMode]` is set.
+   * Full Checkout and Headless ignore this helper for payment execution.
    */
   selectedFlow: BnplSelectedFlow;
   missingFields: BnplReadinessFieldPath[];
@@ -230,7 +229,7 @@ export function evaluateBnplDirectReadiness(
     };
   }
 
-  // auto → Payment Element fallback (no Direct execution in this milestone).
+  // auto → Payment Element fallback when Direct readiness is incomplete.
   return {
     ready: false,
     selectedFlow: 'element',
