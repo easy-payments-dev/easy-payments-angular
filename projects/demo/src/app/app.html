@@ -1592,7 +1592,7 @@
                   type="button"
                   class="demo-merchant-pay demo-merchant-pay--klarna"
                   data-testid="demo-merchant-klarna"
-                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font:650 15px Georgia,serif;cursor:pointer;background:#0a0b09;color:#ffb3c7"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:650;cursor:pointer;background:#0a0b09;color:#ffb3c7"
                   [disabled]="merchantButtonsBusy() || !merchantButtons.canRequestPayment('klarna')"
                   (click)="merchantButtons.requestPayment('klarna')"
                 >
@@ -1602,7 +1602,7 @@
                   type="button"
                   class="demo-merchant-pay demo-merchant-pay--affirm"
                   data-testid="demo-merchant-affirm"
-                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font:650 15px Georgia,serif;cursor:pointer;background:#4a4af4;color:#fff"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:650;cursor:pointer;background:#4a4af4;color:#fff"
                   [disabled]="merchantButtonsBusy() || !merchantButtons.canRequestPayment('affirm')"
                   (click)="merchantButtons.requestPayment('affirm')"
                 >

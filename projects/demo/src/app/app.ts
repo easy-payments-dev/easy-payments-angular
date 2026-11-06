@@ -373,7 +373,6 @@ export class App {
   readonly styledButtonsAppearance: EasyPaymentButtonsAppearance = {
     selectorBackgroundColor: '#111827',
     selectorTextColor: '#f9fafb',
-    selectorFontFamily: 'Georgia, serif',
     selectorFontSize: '15px',
     selectorFontWeight: 650,
     selectorPadding: '0 18px',
