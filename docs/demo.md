@@ -21,6 +21,8 @@ Source: [`projects/demo`](../projects/demo)
 - Event log (`started` / `methodChange` / `success` / `cancel` / `error` / `pending`)
 - **Buttons Only host outcome banner** outside the library component (demo-app UI only) — shows how a merchant can present outcomes from events. `<easy-payment-buttons>` itself stays event-driven after Klarna/Affirm recovery (no built-in “Payment completed.” CTA); the demo banner is the merchant-owned notification.
 - **Buttons Only BNPL Direct controls** (`[bnplConfirmMode]` = `element` \| `auto` \| `direct`, default `element`) plus TEST customer / billing / shipping fields. Mode or field changes never start a payment. Session-persisted with experience so Klarna/Affirm redirects remount the same settings. Full Checkout / Headless demos are unchanged.
+- **Styled library buttons** (`data-testid="demo-buttons-styled-library"`) — a second Buttons Only host with custom selector colors, pill radius, and plain-text labels. The default strip above it is unchanged.
+- **Merchant-owned buttons** (`data-testid="demo-buttons-merchant-owned"`) — demo Angular Klarna and Affirm buttons call `requestPayment` on a host with `selectorVisibility="merchant"`. The status line stays idle until a click. PayPal, Google Pay, and Apple Pay are not replaced.
 - **Demo Mode** (mocks) vs **Real / Test Providers**
 
 ---

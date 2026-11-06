@@ -24,7 +24,11 @@ import {
   ResolvedPaymentTheme,
 } from '../../models';
 import type { EasyPaymentButtonsLayout } from '../../models/easy-payment-buttons-layout.model';
-import type { EasyPaymentButtonsAppearance } from '../../models/easy-payment-buttons-appearance.model';
+import type {
+  EasyPaymentButtonsAppearance,
+  EasyPaymentButtonsSelectorLabels,
+  EasyPaymentButtonsSelectorVisibility,
+} from '../../models/easy-payment-buttons-appearance.model';
 import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import type { BnplConfirmMode } from '../../models/bnpl-confirm-mode.model';
@@ -122,6 +126,8 @@ export interface EasyPaymentButtonSlot {
    * the brand name (Klarna / Affirm) or when Card uses the icon alone.
    */
   readonly showVisibleLabel: boolean;
+  /** Library brand mark. Ignored by official wallet SDK slots. */
+  readonly showBrandIcon: boolean;
 }
 
 const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
@@ -154,7 +160,10 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
-  styleUrl: './easy-payment-buttons.component.scss',
+  styleUrls: [
+    './easy-payment-buttons.component.scss',
+    './easy-payment-buttons.selector.scss',
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'ep-payment-buttons-host',
@@ -175,6 +184,24 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
     '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
     '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
+    '[attr.data-selector-visibility]': 'selectorVisibility()',
+    '[style.--ep-buttons-selector-bg]': 'selectorBackgroundCss()',
+    '[style.--ep-buttons-selector-text]': 'selectorTextCss()',
+    '[style.--ep-buttons-selector-font-family]': 'selectorFontFamilyCss()',
+    '[style.--ep-buttons-selector-font-size]': 'selectorFontSizeCss()',
+    '[style.--ep-buttons-selector-font-weight]': 'selectorFontWeightCss()',
+    '[style.--ep-buttons-selector-padding]': 'selectorPaddingCss()',
+    '[style.--ep-buttons-selector-hover-bg]': 'selectorHoverBackgroundCss()',
+    '[style.--ep-buttons-selector-hover-text]': 'selectorHoverTextCss()',
+    '[style.--ep-buttons-selector-hover-border]': 'selectorHoverBorderCss()',
+    '[style.--ep-buttons-selector-selected-bg]': 'selectorSelectedBackgroundCss()',
+    '[style.--ep-buttons-selector-selected-text]': 'selectorSelectedTextCss()',
+    '[style.--ep-buttons-selector-selected-border]': 'selectorSelectedBorderCss()',
+    '[style.--ep-buttons-selector-disabled-bg]': 'selectorDisabledBackgroundCss()',
+    '[style.--ep-buttons-selector-disabled-text]': 'selectorDisabledTextCss()',
+    '[style.--ep-buttons-selector-loading-bg]': 'selectorLoadingBackgroundCss()',
+    '[style.--ep-buttons-selector-loading-text]': 'selectorLoadingTextCss()',
+    '[style.--ep-buttons-selector-focus-color]': 'selectorFocusOutlineCss()',
     '[style.--ep-font-family]': 'visualStyleCssVars().fontFamily',
     '[style.--ep-text]': 'visualStyleCssVars().textColor',
     '[style.--ep-text-secondary]': 'visualStyleCssVars().textSecondaryColor',
@@ -278,6 +305,12 @@ export class EasyPaymentButtonsComponent {
    * data satisfies {@link evaluateBnplDirectReadiness}.
    */
   readonly bnplConfirmMode = input<BnplConfirmMode>('element');
+  /**
+   * `library` (default) renders Easy Payments Card / Klarna / Affirm selectors.
+   * `merchant` hides those selectors so the host app calls {@link requestPayment}.
+   * PayPal, Google Pay, and Apple Pay stay official SDK buttons either way.
+   */
+  readonly selectorVisibility = input<EasyPaymentButtonsSelectorVisibility>('library');
 
   readonly started = output<PaymentStartedEvent>();
   readonly methodChange = output<PaymentMethodChangeEvent>();
@@ -377,6 +410,52 @@ export class EasyPaymentButtonsComponent {
     return bg;
   });
 
+  readonly selectorBackgroundCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorBackgroundColor),
+  );
+  readonly selectorTextCss = computed(() => cssToken(this.buttonsAppearance()?.selectorTextColor));
+  readonly selectorFontFamilyCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorFontFamily, 120),
+  );
+  readonly selectorFontSizeCss = computed(() => cssToken(this.buttonsAppearance()?.selectorFontSize));
+  readonly selectorFontWeightCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorFontWeight),
+  );
+  readonly selectorPaddingCss = computed(() => cssToken(this.buttonsAppearance()?.selectorPadding));
+  readonly selectorHoverBackgroundCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorHoverBackgroundColor),
+  );
+  readonly selectorHoverTextCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorHoverTextColor),
+  );
+  readonly selectorHoverBorderCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorHoverBorderColor),
+  );
+  readonly selectorSelectedBackgroundCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorSelectedBackgroundColor),
+  );
+  readonly selectorSelectedTextCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorSelectedTextColor),
+  );
+  readonly selectorSelectedBorderCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorSelectedBorderColor),
+  );
+  readonly selectorDisabledBackgroundCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorDisabledBackgroundColor),
+  );
+  readonly selectorDisabledTextCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorDisabledTextColor),
+  );
+  readonly selectorLoadingBackgroundCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorLoadingBackgroundColor),
+  );
+  readonly selectorLoadingTextCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorLoadingTextColor),
+  );
+  readonly selectorFocusOutlineCss = computed(() =>
+    cssToken(this.buttonsAppearance()?.selectorFocusOutlineColor),
+  );
+
   readonly methodsLocked = computed(
     () => this.providerBusy() || this.processingMethod() !== null,
   );
@@ -402,12 +481,14 @@ export class EasyPaymentButtonsComponent {
       const kind = this.resolveSlotKind(method, state, isMock);
       const presentation = getPaymentMethodPresentation(method, theme);
       const brandLabel = presentation.label || PAYMENT_METHOD_LABELS[method];
+      const customLabel = selectorLabel(this.buttonsAppearance()?.selectorLabels, method);
       // Card is library-owned copy; wallet brand names stay provider trademarks.
-      const label = method === 'card' ? msgs.methodCard : brandLabel;
+      const label = customLabel ?? (method === 'card' ? msgs.methodCard : brandLabel);
       // Brand marks already name the provider — never duplicate visible text.
       // Card's generic icon does not include the name; show a compact "Card" label
       // so the selector stays visible in light/dark and selected states.
-      const showVisibleLabel = method === 'card';
+      const showVisibleLabel = method === 'card' || customLabel != null;
+      const showBrandIcon = this.buttonsAppearance()?.showSelectorIcon !== false;
       return {
         method,
         state,
@@ -416,6 +497,7 @@ export class EasyPaymentButtonsComponent {
         kind,
         interactive: SELECTOR_SLOT_KINDS.has(kind),
         showVisibleLabel,
+        showBrandIcon,
       };
     });
   });
@@ -634,6 +716,11 @@ export class EasyPaymentButtonsComponent {
     });
   }
 
+  /** Merchant-owned mode hides library Card / Klarna / Affirm triggers. Wallets stay visible. */
+  merchantOwnsSelector(slot: EasyPaymentButtonSlot): boolean {
+    return this.selectorVisibility() === 'merchant' && slot.interactive;
+  }
+
   slotAriaLabel(slot: EasyPaymentButtonSlot): string {
     const base = slot.label;
     const msgs = this.msgs();
@@ -666,6 +753,64 @@ export class EasyPaymentButtonsComponent {
       return `${base}, selected`;
     }
     return base;
+  }
+
+  /**
+   * Merchant-owned trigger for Card, Klarna, and Affirm.
+   * Runs only when the host application calls it from a user action.
+   * PayPal, Google Pay, and Apple Pay are refused: those methods stay on official SDK buttons.
+   */
+  requestPayment(method: PaymentMethod): void {
+    if (this.destroyed) {
+      return;
+    }
+    if (method === 'paypal' || method === 'google-pay' || method === 'apple-pay') {
+      this.error.emit(
+        new PaymentError({
+          code: 'CONFIG_INVALID',
+          message:
+            'PayPal, Google Pay, and Apple Pay require their official SDK buttons. Merchant HTML cannot start these methods.',
+          method,
+        }),
+      );
+      return;
+    }
+    if (method !== 'card' && method !== 'klarna' && method !== 'affirm') {
+      this.error.emit(
+        new PaymentError({
+          code: 'CONFIG_INVALID',
+          message: `Unsupported payment method "${String(method)}".`,
+          method,
+        }),
+      );
+      return;
+    }
+    if (this.methodsLocked()) {
+      return;
+    }
+    if (!this.canRequestPayment(method)) {
+      this.error.emit(
+        new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: `${method} is not available for this checkout.`,
+          method,
+        }),
+      );
+      return;
+    }
+    this.selectMethod(method);
+  }
+
+  /** True when a merchant click may call {@link requestPayment} for this method. */
+  canRequestPayment(method: PaymentMethod): boolean {
+    if (this.destroyed || this.methodsLocked()) {
+      return false;
+    }
+    if (method !== 'card' && method !== 'klarna' && method !== 'affirm') {
+      return false;
+    }
+    const slot = this.methodSlots().find((entry) => entry.method === method);
+    return !!slot && slot.state === 'available' && SELECTOR_SLOT_KINDS.has(slot.kind);
   }
 
   selectMethod(method: PaymentMethod): void {
@@ -1446,4 +1591,44 @@ export class EasyPaymentButtonsComponent {
     this.availabilitySession.apply(results);
     return results;
   }
+}
+
+function selectorLabel(
+  labels: EasyPaymentButtonsSelectorLabels | undefined,
+  method: PaymentMethod,
+): string | null {
+  if (!labels || (method !== 'card' && method !== 'klarna' && method !== 'affirm')) {
+    return null;
+  }
+  return sanitizeSelectorLabel(labels[method]);
+}
+
+/** Plain text only. Rejects markup so a label cannot inject HTML. */
+function sanitizeSelectorLabel(value: string | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.replace(/[\u0000-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim();
+  if (!trimmed || trimmed.length > 64 || /[<>]/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+/** CSS custom-property values. Rejects urls, expressions, and stylesheet breaks. */
+function cssToken(value: string | number | null | undefined, max = 64): string | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed.length > max) {
+    return null;
+  }
+  if (/url\s*\(|expression\s*\(|javascript:|[;{}]|[<>]/i.test(trimmed)) {
+    return null;
+  }
+  if (!/^[#%(),.'"+\-\s\w]+$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
 }

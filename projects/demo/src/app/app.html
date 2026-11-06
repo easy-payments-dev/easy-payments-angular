@@ -1539,6 +1539,102 @@
               (methodChange)="onPaymentMethodChange($event)"
               (pending)="onPaymentPending($event)"
             />
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-styled-library" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+              <p class="preview-kicker">Experience A</p>
+              <h3>Styled library buttons</h3>
+              <p class="hint">
+                Same <code>&lt;easy-payment-buttons&gt;</code> engine with selector colors,
+                type, radius, and plain-text labels. PayPal, Google Pay, and Apple Pay stay
+                official SDK buttons and are omitted from this sample.
+              </p>
+              <easy-payment-buttons
+                [product]="product()"
+                [methods]="['card', 'klarna', 'affirm']"
+                [theme]="theme()"
+                [locale]="locale()"
+                [buttonsAppearance]="styledButtonsAppearance"
+                [checkout]="buttonsCheckout()"
+                [bnplConfirmMode]="buttonsBnplConfirmMode()"
+                checkoutInstanceId="demo-buttons-styled"
+                (started)="onPaymentStarted($event)"
+                (success)="onPaymentSuccess($event)"
+                (cancel)="onPaymentCancel($event)"
+                (error)="onPaymentError($event)"
+                (methodChange)="onPaymentMethodChange($event)"
+                (pending)="onPaymentPending($event)"
+              />
+            </section>
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-merchant-owned" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+              <p class="preview-kicker">Experience B</p>
+              <h3>Merchant-owned Angular buttons</h3>
+              <p class="hint">
+                These buttons are demo markup. Easy Payments still owns Klarna and Affirm
+                confirmation, locks, and redirect recovery. Nothing starts until you click.
+              </p>
+              <easy-payment-buttons
+                #merchantButtons
+                selectorVisibility="merchant"
+                [product]="product()"
+                [methods]="['klarna', 'affirm']"
+                [theme]="theme()"
+                [locale]="locale()"
+                [checkout]="buttonsCheckout()"
+                [bnplConfirmMode]="buttonsBnplConfirmMode()"
+                checkoutInstanceId="demo-buttons-merchant"
+                (started)="onMerchantButtonsStarted()"
+                (success)="onMerchantButtonsSuccess($event)"
+                (cancel)="onMerchantButtonsCancel($event)"
+                (error)="onMerchantButtonsError($event)"
+                (pending)="onMerchantButtonsPending($event)"
+              />
+              <div class="demo-merchant-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+                <button
+                  type="button"
+                  class="demo-merchant-pay demo-merchant-pay--klarna"
+                  data-testid="demo-merchant-klarna"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font:650 15px Georgia,serif;cursor:pointer;background:#0a0b09;color:#ffb3c7"
+                  [disabled]="merchantButtonsBusy()"
+                  (click)="merchantButtons.requestPayment('klarna')"
+                >
+                  Pay with Klarna
+                </button>
+                <button
+                  type="button"
+                  class="demo-merchant-pay demo-merchant-pay--affirm"
+                  data-testid="demo-merchant-affirm"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font:650 15px Georgia,serif;cursor:pointer;background:#4a4af4;color:#fff"
+                  [disabled]="merchantButtonsBusy()"
+                  (click)="merchantButtons.requestPayment('affirm')"
+                >
+                  Pay with Affirm
+                </button>
+              </div>
+              <p
+                class="demo-merchant-status"
+                data-testid="demo-merchant-status"
+                role="status"
+                aria-live="polite"
+                style="margin:10px 0 0;color:#334155;font-size:14px"
+              >
+                @switch (merchantButtonsStatus()) {
+                  @case ('success') {
+                    Success event for {{ merchantButtonsDetail() }}. Verify fulfillment on your backend.
+                  }
+                  @case ('pending') {
+                    Pending for {{ merchantButtonsDetail() }}. Do not retry. Await your webhook.
+                  }
+                  @case ('error') {
+                    Error {{ merchantButtonsDetail() }}.
+                  }
+                  @case ('cancel') {
+                    Canceled {{ merchantButtonsDetail() }}.
+                  }
+                  @default {
+                    Idle. Click a button to start one payment attempt.
+                  }
+                }
+              </p>
+            </section>
           } @else {
             <app-headless-demo
               [product]="product()"

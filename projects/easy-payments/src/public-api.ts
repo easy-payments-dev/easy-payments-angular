@@ -10,7 +10,11 @@ export type {
   EasyPaymentButtonSlotState,
 } from './lib/components/payment-buttons/easy-payment-buttons.component';
 export type { EasyPaymentButtonsLayout } from './lib/models/easy-payment-buttons-layout.model';
-export type { EasyPaymentButtonsAppearance } from './lib/models/easy-payment-buttons-appearance.model';
+export type {
+  EasyPaymentButtonsAppearance,
+  EasyPaymentButtonsSelectorLabels,
+  EasyPaymentButtonsSelectorVisibility,
+} from './lib/models/easy-payment-buttons-appearance.model';
 export type { EasyPaymentsCardButtonAppearance } from './lib/models/easy-payments-card-button-appearance.model';
 export {
   resolveCardButtonAppearance,

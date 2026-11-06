@@ -293,6 +293,17 @@ describe('App', () => {
     expect(compiled.querySelector('.buttons-code__pre')?.textContent).toContain('separators');
     expect(app.buttonsAppearance().border).toBe('none');
     expect(app.buttonsAppearance().gap).toBe('16px');
+    expect(compiled.querySelector('[data-testid="demo-buttons-styled-library"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="demo-buttons-merchant-owned"]')).toBeTruthy();
+    expect(
+      compiled.querySelector('[data-testid="demo-buttons-merchant-owned"] easy-payment-buttons')
+        ?.getAttribute('data-selector-visibility'),
+    ).toBe('merchant');
+    expect(compiled.querySelector('[data-testid="demo-merchant-status"]')?.textContent).toContain(
+      'Idle',
+    );
+    expect(compiled.querySelector('[data-testid="demo-merchant-klarna"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="demo-merchant-affirm"]')).toBeTruthy();
   });
 
   it('does not start a payment when Buttons BNPL mode or customer fields change', async () => {

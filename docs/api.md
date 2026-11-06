@@ -252,7 +252,8 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (including BNPL return URL context). |
 | `checkoutInstanceId` | `string \| null` | `null` | No | Optional stable id for multi-host redirect ownership (same rules as `<easy-payments>`). |
 | `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` (wraps) \| `vertical` (stacks). |
-| `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip presentation: `gap`, `separators` (`none`\|`line`), `separatorColor`, `background` (default transparent), `border` (`default`\|`none`), `borderColor`, `borderWidth`, `borderRadius`, `buttonHeight`, `buttonWidth`, `buttonMinWidth`. Applies to **library-owned** selectors/placeholders; official SDK buttons keep provider branding. |
+| `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip layout plus optional library-selector chrome (`selectorBackgroundColor`, `selectorTextColor`, font, padding, hover/selected/disabled/loading/focus, `selectorLabels`, `showSelectorIcon`). Official PayPal / Google Pay / Apple Pay buttons are not restyled. See [Button customization](#buttons-only-button-customization). |
+| `selectorVisibility` | `'library' \| 'merchant'` | `'library'` | No | `merchant` hides Card / Klarna / Affirm selectors so the host calls `requestPayment(method)`. Wallet SDK slots stay visible. |
 | `theme` | `PaymentTheme` | `'system'` | No | `light` \| `dark` \| `system`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `auto` (same resolver as checkout). French (`fr`) is planned for Phase 5 — not implemented yet. |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
@@ -264,7 +265,8 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 
 | Surface | Supported customization | Not supported |
 |---------|-------------------------|---------------|
-| Library-owned strip selectors (Card / Klarna / Affirm) | `buttonsAppearance`, `theme`, `visualStyle`, focus/hover/disabled via EP tokens | Replacing official wallet SDK buttons |
+| Library-owned strip selectors (Card / Klarna / Affirm) | `buttonsAppearance` selector fields and the CSS variables below, or `requestPayment` with `selectorVisibility="merchant"` | Replacing official wallet SDK buttons; injecting HTML into labels |
+| Merchant-owned Card / Klarna / Affirm triggers | Your Angular buttons plus `requestPayment` | A second payment engine, or calling confirm from `ngOnInit` / effects |
 | Card confirm CTA | `cardButtonAppearance` (`--ep-card-cta-*`) | Restyling Stripe Payment Element fields |
 | Klarna / Affirm Continue CTAs | Theme / `visualStyle` `--ep-cta-*`, or scoped CSS on `.ep-klarna__pay` / `.ep-affirm__pay` | Treating them as free-form success screens |
 | PayPal / Google Pay / Apple Pay | Strip `layout` / slot width / gap; SDK-supported style options only | Arbitrary recoloring or unofficial replicas |
@@ -593,6 +595,69 @@ type BnplConfirmMode = 'auto' | 'direct' | 'element';
 **Page lock:** One Buttons Only Direct attempt may be in flight per page, because Klarna/Affirm redirect the whole page and share one return marker. A second Buttons Only host is refused until that attempt reaches success, a definitive decline, or cancellation, or until the owning host is destroyed. `pending` and ambiguous network/unknown results keep the lock. This does not change Card, PayPal, Google Pay, or Apple Pay, and it does not apply to Full Checkout or Headless.
 
 **Not universal:** Direct availability still depends on Stripe eligibility, currency/country support, and browser behavior. Do not advertise Direct as always available. Card, PayPal, Google Pay, and Apple Pay are unchanged. Full Checkout and Headless do not expose `[bnplConfirmMode]`.
+
+### Buttons Only button customization
+
+Two additive experiences. Both use the existing Buttons Only host. Neither changes Full Checkout or Headless.
+
+#### Experience A — styled library buttons
+
+Leave `selectorVisibility` at `library` (the default). Optional `buttonsAppearance` fields set CSS custom properties on the host. Omitted fields keep the current default selector (surface fill, theme text, 40px height, theme radius, 2px focus ring).
+
+| Field | CSS variable | Applies to |
+|-------|----------------|------------|
+| `selectorBackgroundColor` | `--ep-buttons-selector-bg` | Card, Klarna, Affirm selectors |
+| `selectorTextColor` | `--ep-buttons-selector-text` | same |
+| `selectorFontFamily` / `selectorFontSize` / `selectorFontWeight` | `--ep-buttons-selector-font-*` | same |
+| `selectorPadding` | `--ep-buttons-selector-padding` | same |
+| `borderRadius` / `buttonHeight` | `--ep-buttons-radius` / `--ep-buttons-height` | library selectors and slot sizing |
+| `selectorHoverBackgroundColor` / `selectorHoverTextColor` / `selectorHoverBorderColor` | `--ep-buttons-selector-hover-*` | enabled hover |
+| `selectorSelectedBackgroundColor` / `selectorSelectedTextColor` / `selectorSelectedBorderColor` | `--ep-buttons-selector-selected-*` | `aria-pressed` |
+| `selectorDisabledBackgroundColor` / `selectorDisabledTextColor` | `--ep-buttons-selector-disabled-*` | disabled |
+| `selectorLoadingBackgroundColor` / `selectorLoadingTextColor` | `--ep-buttons-selector-loading-*` | `aria-busy` |
+| `selectorFocusOutlineColor` | `--ep-buttons-selector-focus-color` | `:focus-visible` only |
+
+You can set the same variables in your stylesheet on `easy-payment-buttons`. Values that contain `url(`, `expression(`, `javascript:`, or stylesheet breaks are ignored. `selectorLabels.card` / `.klarna` / `.affirm` are plain text (max 64 characters). Markup is dropped and the default label remains. `showSelectorIcon: false` hides the library brand mark on those selectors only.
+
+PayPal, Google Pay, and Apple Pay keep their official SDK buttons. Do not recolor those iframes or replace them with custom HTML. Stripe Payment Element fields are also not restyled by these variables.
+
+Library selectors stay keyboard buttons (`type="button"`), expose accessible names, use `:focus-visible`, disable while a payment is busy, and announce the busy method in a polite live region. `prefers-reduced-motion` removes the selector color transition.
+
+#### Experience B — merchant-owned Angular buttons
+
+Headless Checkout remains the API for a fully custom page that mounts Payment Element and official wallet buttons itself. It does **not** run Buttons Only Klarna/Affirm Direct. For Direct plus your own Klarna/Affirm buttons, keep one `<easy-payment-buttons>` and call it from your click handler:
+
+```html
+<easy-payment-buttons
+  #payments
+  selectorVisibility="merchant"
+  [product]="product"
+  [methods]="['klarna', 'affirm']"
+  [checkout]="checkout"
+  [bnplConfirmMode]="mode"
+  checkoutInstanceId="checkout-1"
+  (started)="busy = true"
+  (success)="onSuccess($event)"
+  (pending)="onPending($event)"
+  (cancel)="onCancel($event)"
+  (error)="onError($event)"
+/>
+
+<button type="button" [disabled]="busy || !payments.canRequestPayment('klarna')" (click)="payments.requestPayment('klarna')">
+  Pay with Klarna
+</button>
+```
+
+`requestPayment` is the only merchant trigger. It is not called from construction, input changes, or redirect recovery.
+
+- `card`, `klarna`, and `affirm` use the same selection, `bnplConfirmMode`, Direct lock, and redirect marker path as a library selector click.
+- `paypal`, `google-pay`, and `apple-pay` emit `CONFIG_INVALID` and do not start a payment. Render those methods with `selectorVisibility` left as `library`, or use Headless `mount`.
+- `canRequestPayment(method)` is a read. It does not create a PaymentIntent.
+- A locked or destroyed host ignores a second `requestPayment`. Ambiguous and `pending` results keep the page lock. There is no automatic retry.
+- Keep `checkoutInstanceId` stable across reloads when Klarna or Affirm can redirect. The merchant host still owns return recovery for that id.
+- You own accessible names, contrast, focus, and disabled state for your buttons. Easy Payments still emits `started`, `methodChange`, `success`, `error`, `cancel`, and `pending`. Do not fulfill an order from those events alone.
+
+Changing `selectorVisibility` or `buttonsAppearance` does not start a payment.
 
 Exported helper (pure, no network):
 

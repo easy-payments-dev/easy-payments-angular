@@ -366,6 +366,36 @@ export class App {
   readonly buttonsShippingPostalCode = signal(readPersistedDemoBnplButtons().shippingPostalCode);
   readonly buttonsShippingCountry = signal(readPersistedDemoBnplButtons().shippingCountry);
 
+  /**
+   * Experience A sample. Independent of the live appearance controls above
+   * so the default Buttons Only preview stays unchanged.
+   */
+  readonly styledButtonsAppearance: EasyPaymentButtonsAppearance = {
+    selectorBackgroundColor: '#111827',
+    selectorTextColor: '#f9fafb',
+    selectorFontFamily: 'Georgia, serif',
+    selectorFontSize: '15px',
+    selectorFontWeight: 650,
+    selectorPadding: '0 18px',
+    borderRadius: '999px',
+    buttonHeight: '48px',
+    selectorHoverBackgroundColor: '#1f2937',
+    selectorSelectedBackgroundColor: '#064e3b',
+    selectorSelectedTextColor: '#ecfdf5',
+    selectorFocusOutlineColor: '#34d399',
+    selectorDisabledBackgroundColor: '#374151',
+    selectorLoadingBackgroundColor: '#030712',
+    selectorLabels: {
+      card: 'Pay with card',
+      klarna: 'Pay with Klarna',
+      affirm: 'Pay with Affirm',
+    },
+  };
+
+  readonly merchantButtonsBusy = signal(false);
+  readonly merchantButtonsStatus = signal<'idle' | 'pending' | 'success' | 'error' | 'cancel'>('idle');
+  readonly merchantButtonsDetail = signal('');
+
   /** Checkout options for Buttons Only only (customer / shipping for Direct readiness). */
   readonly buttonsCheckout = computed<CheckoutOptions | undefined>(() => {
     const email = this.buttonsCustomerEmail().trim();
@@ -925,6 +955,36 @@ ${cardAppearanceBlock}
   setButtonsBnplConfirmMode(mode: BnplConfirmMode): void {
     this.buttonsBnplConfirmMode.set(mode);
     this.persistButtonsBnplState();
+  }
+
+  onMerchantButtonsStarted(): void {
+    this.merchantButtonsBusy.set(true);
+    this.merchantButtonsStatus.set('idle');
+    this.merchantButtonsDetail.set('');
+  }
+
+  onMerchantButtonsSuccess(result: PaymentResult): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('success');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsPending(result: PaymentResult): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('pending');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsCancel(result: PaymentResult): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('cancel');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsError(error: PaymentError): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('error');
+    this.merchantButtonsDetail.set(error.code);
   }
 
   /** Prefills Stripe TEST-style placeholders. Does not start a payment. */

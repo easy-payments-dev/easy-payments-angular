@@ -18,6 +18,12 @@
     </p>
   }
 
+  <p class="ep-payment-buttons__status" role="status" aria-live="polite" data-testid="easy-payment-buttons-status">
+    @if (processingMethod(); as activeMethod) {
+      {{ activeMethod }} busy
+    }
+  </p>
+
   <div
     class="ep-payment-buttons__list"
     role="group"
@@ -30,8 +36,8 @@
       -->
       <div
         class="ep-payment-buttons__item"
-        [class.ep-payment-buttons__item--collapsed]="slot.state === 'unavailable'"
-        [attr.aria-hidden]="slot.state === 'unavailable' ? 'true' : null"
+        [class.ep-payment-buttons__item--collapsed]="slot.state === 'unavailable' || merchantOwnsSelector(slot)"
+        [attr.aria-hidden]="slot.state === 'unavailable' || merchantOwnsSelector(slot) ? 'true' : null"
         [attr.data-method]="slot.method"
         [attr.data-state]="slot.state"
         [attr.data-kind]="slot.kind"
@@ -39,9 +45,10 @@
         [attr.data-mock]="slot.isMock ? 'true' : null"
       >
         @if (
-          slot.kind === 'card-selector' ||
-          slot.kind === 'klarna-selector' ||
-          slot.kind === 'affirm-selector'
+          selectorVisibility() === 'library' &&
+          (slot.kind === 'card-selector' ||
+            slot.kind === 'klarna-selector' ||
+            slot.kind === 'affirm-selector')
         ) {
           <button
             type="button"
@@ -51,12 +58,15 @@
             [class.ep-payment-buttons__selector--labeled]="slot.showVisibleLabel"
             [attr.aria-pressed]="selectedMethod() === slot.method"
             [attr.aria-label]="slotAriaLabel(slot)"
+            [attr.aria-busy]="processingMethod() === slot.method ? 'true' : null"
             [disabled]="methodsLocked()"
             (click)="selectMethod(slot.method)"
           >
-            <span class="ep-payment-buttons__mark" aria-hidden="true">
-              <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
-            </span>
+            @if (slot.showBrandIcon) {
+              <span class="ep-payment-buttons__mark" aria-hidden="true">
+                <easy-payment-method-icon [method]="slot.method" [theme]="resolvedTheme()" />
+              </span>
+            }
             @if (slot.showVisibleLabel) {
               <span class="ep-payment-buttons__label">{{ slot.label }}</span>
             }

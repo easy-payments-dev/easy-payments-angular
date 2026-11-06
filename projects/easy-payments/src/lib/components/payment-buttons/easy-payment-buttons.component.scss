@@ -1,4 +1,4 @@
-:host {
+  :host {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -298,7 +298,6 @@
   display: block;
 }
 
-/* Generic card glyph — raise opacity so it remains visible on selected surfaces. */
 .ep-payment-buttons__mark ::ng-deep .ep-mark__generic rect[opacity='0.12'] {
   opacity: 0.22;
 }
