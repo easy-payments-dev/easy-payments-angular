@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0
+
+Headless Checkout, Buttons Only Klarna/Affirm Direct, and merchant-owned triggers. Peer range is unchanged: `@angular/core` / `@angular/common` `>=20.3.0 <23.0.0`, `@stripe/stripe-js` `^8.0.0`.
+
+### Experiences
+
+- **Full Checkout** (`<easy-payments>`) keeps Payment Element confirmation for card, Klarna, and Affirm.
+- **Buttons Only** (`<easy-payment-buttons>`) adds optional selector appearance, `selectorVisibility`, and `requestPayment` / `canRequestPayment`.
+- **Headless** (`EasyPaymentsHeadless`) adds an injectable session for the same providers, including `recoverReturn()` for Klarna and Affirm.
+
+### Buttons Only
+
+- `[bnplConfirmMode]` defaults to `element` (Payment Element + Continue).
+- `auto` and `direct` are opt-in Klarna/Affirm Stripe Direct confirmation. Direct is not universally available.
+- Merchant-owned triggers can start **card**, **Klarna**, and **Affirm**. PayPal, Google Pay, and Apple Pay stay on official SDK buttons.
+- In-page confirmation locks and redirect recovery reduce duplicate in-flight confirms. They are not a substitute for backend idempotency.
+
+### Stripe return URLs
+
+- `checkout.successUrl` must be a same-origin `http:` or `https:` URL, or a relative path on the current page.
+- `javascript:`, `data:`, `file:`, `blob:`, protocol-relative URLs, and cross-origin destinations fail with `CONFIG_INVALID` before confirmation.
+
+### Documentation and demo
+
+- Demo playground covers Full Checkout, Buttons Only (including merchant-owned buttons), and Headless.
+- Docs state that browser `success` is not fulfillment and that the NestJS server is a reference demo.
+- Upgrading from 1.1.0: see [docs/migration-1.1-to-1.2.md](docs/migration-1.1-to-1.2.md).
+
+### Verification limits
+
+- Klarna and Affirm **Stripe TEST** payments returned provider success and browser success events.
+- Locally signed `payment_intent.succeeded` simulations returned HTTP 200 and `SUCCEEDED`, including duplicate delivery. That is not proof Stripe delivered webhooks to the demo server.
+- Live production charges, Apple Pay on a verified domain, Google Pay `PRODUCTION`, and real Stripe-to-server webhook delivery are **not** verified in this release.
+- Samsung Pay is not implemented.
+
 ## 1.1.0
 
 Localization release for Easy Payments UI chrome and provider locale hints.

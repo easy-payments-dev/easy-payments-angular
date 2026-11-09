@@ -7,6 +7,8 @@ export type AffirmUiState =
   | 'loading-session'
   | 'ready'
   | 'processing'
+  /** Recovered PaymentIntent still processing at the provider — not an active submit. */
+  | 'awaiting'
   | 'success'
   | 'error';
 

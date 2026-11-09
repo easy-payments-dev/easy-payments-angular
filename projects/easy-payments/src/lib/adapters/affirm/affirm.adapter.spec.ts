@@ -4,6 +4,7 @@ import { EasyPaymentsConfigService } from '../../config/easy-payments-config.ser
 import { BackendService } from '../../services/backend.service';
 import { PaymentError } from '../../errors/payment-error';
 import { SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation } from '../../testing/test-history';
 import { AffirmAdapter } from './affirm.adapter';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
@@ -21,10 +22,12 @@ describe('AffirmAdapter', () => {
   const create = jasmine.createSpy('create').and.returnValue({ mount, unmount });
   const elements = jasmine.createSpy('elements').and.returnValue({ create, submit, update });
   const confirmPayment = jasmine.createSpy('confirmPayment');
+  const confirmAffirmPayment = jasmine.createSpy('confirmAffirmPayment');
 
   const stripeMock = {
     elements,
     confirmPayment,
+    confirmAffirmPayment,
   };
 
   beforeEach(() => {
@@ -38,10 +41,12 @@ describe('AffirmAdapter', () => {
     sdkLoader.load.and.resolveTo(stripeMock as never);
     redirectRecovery.consumeReturn.and.resolveTo(null);
     redirectRecovery.wasReturnConsumed.and.returnValue(false);
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     confirmPayment.calls.reset();
+    confirmAffirmPayment.calls.reset();
     elements.calls.reset();
     create.calls.reset();
+    submit.calls.reset();
 
     TestBed.configureTestingModule({
       providers: [
@@ -200,7 +205,7 @@ describe('AffirmAdapter', () => {
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
 
-    const result = await adapter.confirmPayment('https://example.com/return');
+    const result = await adapter.confirmPayment(`${window.location.origin}/return`);
     expect(result.status).toBe('success');
     expect(result.method).toBe('affirm');
     expect(result.provider).toBe('affirm');
@@ -276,10 +281,103 @@ describe('AffirmAdapter', () => {
 
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
-    await adapter.confirmPayment('https://example.com/checkout');
+    await adapter.confirmPayment(`${window.location.origin}/checkout`);
 
     const args = confirmPayment.calls.mostRecent().args[0];
     expect(args.redirect).toBe('if_required');
     expect(args.confirmParams.return_url).toContain('ep_method=affirm');
+  });
+
+  describe('confirmDirectPayment', () => {
+    it('calls confirmAffirmPayment without mounting Payment Element', async () => {
+      confirmAffirmPayment.and.resolveTo({
+        paymentIntent: { id: 'pi_aff_direct', status: 'succeeded' },
+      });
+
+      const result = await adapter.confirmDirectPayment({
+        clientSecret: 'pi_affirm_direct_secret',
+        returnUrl: 'https://example.com/return?ep_method=affirm',
+        customer: {
+          email: 'buyer@example.com',
+          name: 'Jenny Rosen',
+          address: {
+            line1: '509 Amsterdam Ave',
+            city: 'New York',
+            state: 'NY',
+            postalCode: '10024',
+            country: 'US',
+          },
+        },
+        shipping: {
+          name: 'Jenny Rosen',
+          address: {
+            line1: '509 Amsterdam Ave',
+            city: 'New York',
+            state: 'NY',
+            postalCode: '10024',
+            country: 'US',
+          },
+        },
+      });
+
+      expect(confirmAffirmPayment).toHaveBeenCalledWith(
+        'pi_affirm_direct_secret',
+        jasmine.objectContaining({
+          return_url: 'https://example.com/return?ep_method=affirm',
+          payment_method: jasmine.objectContaining({
+            billing_details: jasmine.objectContaining({
+              email: 'buyer@example.com',
+              address: jasmine.objectContaining({ country: 'US', postal_code: '10024' }),
+            }),
+          }),
+          shipping: jasmine.objectContaining({ name: 'Jenny Rosen' }),
+        }),
+      );
+      expect(confirmPayment).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+      expect(elements).not.toHaveBeenCalled();
+      expect(backend.createAffirmPayment).not.toHaveBeenCalled();
+      expect(result.status).toBe('success');
+      expect(result.method).toBe('affirm');
+    });
+
+    it('maps Direct declines without retrying', async () => {
+      confirmAffirmPayment.and.resolveTo({
+        error: { type: 'card_error', message: 'Affirm declined' },
+      });
+      try {
+        await adapter.confirmDirectPayment({
+          clientSecret: 'sec',
+          returnUrl: 'https://example.com/r',
+        });
+        fail('expected decline');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PaymentError);
+        expect((error as PaymentError).provider).toBe('affirm');
+      }
+      expect(confirmAffirmPayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects incomplete request config without Stripe calls', async () => {
+      await expectAsync(
+        adapter.confirmDirectPayment({ clientSecret: 'sec', returnUrl: '' }),
+      ).toBeRejectedWith(jasmine.any(PaymentError));
+      expect(confirmAffirmPayment).not.toHaveBeenCalled();
+    });
+
+    it('leaves PE confirmPayment path unchanged when used separately', async () => {
+      backend.createAffirmPayment.and.resolveTo({
+        provider: 'affirm',
+        clientSecret: 'pi_affirm_secret',
+      });
+      confirmPayment.and.resolveTo({
+        paymentIntent: { id: 'pi_pe', status: 'succeeded' },
+      });
+      await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
+      await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
+      await adapter.confirmPayment(`${window.location.origin}/pe`);
+      expect(confirmPayment).toHaveBeenCalled();
+      expect(confirmAffirmPayment).not.toHaveBeenCalled();
+    });
   });
 });

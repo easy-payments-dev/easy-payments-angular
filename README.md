@@ -8,13 +8,13 @@ Angular payments and checkout library for Stripe, PayPal, Apple Pay, Google Pay,
 npm install @easy-payments/angular @stripe/stripe-js
 ```
 
-![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-0A7EA4)
+![Version 1.2.0](https://img.shields.io/badge/version-1.2.0-0A7EA4)
 ![Angular 20.3+ · 21 · 22](https://img.shields.io/badge/Angular-≥20.3%20·%2021%20·%2022-DD0031)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 | | |
 |---|---|
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Framework** | Angular |
 | **Compatibility** | Angular **20.3+**, **21**, **22** (`>=20.3.0 <23.0.0`) |
 | **Workspace** | Built with Angular **22.1.5** |
@@ -22,11 +22,13 @@ npm install @easy-payments/angular @stripe/stripe-js
 | **Locales** | `auto` · `en` · `es` · `pt` |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Easy Payments checkout — desktop viewport" width="640" />
+  <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Easy Payments checkout — desktop viewport" width="640" />
 </p>
 
 <p align="center">
   <a href="docs/getting-started.md">Getting Started</a> ·
+  <a href="docs/migration-1.1-to-1.2.md">1.1 → 1.2</a> ·
+  <a href="docs/headless.md">Headless</a> ·
   <a href="docs/localization.md">Localization</a> ·
   <a href="docs/api.md">API</a> ·
   <a href="docs/payment-flow.md">Payment flow</a> ·
@@ -34,7 +36,7 @@ npm install @easy-payments/angular @stripe/stripe-js
   <a href="#visual-customization">Visual style</a> ·
   <a href="#provider-isolation--diagnostics">Diagnostics</a> ·
   <a href="projects/demo">Demo source</a> ·
-  <a href="https://github.com/jantvb/easy-payments/issues">Issues</a>
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/issues">Issues</a>
 </p>
 
 ---
@@ -43,14 +45,14 @@ npm install @easy-payments/angular @stripe/stripe-js
 
 | Easy Payments | Angular |
 |---------------|---------|
+| **1.2.x** | `>=20.3.0 <23.0.0` |
 | **1.1.x** | `>=20.3.0 <23.0.0` |
 | **1.0.x** | `>=20.3.0 <23.0.0` |
 
 - **Workspace / build:** Angular **22.1.5**
 - **Consumer peers:** `>=20.3.0 <23.0.0`
-- **Validated** with packed installs into fresh apps on Angular **20**, **21**, and **22**
 
-v1.1.x does **not** support Angular 19, Angular 23+, or non-Angular frameworks.
+v1.2.x keeps the same peer range. It does **not** support Angular 19, Angular 23+, or non-Angular frameworks. Packed consumer installs on Angular 20, 21, and 22 were verified for 1.0, 1.1, and **1.2.0** (mock-mode smoke; no live payments).
 
 ---
 
@@ -62,58 +64,58 @@ Screenshots are **real captures** of the local demo using browser viewport emula
   <tr>
     <td align="center" width="50%">
       <strong>Desktop</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Desktop viewport" width="420" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Desktop viewport" width="420" />
     </td>
     <td align="center" width="50%">
       <strong>Mobile</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-mobile.png" alt="Mobile viewport" width="220" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-mobile.png" alt="Mobile viewport" width="220" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Tablet</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-tablet.png" alt="Tablet viewport" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-tablet.png" alt="Tablet viewport" width="360" />
     </td>
     <td align="center">
       <strong>iPad viewport</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-ipad.png" alt="iPad viewport" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-ipad.png" alt="iPad viewport" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Light</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-light.png" alt="Light theme" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-light.png" alt="Light theme" width="360" />
     </td>
     <td align="center">
       <strong>Dark</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-dark.png" alt="Dark theme" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-dark.png" alt="Dark theme" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Default appearance</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-default.png" alt="Default appearance" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-default.png" alt="Default appearance" width="360" />
     </td>
     <td align="center">
       <strong>Transparent appearance</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-transparent.png" alt="Transparent appearance" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-transparent.png" alt="Transparent appearance" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Success</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-success.png" alt="Success confirmation" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-success.png" alt="Success confirmation" width="360" />
     </td>
     <td align="center">
       <strong>Custom method order</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-method-order.png" alt="Custom payment method order" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-method-order.png" alt="Custom payment method order" width="360" />
     </td>
   </tr>
 </table>
 
 <p align="center">
   <strong>Laptop</strong><br />
-  <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-laptop.png" alt="Laptop viewport" width="480" />
+  <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-laptop.png" alt="Laptop viewport" width="480" />
 </p>
 
 > **npm note:** Screenshot `src` values use immutable absolute URLs on the `v1.0.0` tag (`raw.githubusercontent.com/.../v1.0.0/docs/assets/...`) so images render on npm after publish. See [docs/npm-readme-images.md](docs/npm-readme-images.md).
@@ -132,21 +134,21 @@ Alternate outcomes: **Processing → Error**, or **Provider flow → Cancelled**
   <tr>
     <td align="center" width="50%">
       <strong>Processing</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-processing.png" alt="Processing payment" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-processing.png" alt="Processing payment" width="360" />
     </td>
     <td align="center" width="50%">
       <strong>Success</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-success.png" alt="Payment successful" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-success.png" alt="Payment successful" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Error</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-error.png" alt="Payment failed" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-error.png" alt="Payment failed" width="360" />
     </td>
     <td align="center">
       <strong>Cancelled</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-cancelled.png" alt="Payment cancelled" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-cancelled.png" alt="Payment cancelled" width="360" />
     </td>
   </tr>
 </table>
@@ -159,7 +161,9 @@ Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](doc
 
 **Is:** Angular payment integration library · unified checkout UI · per-method provider abstraction · normalized payment events/errors · developer readiness diagnostics · built-in UI localization (`en` / `es` / `pt`) · Easy Payments–owned visual customization (`theme`, `appearance`, `[visualStyle]`)
 
-**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · a headless-only checkout API · ACH or other unfinished roadmap methods
+**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · Samsung Pay · ACH or other unfinished roadmap methods
+
+Headless Checkout (`EasyPaymentsHeadless`) is an **additional** integration mode alongside Full Checkout and Buttons Only — see [docs/headless.md](docs/headless.md).
 
 Money settles to **your** Stripe / PayPal (and related) merchant accounts.
 
@@ -852,7 +856,7 @@ This repo’s [`server/`](server) NestJS app is a **reference example**, not a p
 | Angular demo | [`projects/demo`](projects/demo) |
 | Reference backend | [`server`](server) |
 | Documentation | [`docs`](docs) |
-| Issues | [GitHub Issues](https://github.com/jantvb/easy-payments/issues) |
+| Issues | [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues) |
 
 ---
 
@@ -902,6 +906,12 @@ Do not use live credentials for basic integration testing.
 - Webhooks / reconciliation
 - Auth, rate limits, logging, CSP review
 
+v1.2.0 adds Full Checkout, Buttons Only, and Headless. `[bnplConfirmMode]` defaults to `element`. Klarna and Affirm Direct are Buttons Only opt-in. Merchant `requestPayment` starts card, Klarna, and Affirm only. PayPal, Google Pay, and Apple Pay stay on their official SDK buttons. Samsung Pay is not supported.
+
+Stripe `checkout.successUrl` must be a same-origin `http:` or `https:` URL, or a relative path resolved against the current page. Other schemes and cross-origin URLs fail with `CONFIG_INVALID` before confirmation.
+
+A browser `success` event is not fulfillment. The NestJS app in `server/` is a local demo, not a production backend. Its webhook status store is process-local and lost on restart. Your backend owns durable idempotency, capture, and fulfillment. Stripe TEST Klarna and Affirm payments, and locally signed webhook simulations, are not live production verification.
+
 ---
 
 ## FAQ
@@ -932,7 +942,7 @@ Do not use live credentials for basic integration testing.
 
 **Does Apple Pay / Google Pay always appear?** No — capability and configuration dependent.
 
-**How do I report a bug or suggest a feature?** [GitHub Issues](https://github.com/jantvb/easy-payments/issues).
+**How do I report a bug or suggest a feature?** [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues).
 
 **Can I inspect the source / demo / backend?** Yes — links above.
 
@@ -942,7 +952,7 @@ Do not use live credentials for basic integration testing.
 
 ## Community & Feedback
 
-Prefer **[GitHub Issues](https://github.com/jantvb/easy-payments/issues)** for bugs, features, provider ideas, docs, compatibility, and a11y/UX suggestions.
+Prefer **[GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues)** for bugs, features, provider ideas, docs, compatibility, and a11y/UX suggestions.
 
 Project contact (general / private): **jantvb@gmail.com**
 
@@ -964,7 +974,7 @@ This is an optional way to support the open-source project. It is **not** a lice
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for **1.1.0**.
+See [CHANGELOG.md](CHANGELOG.md) for **1.2.0**. 1.1.0 and 1.0.0 remain in that file.
 
 ---
 

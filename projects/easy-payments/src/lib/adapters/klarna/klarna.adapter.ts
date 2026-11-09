@@ -23,6 +23,8 @@ import { StripeElementSession, StripeElementSessionStore } from '../stripe/strip
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
+import { buildKlarnaDirectConfirmParams } from '../../bnpl/bnpl-direct-confirm-params';
+import type { BnplDirectConfirmationRequest } from '../../bnpl/bnpl-direct-confirm.types';
 import { buildKlarnaReturnUrl } from './klarna-return';
 import {
   KLARNA_PAYMENT_ELEMENT_OPTIONS,
@@ -345,6 +347,76 @@ export class KlarnaAdapter extends BaseProviderAdapter {
   }
 
   /**
+   * Explicit Stripe Direct confirmation (no Payment Element).
+   *
+   * Invoked by Buttons Only when `[bnplConfirmMode]` is `auto`/`direct` and
+   * {@link evaluateBnplDirectReadiness} is ready. Not used by Full Checkout or Headless.
+   * Callers must create the method-locked PaymentIntent, stamp redirect markers,
+   * and treat redirect initiation as non-terminal (recover via existing return path).
+   */
+  async confirmDirectPayment(
+    request: BnplDirectConfirmationRequest,
+    ownerId?: string,
+  ): Promise<PaymentResult> {
+    const clientSecret = request?.clientSecret?.trim() ?? '';
+    const returnUrl = request?.returnUrl?.trim() ?? '';
+    if (!clientSecret) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Klarna Direct confirmation requires a PaymentIntent client secret.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+    if (!returnUrl) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message: 'Klarna Direct confirmation requires a return URL.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+
+    const session = this.sessions.get(ownerId);
+    if (session.confirming) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'A Klarna payment confirmation is already in progress.',
+        method: 'klarna',
+        provider: 'klarna',
+      });
+    }
+
+    const release = this.gate.acquire(`klarna:${ownerId ?? 'legacy'}`, 'klarna', 'klarna');
+    session.confirming = true;
+    session.clientSecret = clientSecret;
+
+    try {
+      const stripe = await this.ensureStripeLoaded();
+      const confirmParams = buildKlarnaDirectConfirmParams(
+        returnUrl,
+        request.customer,
+        request.shipping,
+      );
+
+      const { error, paymentIntent } = await stripe.confirmKlarnaPayment(
+        clientSecret,
+        confirmParams,
+      );
+
+      if (error) {
+        throw mapKlarnaStripeError(error);
+      }
+
+      // Redirect-based Klarna often does not resolve here; when it does, reuse PE status mapping.
+      return this.normalizeIntent(paymentIntent, session);
+    } finally {
+      session.confirming = false;
+      release();
+    }
+  }
+
+  /**
    * After Stripe redirects back, recover via shared StripeRedirectRecoveryService.
    */
   async retrieveReturningPayment(clientSecret: string): Promise<PaymentResult> {
@@ -418,7 +490,7 @@ export class KlarnaAdapter extends BaseProviderAdapter {
 
     // Terminal success only. Do not treat `processing` as success — Klarna may
     // still be settling asynchronously after customer authorization.
-    if (status === 'succeeded' || status === 'requires_capture') {
+    if (status === 'succeeded') {
       return normalizePaymentResult({
         status: 'success',
         method: 'klarna',
@@ -429,6 +501,24 @@ export class KlarnaAdapter extends BaseProviderAdapter {
         metadata: {
           stripeStatus: status,
           gateway: 'stripe',
+        },
+      });
+    }
+
+    if (status === 'requires_capture') {
+      // Public status stays "success" for compatibility; metadata marks authorization-only.
+      return normalizePaymentResult({
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: paymentIntent?.id ?? session.paymentIntentId,
+        sessionId: session.sessionId,
+        message:
+          'Klarna payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.',
+        metadata: {
+          stripeStatus: status,
+          gateway: 'stripe',
+          authorizationOnly: true,
         },
       });
     }

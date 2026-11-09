@@ -10,7 +10,11 @@ export type {
   EasyPaymentButtonSlotState,
 } from './lib/components/payment-buttons/easy-payment-buttons.component';
 export type { EasyPaymentButtonsLayout } from './lib/models/easy-payment-buttons-layout.model';
-export type { EasyPaymentButtonsAppearance } from './lib/models/easy-payment-buttons-appearance.model';
+export type {
+  EasyPaymentButtonsAppearance,
+  EasyPaymentButtonsSelectorLabels,
+  EasyPaymentButtonsSelectorVisibility,
+} from './lib/models/easy-payment-buttons-appearance.model';
 export type { EasyPaymentsCardButtonAppearance } from './lib/models/easy-payments-card-button-appearance.model';
 export {
   resolveCardButtonAppearance,
@@ -45,7 +49,25 @@ export type {
   PaymentStatus,
 } from './lib/models/payment-result.model';
 export { normalizePaymentResult } from './lib/models/payment-result.model';
-export type { CheckoutOptions, CheckoutSuccessBehavior } from './lib/models/checkout-options.model';
+export type { EasyPaymentsAddress } from './lib/models/easy-payments-address.model';
+export type { BnplConfirmMode } from './lib/models/bnpl-confirm-mode.model';
+export type {
+  CheckoutCustomerOptions,
+  CheckoutOptions,
+  CheckoutShippingOptions,
+  CheckoutSuccessBehavior,
+} from './lib/models/checkout-options.model';
+export {
+  evaluateBnplDirectReadiness,
+} from './lib/bnpl/bnpl-direct-readiness';
+export type {
+  BnplDirectProvider,
+  BnplReadinessFieldPath,
+  BnplReadinessReasonCode,
+  BnplReadinessResult,
+  BnplSelectedFlow,
+  EvaluateBnplDirectReadinessInput,
+} from './lib/bnpl/bnpl-direct-readiness';
 export type { CheckoutViewState } from './lib/components/checkout/checkout-view-state';
 export { formatTransactionReference } from './lib/components/checkout/checkout-view-state';
 export {
@@ -140,3 +162,17 @@ export {
   toStripeBnplLocale,
   toStripeElementsLocale,
 } from './lib/i18n';
+
+/** Headless Checkout (v1.2.0 — H3 providers + H4.3 Klarna/Affirm recoverReturn). */
+export {
+  EasyPaymentsHeadless,
+} from './lib/headless';
+export type {
+  HeadlessCheckoutEvents,
+  HeadlessCheckoutSession,
+  HeadlessMethodInteraction,
+  HeadlessMethodStatus,
+  HeadlessMountHandle,
+  HeadlessSessionOptions,
+  HeadlessSessionState,
+} from './lib/headless';

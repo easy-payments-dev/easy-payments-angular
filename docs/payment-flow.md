@@ -122,7 +122,7 @@ While a provider flow is active, Easy Payments locks method switching and may sh
 
 Klarna and Affirm (Stripe-backed) may leave the page and return with Stripe query parameters. Easy Payments detects the return, shows **Processing**, then resolves to success / error / cancel and emits the matching event.
 
-`successUrl` / `cancelUrl` on `checkout` are merchant hints only — Easy Payments does **not** auto-redirect on them.
+`successUrl` / `cancelUrl` on `checkout` are merchant hints only — Easy Payments does **not** auto-redirect on them. A Stripe `successUrl` must resolve to the current page origin (`http:` or `https:`, including relative paths). Unsafe or cross-origin values fail with `CONFIG_INVALID` before confirmation.
 
 ---
 

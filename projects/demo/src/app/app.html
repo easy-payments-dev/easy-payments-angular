@@ -1,4 +1,10 @@
-@if (multiInstanceQa) {
+@if (bnplDirectSpike) {
+  @if (bnplDirectSpikePage(); as page) {
+    <ng-container [ngComponentOutlet]="page" />
+  } @else {
+    <p class="qa-loading" role="status">Loading BNPL Direct spike…</p>
+  }
+} @else if (multiInstanceQa) {
   @if (qaPage(); as page) {
     <ng-container [ngComponentOutlet]="page" />
   } @else {
@@ -11,8 +17,9 @@
       <p class="eyebrow">Easy Payments</p>
       <h1>Payment playground</h1>
       <p class="lede">
-        Configure the library on the left. Preview Full Checkout or Payment Buttons Only on the right.
-        Sections are grouped by what they change — method tiles are separate from the Stripe Card confirm button.
+        Configure the library on the left. Preview Full Checkout, Payment Buttons Only, or Headless
+        Checkout on the right. Sections are grouped by what they change — method tiles are separate
+        from the Stripe Card confirm button.
       </p>
     </div>
     @if (mode() === 'demo') {
@@ -28,7 +35,8 @@
       <p class="panel-intro">
         Each section lists which surface it affects:
         <code>&lt;easy-payments&gt;</code> (Full Checkout),
-        <code>&lt;easy-payment-buttons&gt;</code> (Buttons Only), both, or demo-only.
+        <code>&lt;easy-payment-buttons&gt;</code> (Buttons Only),
+        <code>EasyPaymentsHeadless</code> (Headless), both components, or demo-only.
       </p>
 
       <!-- 1. Experience -->
@@ -41,8 +49,8 @@
         </summary>
         <div class="config-section__body">
           <p class="hint">
-            Switches the live preview between Full Checkout and Buttons Only. Does not change provider
-            credentials.
+            Switches the live preview between Full Checkout, Buttons Only, and Headless. Does not
+            change provider credentials.
           </p>
           <fieldset class="choice-group">
             <legend class="visually-hidden">Playground experience</legend>
@@ -66,10 +74,22 @@
               />
               <span>Payment Buttons Only</span>
             </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="playgroundExperience"
+                value="headless"
+                [checked]="playgroundExperience() === 'headless'"
+                (change)="setPlaygroundExperience('headless')"
+              />
+              <span>Headless Checkout</span>
+            </label>
           </fieldset>
           <p class="hint">
             Full Checkout is <code>&lt;easy-payments&gt;</code>. Buttons Only is
-            <code>&lt;easy-payment-buttons&gt;</code> — a compact strip for your own checkout UI.
+            <code>&lt;easy-payment-buttons&gt;</code>. Headless uses the public
+            <code>EasyPaymentsHeadless</code> session API (mount, confirm, official wallet/PayPal
+            buttons, and Klarna/Affirm <code>recoverReturn()</code>).
           </p>
         </div>
       </details>
@@ -326,8 +346,235 @@
         </div>
       </details>
 
-      <!-- 5. Payment method buttons appearance (Buttons Only) -->
+      <!-- 5. Buttons Only BNPL Direct + appearance -->
       @if (playgroundExperience() === 'buttons') {
+        <details class="config-section" open data-testid="config-section-buttons-bnpl-direct">
+          <summary class="config-section__summary">
+            <span class="config-section__heading">
+              <span class="config-section__title">Klarna / Affirm Direct (Buttons Only)</span>
+              <span class="config-section__scope">Buttons Only · opt-in</span>
+            </span>
+          </summary>
+          <div class="config-section__body">
+            <p class="hint">
+              <code>[bnplConfirmMode]</code> defaults to <code>element</code> (Payment Element +
+              Continue). Opt in to <code>auto</code> or <code>direct</code> for one-click Stripe
+              Direct when customer data is ready. Changing mode or fields never starts a payment.
+              Direct is not universally available — Stripe eligibility and browser limits still
+              apply.
+            </p>
+
+            <h3 class="subheading">bnplConfirmMode</h3>
+            <fieldset class="choice-group" data-testid="buttons-bnpl-confirm-mode">
+              <legend class="visually-hidden">BNPL confirm mode</legend>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="element"
+                  [checked]="buttonsBnplConfirmMode() === 'element'"
+                  (change)="setButtonsBnplConfirmMode('element')"
+                />
+                <span>element (default)</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="auto"
+                  [checked]="buttonsBnplConfirmMode() === 'auto'"
+                  (change)="setButtonsBnplConfirmMode('auto')"
+                />
+                <span>auto (Direct when ready)</span>
+              </label>
+              <label class="choice">
+                <input
+                  type="radio"
+                  name="buttonsBnplConfirmMode"
+                  value="direct"
+                  [checked]="buttonsBnplConfirmMode() === 'direct'"
+                  (change)="setButtonsBnplConfirmMode('direct')"
+                />
+                <span>direct (fail fast if not ready)</span>
+              </label>
+            </fieldset>
+
+            <h3 class="subheading">TEST customer / billing</h3>
+            <p class="hint">
+              Use Stripe TEST placeholders only. Affirm Direct needs email, name, and a complete
+              billing address. Klarna Direct needs email and name (billing optional). Shipping is
+              required only when “Shipping required” is checked.
+            </p>
+            <div class="field-row">
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-bnpl-fill-test-sample"
+                (click)="fillButtonsBnplTestSample()"
+              >
+                Fill Stripe TEST sample
+              </button>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-bnpl-clear-customer"
+                (click)="clearButtonsBnplCustomerFields()"
+              >
+                Clear customer fields
+              </button>
+            </div>
+            <label class="field">
+              <span>Customer email</span>
+              <input
+                type="email"
+                [value]="buttonsCustomerEmail()"
+                (input)="buttonsCustomerEmail.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-email"
+              />
+            </label>
+            <label class="field">
+              <span>Customer name</span>
+              <input
+                type="text"
+                [value]="buttonsCustomerName()"
+                (input)="buttonsCustomerName.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-name"
+              />
+            </label>
+            <label class="field">
+              <span>Customer phone (optional)</span>
+              <input
+                type="tel"
+                [value]="buttonsCustomerPhone()"
+                (input)="buttonsCustomerPhone.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-customer-phone"
+              />
+            </label>
+            <label class="field">
+              <span>Billing line1</span>
+              <input
+                type="text"
+                [value]="buttonsBillingLine1()"
+                (input)="buttonsBillingLine1.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-line1"
+              />
+            </label>
+            <label class="field">
+              <span>Billing line2</span>
+              <input
+                type="text"
+                [value]="buttonsBillingLine2()"
+                (input)="buttonsBillingLine2.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Billing city</span>
+              <input
+                type="text"
+                [value]="buttonsBillingCity()"
+                (input)="buttonsBillingCity.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-city"
+              />
+            </label>
+            <label class="field">
+              <span>Billing state</span>
+              <input
+                type="text"
+                [value]="buttonsBillingState()"
+                (input)="buttonsBillingState.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Billing postalCode</span>
+              <input
+                type="text"
+                [value]="buttonsBillingPostalCode()"
+                (input)="buttonsBillingPostalCode.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-postal"
+              />
+            </label>
+            <label class="field">
+              <span>Billing country (ISO alpha-2)</span>
+              <input
+                type="text"
+                maxlength="2"
+                [value]="buttonsBillingCountry()"
+                (input)="buttonsBillingCountry.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+                data-testid="buttons-bnpl-billing-country"
+              />
+            </label>
+
+            <h3 class="subheading">Shipping (optional)</h3>
+            <label class="choice">
+              <input
+                type="checkbox"
+                [checked]="buttonsShippingRequired()"
+                (change)="
+                  buttonsShippingRequired.set($any($event.target).checked);
+                  onButtonsBnplFieldChange()
+                "
+                data-testid="buttons-bnpl-shipping-required"
+              />
+              <span>Shipping required</span>
+            </label>
+            <label class="field">
+              <span>Shipping name</span>
+              <input
+                type="text"
+                [value]="buttonsShippingName()"
+                (input)="buttonsShippingName.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping line1</span>
+              <input
+                type="text"
+                [value]="buttonsShippingLine1()"
+                (input)="buttonsShippingLine1.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping city</span>
+              <input
+                type="text"
+                [value]="buttonsShippingCity()"
+                (input)="buttonsShippingCity.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping postalCode</span>
+              <input
+                type="text"
+                [value]="buttonsShippingPostalCode()"
+                (input)="buttonsShippingPostalCode.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Shipping country (ISO alpha-2)</span>
+              <input
+                type="text"
+                maxlength="2"
+                [value]="buttonsShippingCountry()"
+                (input)="buttonsShippingCountry.set($any($event.target).value); onButtonsBnplFieldChange()"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+        </details>
+
         <details class="config-section" open data-testid="config-section-buttons-appearance">
           <summary class="config-section__summary">
             <span class="config-section__heading">
@@ -1214,8 +1461,10 @@
           <p class="preview-kicker">Live preview</p>
           @if (playgroundExperience() === 'checkout') {
             <h2>Embedded <code>&lt;easy-payments&gt;</code></h2>
-          } @else {
+          } @else if (playgroundExperience() === 'buttons') {
             <h2>Embedded <code>&lt;easy-payment-buttons&gt;</code></h2>
+          } @else {
+            <h2>Headless <code>EasyPaymentsHeadless</code></h2>
           }
         </div>
         @if (mode() === 'demo') {
@@ -1241,6 +1490,7 @@
           transparentPreviewBackdrop() === 'dark'
         "
         [class.checkout-stage--buttons]="playgroundExperience() === 'buttons'"
+        [class.checkout-stage--headless]="playgroundExperience() === 'headless'"
       >
         <div class="checkout-stage__surface">
           @if (!checkoutReady()) {
@@ -1269,7 +1519,7 @@
               (methodChange)="onPaymentMethodChange($event)"
               (successContinue)="onSuccessContinue($event)"
             />
-          } @else {
+          } @else if (playgroundExperience() === 'buttons') {
             <easy-payment-buttons
               [product]="product()"
               [methods]="methods()"
@@ -1279,6 +1529,8 @@
               [layout]="buttonsLayout()"
               [buttonsAppearance]="buttonsAppearance()"
               [cardButtonAppearance]="cardButtonAppearance()"
+              [checkout]="buttonsCheckout()"
+              [bnplConfirmMode]="buttonsBnplConfirmMode()"
               [checkoutInstanceId]="buttonsCheckoutInstanceId()"
               (started)="onPaymentStarted($event)"
               (success)="onPaymentSuccess($event)"
@@ -1286,6 +1538,110 @@
               (error)="onPaymentError($event)"
               (methodChange)="onPaymentMethodChange($event)"
               (pending)="onPaymentPending($event)"
+            />
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-styled-library" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+              <p class="preview-kicker">Experience A</p>
+              <h3>Styled library buttons</h3>
+              <p class="hint">
+                Same <code>&lt;easy-payment-buttons&gt;</code> engine with selector colors,
+                type, radius, and plain-text labels. PayPal, Google Pay, and Apple Pay stay
+                official SDK buttons and are omitted from this sample.
+              </p>
+              <easy-payment-buttons
+                [product]="product()"
+                [methods]="['card', 'klarna', 'affirm']"
+                [theme]="theme()"
+                [locale]="locale()"
+                [buttonsAppearance]="styledButtonsAppearance"
+                [checkout]="buttonsCheckout()"
+                [bnplConfirmMode]="buttonsBnplConfirmMode()"
+                checkoutInstanceId="demo-buttons-styled"
+                (started)="onPaymentStarted($event)"
+                (success)="onPaymentSuccess($event)"
+                (cancel)="onPaymentCancel($event)"
+                (error)="onPaymentError($event)"
+                (methodChange)="onPaymentMethodChange($event)"
+                (pending)="onPaymentPending($event)"
+              />
+            </section>
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-merchant-owned" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+              <p class="preview-kicker">Experience B</p>
+              <h3>Merchant-owned Angular buttons</h3>
+              <p class="hint">
+                These buttons are demo markup. Easy Payments still owns Klarna and Affirm
+                confirmation, locks, and redirect recovery. Nothing starts until you click.
+              </p>
+              <easy-payment-buttons
+                #merchantButtons
+                selectorVisibility="merchant"
+                [product]="product()"
+                [methods]="['klarna', 'affirm']"
+                [theme]="theme()"
+                [locale]="locale()"
+                [checkout]="buttonsCheckout()"
+                [bnplConfirmMode]="buttonsBnplConfirmMode()"
+                checkoutInstanceId="demo-buttons-merchant"
+                (started)="onMerchantButtonsStarted()"
+                (success)="onMerchantButtonsSuccess($event)"
+                (cancel)="onMerchantButtonsCancel($event)"
+                (error)="onMerchantButtonsError($event)"
+                (pending)="onMerchantButtonsPending($event)"
+              />
+              <div class="demo-merchant-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+                <button
+                  type="button"
+                  class="demo-merchant-pay demo-merchant-pay--klarna"
+                  data-testid="demo-merchant-klarna"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:650;cursor:pointer;background:#0a0b09;color:#ffb3c7"
+                  [disabled]="merchantButtonsBusy() || !merchantButtons.canRequestPayment('klarna')"
+                  (click)="merchantButtons.requestPayment('klarna')"
+                >
+                  Pay with Klarna
+                </button>
+                <button
+                  type="button"
+                  class="demo-merchant-pay demo-merchant-pay--affirm"
+                  data-testid="demo-merchant-affirm"
+                  style="appearance:none;border:0;border-radius:999px;min-height:48px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:650;cursor:pointer;background:#4a4af4;color:#fff"
+                  [disabled]="merchantButtonsBusy() || !merchantButtons.canRequestPayment('affirm')"
+                  (click)="merchantButtons.requestPayment('affirm')"
+                >
+                  Pay with Affirm
+                </button>
+              </div>
+              <p
+                class="demo-merchant-status"
+                data-testid="demo-merchant-status"
+                role="status"
+                aria-live="polite"
+                style="margin:10px 0 0;color:#334155;font-size:14px"
+              >
+                @switch (merchantButtonsStatus()) {
+                  @case ('success') {
+                    Success event for {{ merchantButtonsDetail() }}. Verify fulfillment on your backend.
+                  }
+                  @case ('pending') {
+                    Pending for {{ merchantButtonsDetail() }}. Do not retry. Await your webhook.
+                  }
+                  @case ('error') {
+                    Error {{ merchantButtonsDetail() }}.
+                  }
+                  @case ('cancel') {
+                    Canceled {{ merchantButtonsDetail() }}.
+                  }
+                  @default {
+                    Idle. Click a button to start one payment attempt.
+                  }
+                }
+              </p>
+            </section>
+          } @else {
+            <app-headless-demo
+              [product]="product()"
+              [methods]="methods()"
+              [theme]="theme()"
+              [locale]="locale()"
+              [translations]="customTranslations()"
             />
           }
         </div>
@@ -1382,6 +1738,8 @@
             <p class="preview-kicker">
               @if (playgroundExperience() === 'buttons') {
                 Host event inspector
+              } @else if (playgroundExperience() === 'headless') {
+                Component host events
               } @else {
                 Events
               }
@@ -1394,6 +1752,11 @@
             Inspect <code>started</code>, <code>methodChange</code>, <code>success</code>,
             <code>cancel</code>, <code>error</code>, and <code>pending</code> emitted by
             <code>&lt;easy-payment-buttons&gt;</code>. Outcome banners above are demo-app UI.
+          </p>
+        } @else if (playgroundExperience() === 'headless') {
+          <p class="hint">
+            Headless lifecycle events are shown inside the Headless panel above. This host log stays
+            for Full Checkout / Buttons Only event handlers and is intentionally quiet in H5.1.
           </p>
         }
         <p>{{ lastEvent() }}</p>

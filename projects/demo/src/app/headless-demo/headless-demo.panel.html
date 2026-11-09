@@ -1,0 +1,335 @@
+<section class="headless-demo" data-testid="headless-demo-panel" aria-label="Headless Checkout demo">
+  <header class="headless-demo__header">
+    <p class="headless-demo__kicker">Merchant-owned UI</p>
+    <h3 class="headless-demo__title" id="headless-demo-title">Headless Checkout</h3>
+    <p class="headless-demo__lede">
+      Mount official provider UI, confirm Card/Klarna/Affirm via the public session API, use official
+      PayPal / Google Pay / Apple Pay controls, and recover Klarna/Affirm returns with
+      <code>recoverReturn()</code>. Frontend outcomes are not authoritative fulfillment — use
+      backend / webhooks.
+    </p>
+  </header>
+
+  <section class="headless-demo__product" data-testid="headless-demo-product" aria-labelledby="headless-demo-product-heading">
+    <h4 class="headless-demo__subtitle" id="headless-demo-product-heading">Product</h4>
+    <p class="headless-demo__product-name">{{ product().name }}</p>
+    @if (product().description) {
+      <p class="headless-demo__product-description">{{ product().description }}</p>
+    }
+    <p class="headless-demo__product-price" data-testid="headless-demo-price">
+      {{ priceLabel() }}
+      @if ((product().quantity ?? 1) > 1) {
+        <span class="headless-demo__product-qty"> · qty {{ product().quantity }}</span>
+      }
+    </p>
+  </section>
+
+  <dl class="headless-demo__meta" data-testid="headless-demo-identity">
+    <div>
+      <dt>Checkout identity</dt>
+      <dd><code>{{ checkoutInstanceId }}</code></dd>
+    </div>
+    <div>
+      <dt>Runtime session id</dt>
+      <dd>
+        @if (sessionId(); as id) {
+          <code>{{ id }}</code>
+        } @else {
+          <span>—</span>
+        }
+      </dd>
+    </div>
+    <div>
+      <dt>Session state</dt>
+      <dd data-testid="headless-demo-state">{{ sessionState() ?? bootStatus() }}</dd>
+    </div>
+    <div>
+      <dt>Selected method</dt>
+      <dd data-testid="headless-demo-selected">{{ selectedMethod() ?? uiSelectedMethod() ?? 'none' }}</dd>
+    </div>
+  </dl>
+
+  <div class="headless-demo__live" aria-live="polite" aria-atomic="true">
+    @if (isInitializing() || recoveryPhase() === 'recovering' || recoveryPhase() === 'checking') {
+      <p class="headless-demo__status" role="status" data-testid="headless-demo-loading">
+        @if (recoveryPhase() === 'recovering') {
+          Recovering Klarna/Affirm return…
+        } @else {
+          Initializing Headless session…
+        }
+      </p>
+    }
+
+    @if (sessionState() === 'processing' || confirmInFlight()) {
+      <p class="headless-demo__status" role="status" data-testid="headless-demo-processing">
+        Payment processing…
+      </p>
+    }
+  </div>
+
+  @if (bootError(); as error) {
+    <div class="headless-demo__error" role="alert" data-testid="headless-demo-boot-error">
+      <p>{{ error }}</p>
+      <button
+        type="button"
+        class="headless-demo__retry"
+        aria-label="Retry Headless session initialize"
+        (click)="retryInitialize()"
+      >
+        Retry initialize
+      </button>
+    </div>
+  }
+
+  @if (recoveryMessage(); as recovery) {
+    <div
+      class="headless-demo__notice"
+      role="status"
+      aria-live="polite"
+      data-testid="headless-demo-recovery"
+      [attr.data-recovery-phase]="recoveryPhase()"
+    >
+      <p>{{ recovery }}</p>
+      @if (canRetryRecovery()) {
+        <button
+          type="button"
+          class="headless-demo__retry headless-demo__retry--notice"
+          data-testid="headless-demo-recovery-retry"
+          aria-label="Retry Klarna or Affirm return recovery without confirming again"
+          (click)="retryRecoverReturn()"
+        >
+          Retry recoverReturn
+        </button>
+      }
+    </div>
+  }
+
+  @if (configSkipMessage(); as skip) {
+    <div class="headless-demo__notice" role="status" aria-live="polite" data-testid="headless-demo-config-skip">
+      <p>{{ skip }}</p>
+      @if (canApplyPendingConfig()) {
+        <button
+          type="button"
+          class="headless-demo__retry headless-demo__retry--notice"
+          data-testid="headless-demo-apply-config"
+          aria-label="Apply pending Headless checkout configuration"
+          (click)="applyPendingConfiguration()"
+        >
+          Apply pending configuration
+        </button>
+      }
+    </div>
+  }
+
+  @if (lastActionError(); as actionError) {
+    <p class="headless-demo__error" role="alert" data-testid="headless-demo-action-error">
+      {{ actionError }}
+    </p>
+  }
+
+  @if (lastError(); as paymentError) {
+    <p class="headless-demo__error" role="status" data-testid="headless-demo-last-error">
+      Last error: {{ paymentError.code }} — {{ paymentError.message }}
+    </p>
+  }
+
+  @if (lastResult(); as result) {
+    <div
+      class="headless-demo__result"
+      role="status"
+      aria-live="polite"
+      data-testid="headless-demo-last-result"
+    >
+      <p>
+        Last result: {{ result.status }} · {{ result.method }}
+        @if (result.transactionId) {
+          · {{ result.transactionId }}
+        }
+      </p>
+      @if (authorizationOnly()) {
+        <p data-testid="headless-demo-authorization-only">
+          Authorization only — funds are not captured. Confirm capture/fulfillment on your backend.
+        </p>
+      }
+      @if (resultIsPending()) {
+        <p data-testid="headless-demo-pending-note">
+          Pending / processing — not success. Do not retry a charge; verify via backend/webhooks.
+        </p>
+      }
+      @if (result.message) {
+        <p>{{ result.message }}</p>
+      }
+      <p class="headless-demo__fulfillment-note">
+        Demo UI outcomes are not authoritative fulfillment.
+      </p>
+    </div>
+  }
+
+  <section class="headless-demo__selector" aria-labelledby="headless-demo-methods-heading">
+    <h4 class="headless-demo__subtitle" id="headless-demo-methods-heading">Payment methods</h4>
+    <p class="headless-demo__hint" id="headless-demo-methods-hint">
+      Card / Klarna / Affirm mount a Payment Element and use the merchant Pay control.
+      PayPal / Google Pay / Apple Pay mount official provider buttons (buyer click starts payment).
+    </p>
+
+    @if (availabilityEmpty()) {
+      <p class="headless-demo__empty" data-testid="headless-demo-availability-empty">
+        No methods reported available for the current configuration.
+      </p>
+    } @else {
+      <div
+        class="headless-demo__method-list"
+        role="listbox"
+        aria-labelledby="headless-demo-methods-heading"
+        aria-describedby="headless-demo-methods-hint"
+        data-testid="headless-demo-availability"
+      >
+        @for (entry of availableMethods(); track entry.method) {
+          <button
+            type="button"
+            class="headless-demo__method"
+            role="option"
+            [id]="'headless-method-' + entry.method"
+            [attr.data-method]="entry.method"
+            [attr.data-readiness]="entry.readiness"
+            [attr.data-available]="entry.available"
+            [attr.data-selected]="uiSelectedMethod() === entry.method"
+            [attr.aria-selected]="uiSelectedMethod() === entry.method"
+            [attr.aria-disabled]="!canSelectMethod(entry)"
+            [attr.aria-describedby]="
+              !entry.available || entry.readiness !== 'ready'
+                ? 'headless-reason-' + entry.method
+                : null
+            "
+            [disabled]="!canSelectMethod(entry)"
+            (click)="onSelectMethod(entry.method)"
+          >
+            <span class="headless-demo__method-main">
+              <span class="headless-demo__method-name">
+                {{ methodLabels[entry.method] ?? entry.method }}
+              </span>
+              <span class="headless-demo__badge" [attr.data-readiness]="entry.readiness">
+                {{ entry.readiness }}
+              </span>
+              <span
+                class="headless-demo__badge"
+                [attr.data-available]="entry.available ? 'yes' : 'no'"
+              >
+                {{ entry.available ? 'available' : 'unavailable' }}
+              </span>
+              @if (isOfficialButtonMethod(entry.method)) {
+                <span class="headless-demo__badge" data-interaction="official">Official button</span>
+              } @else if (isStripeElementMethod(entry.method)) {
+                <span class="headless-demo__badge" data-interaction="confirm">Merchant confirm</span>
+              }
+            </span>
+            <span class="headless-demo__method-meta">
+              provider {{ entry.provider }} · interaction {{ entry.interaction }}
+              @if (entry.mock) {
+                · mock
+              }
+            </span>
+            @if (!entry.available || entry.readiness !== 'ready') {
+              <span
+                class="headless-demo__method-note"
+                [id]="'headless-reason-' + entry.method"
+                data-testid="headless-demo-unavailable-reason"
+              >
+                {{ unavailableReason(entry) }}
+              </span>
+            }
+          </button>
+        }
+      </div>
+    }
+  </section>
+
+  <section class="headless-demo__mount" aria-labelledby="headless-demo-mount-heading">
+    <h4 class="headless-demo__subtitle" id="headless-demo-mount-heading">Provider surface</h4>
+
+    @if (mountPhase() === 'idle') {
+      <p class="headless-demo__hint" data-testid="headless-demo-mount-idle">
+        Select a payment method to mount its official UI here.
+      </p>
+    }
+
+    @if (mountPhase() === 'mounting') {
+      <p class="headless-demo__status" role="status" data-testid="headless-demo-mounting">
+        Mounting provider UI…
+      </p>
+    }
+
+    @if (mountError(); as error) {
+      <p class="headless-demo__error" role="alert" data-testid="headless-demo-mount-error">
+        {{ error }}
+      </p>
+    }
+
+    @if (mountNotice(); as notice) {
+      <p class="headless-demo__hint" data-testid="headless-demo-mount-notice">{{ notice }}</p>
+    }
+
+    <div
+      #mountHost
+      class="headless-demo__mount-host"
+      data-testid="headless-demo-mount-host"
+      [class.headless-demo__mount-host--active]="
+        mountPhase() === 'mounted' || mountPhase() === 'mounting'
+      "
+      [attr.hidden]="
+        mountPhase() === 'mounted' || mountPhase() === 'mounting' ? null : true
+      "
+      [attr.data-method]="uiSelectedMethod()"
+      [attr.aria-hidden]="mountPhase() !== 'mounted' && mountPhase() !== 'mounting'"
+      [attr.aria-label]="mountAriaLabel()"
+    ></div>
+
+    @if (showConfirmControl()) {
+      <div class="headless-demo__confirm" data-testid="headless-demo-confirm">
+        <button
+          type="button"
+          class="headless-demo__pay"
+          data-testid="headless-demo-pay"
+          [disabled]="!canConfirmPayment()"
+          [attr.aria-disabled]="!canConfirmPayment()"
+          (click)="onConfirmPayment()"
+        >
+          @if (confirmInFlight() || sessionState() === 'processing') {
+            Processing…
+          } @else if (uiSelectedMethod() === 'klarna') {
+            Continue with Klarna
+          } @else if (uiSelectedMethod() === 'affirm') {
+            Continue with Affirm
+          } @else {
+            Pay with card
+          }
+        </button>
+        <p class="headless-demo__hint" id="headless-demo-confirm-hint">
+          Calls public <code>session.confirm()</code> for the selected Stripe method only.
+        </p>
+      </div>
+    }
+
+    @if (showOfficialButtonHint()) {
+      <p class="headless-demo__hint" data-testid="headless-demo-official-hint">
+        Official provider control is mounted above. Payment starts only from that control — not from
+        a demo-owned Pay button.
+      </p>
+    }
+  </section>
+
+  <section class="headless-demo__events" aria-labelledby="headless-demo-events-heading">
+    <h4 class="headless-demo__subtitle" id="headless-demo-events-heading">Lifecycle events</h4>
+    @if (lifecycleEvents().length === 0) {
+      <p class="headless-demo__hint" data-testid="headless-demo-events-empty">
+        No Headless lifecycle events yet.
+      </p>
+    } @else {
+      <ul class="headless-demo__event-list" data-testid="headless-demo-events">
+        @for (line of lifecycleEvents(); track $index) {
+          <li>{{ line }}</li>
+        }
+      </ul>
+    }
+  </section>
+</section>

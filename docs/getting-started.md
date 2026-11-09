@@ -1,8 +1,14 @@
 # Getting Started
 
-Easy Payments **v1.1.0** is an **Angular** library that renders a unified checkout for:
+Easy Payments **v1.2.0** is an **Angular** library with three integration experiences:
 
-Card · PayPal · Apple Pay · Google Pay · Klarna · Affirm
+- **Full Checkout** — `<easy-payments>` (Quick Start below)
+- **Buttons Only** — `<easy-payment-buttons>` ([jump](#payment-buttons-only-event-driven))
+- **Headless** — `EasyPaymentsHeadless` ([jump](#headless-quick-start))
+
+Upgrading from 1.1.0? See **[migration-1.1-to-1.2.md](./migration-1.1-to-1.2.md)**.
+
+Methods: Card · PayPal · Apple Pay · Google Pay · Klarna · Affirm. Samsung Pay is not supported.
 
 Built-in UI locales: **`auto` · `en` · `es` · `pt`**.
 
@@ -20,11 +26,13 @@ You mainly:
 
 | Easy Payments | Angular peers |
 |---------------|---------------|
+| **1.2.x** | `>=20.3.0 <23.0.0` |
 | **1.1.x** | `>=20.3.0 <23.0.0` |
 | **1.0.x** | `>=20.3.0 <23.0.0` |
 
 - Workspace build: **Angular 22.1.5**
-- Validated consumers: **Angular 20**, **21**, and **22**
+- Peer range is unchanged from 1.1.0
+- Packed consumer checks on Angular **20**, **21**, and **22** passed for 1.0, 1.1, and **1.2.0** (mock-mode smoke; no live payments)
 - Not supported: Angular 19, Angular 23+, or non-Angular frameworks
 
 ---
@@ -404,6 +412,8 @@ Details: **[localization.md](./localization.md)**
 | Stripe / PayPal webhook reference | [`backend.md` — Webhooks](./backend.md#webhooks-reference) |
 | Localization | [`localization.md`](./localization.md) |
 | API reference | [`api.md`](./api.md) |
+| Headless guide | [`headless.md`](./headless.md) |
+| Migration 1.1 → 1.2 | [`migration-1.1-to-1.2.md`](./migration-1.1-to-1.2.md) |
 | Configuration recipes | [`configuration.md`](./configuration.md) |
 | Backend contract | [`backend.md`](./backend.md) |
 | Security | [`security.md`](./security.md) |
@@ -420,8 +430,50 @@ Use `<easy-payment-buttons>` when your app already owns product/price UI and you
 - It does **not** render application-level outcome banners — show toasts, modals, or confirmation pages in your host.
 - Keep listening for Stripe Payment Element validation and confirm CTAs inside the shared panel; those are payment-form UI, not app outcomes.
 - Treat `pending` as incomplete. Verify fulfillment with backend / webhooks.
+- `[bnplConfirmMode]` defaults to `'element'`. Klarna/Affirm Direct (`auto` / `direct`) is opt-in and Buttons Only only.
+- Merchant `requestPayment` starts **card**, **Klarna**, and **Affirm** only. PayPal / Google Pay / Apple Pay stay on official SDK buttons.
 
-Full integration example and contracts: **[api.md — `<easy-payment-buttons>`](./api.md#component-easy-payment-buttons)**.
+```html
+<easy-payment-buttons
+  [product]="product"
+  [methods]="methods"
+  bnplConfirmMode="element"
+  (success)="onSuccess($event)"
+  (cancel)="onCancel($event)"
+  (error)="onError($event)"
+  (pending)="onPending($event)"
+/>
+```
+
+`provideEasyPayments(...)` is the same as Full Checkout. Full contracts: **[api.md — `<easy-payment-buttons>`](./api.md#component-easy-payment-buttons)**.
+
+---
+
+## Headless Quick Start
+
+Use Headless when you own **all** checkout layout and mount official provider controls into your containers.
+
+1. Inject `EasyPaymentsHeadless` and call `createSession({ product, methods, checkoutInstanceId, ... })`.
+2. Call `await session.initialize()` before mount / confirm / recoverReturn.
+3. `mount(...)` into your host elements (card / BNPL / wallets as needed).
+4. Call `session.confirm()` for card / Klarna / Affirm after mount. PayPal, Google Pay, and Apple Pay are buyer-driven via their official SDK buttons — `confirm()` rejects for those methods.
+5. On Stripe return pages, call `session.recoverReturn()` (Klarna / Affirm) **after** `initialize()`. Pass a stable `checkoutInstanceId`.
+6. Handle `session.events` (`started` / `success` / `cancel` / `error` / `pending`). Browser `success` is still not fulfillment.
+
+Minimal shape:
+
+```ts
+const session = inject(EasyPaymentsHeadless).createSession({
+  product,
+  methods: ['card', 'klarna', 'affirm', 'paypal', 'google-pay', 'apple-pay'],
+  checkoutInstanceId: 'merchant-checkout-id',
+});
+await session.initialize();
+await session.recoverReturn(); // safe no-op when there is nothing to recover
+// then mount(...) into your containers
+```
+
+Full guide (mount, confirm, redirect recovery, limits): **[headless.md](./headless.md)**.
 
 ---
 

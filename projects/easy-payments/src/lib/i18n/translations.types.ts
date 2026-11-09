@@ -50,6 +50,8 @@ export interface EasyPaymentsTranslations {
   buttonsDemoModeNotice: string;
   continuePaymentHint: string;
   processingPayment: string;
+  /** Nonterminal recovered BNPL PaymentIntent — not an active buyer submit. */
+  awaitingProviderPayment: string;
   payAmount: string;
   payAmountWithMethodAria: string;
   /** Confirm CTA without repeating the merchant-owned amount (Buttons Only expanded panels). */

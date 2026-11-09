@@ -1,4 +1,4 @@
-:host {
+  :host {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -284,21 +284,25 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  max-height: 24px;
+  flex: 0 1 auto;
+  max-height: calc(var(--ep-buttons-height, 40px) - 8px);
   max-width: 100%;
   line-height: 0;
   color: inherit;
 }
 
+.ep-payment-buttons__mark ::ng-deep .ep-mark {
+  max-height: calc(var(--ep-buttons-height, 40px) - 8px);
+}
+
 .ep-payment-buttons__mark ::ng-deep img,
 .ep-payment-buttons__mark ::ng-deep svg {
-  max-height: 22px;
+  /* Allow brand height tokens (Apple 28 / Google 32) inside the strip. */
+  max-height: calc(var(--ep-buttons-height, 40px) - 8px);
   width: auto;
   display: block;
 }
 
-/* Generic card glyph — raise opacity so it remains visible on selected surfaces. */
 .ep-payment-buttons__mark ::ng-deep .ep-mark__generic rect[opacity='0.12'] {
   opacity: 0.22;
 }
@@ -336,6 +340,20 @@
   min-height: var(--ep-buttons-height, 40px);
   /* Allow official SDK chrome to size naturally — never clip branding. */
   overflow: visible;
+}
+
+/*
+ * Mock wallet stand-ins must fill the slot like library selectors. Without
+ * this, easy-mock-method-panel shrink-wraps to the logo inside the flex
+ * wrapper and PayPal / Apple Pay / Google Pay look narrower than Card /
+ * Klarna / Affirm even when --ep-buttons-slot-width is equal.
+ * Live __express mounts are unchanged (official SDK sizing).
+ */
+.ep-payment-buttons__mock > * {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /*

@@ -15,9 +15,13 @@ import { createPaymentOwnerId } from '../utils/payment-owner-id';
  * Stripe redirect return state for one host:
  * - `none` — no return for this host (panels behave normally)
  * - `pending` — a return is on the page but ownership is not decided yet
- * - `owner` — this host is recovering the return (panels must not create a new PaymentIntent)
+ * - `owner` — this host is actively recovering the return (panels must not create a new PaymentIntent)
+ * - `settled` — recovery finished with a terminal success (panels must not create a new PaymentIntent
+ *   and must not keep an active "Processing payment…" submit state)
+ * - `awaiting` — recovery finished with a nonterminal provider `processing` result (locked; no new
+ *   PaymentIntent; distinct from an in-flight buyer submit)
  */
-export type StripeReturnPhase = 'none' | 'pending' | 'owner';
+export type StripeReturnPhase = 'none' | 'pending' | 'owner' | 'settled' | 'awaiting';
 
 /**
  * Per-host context (component-level provider on `<easy-payments>` and

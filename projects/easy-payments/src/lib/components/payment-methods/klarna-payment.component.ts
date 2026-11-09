@@ -91,24 +91,35 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       <!--
         Full Checkout may show an in-panel completion banner.
         Buttons Only (chrome=minimal) is event-driven — the host owns outcome UI.
+        After settled recovery the lifecycle lock remains; we do not render a success CTA.
       -->
       @if (uiState() === 'success' && chrome() !== 'minimal') {
         <p class="ep-klarna__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
-      <button
-        type="button"
-        class="ep-klarna__pay"
-        [disabled]="!canPay()"
-        [attr.aria-busy]="uiState() === 'processing'"
-        (click)="onPay()"
-      >
-        @if (uiState() === 'processing') {
-          {{ msgs().processingPayment }}
-        } @else {
-          {{ payLabel() }}
-        }
-      </button>
+      @if (uiState() === 'awaiting') {
+        <p class="ep-klarna__status" role="status">{{ msgs().awaitingProviderPayment }}</p>
+      }
+
+      @if (uiState() !== 'success' || chrome() !== 'minimal') {
+        <button
+          type="button"
+          class="ep-klarna__pay"
+          [disabled]="!canPay()"
+          [attr.aria-busy]="uiState() === 'processing'"
+          (click)="onPay()"
+        >
+          @if (uiState() === 'processing') {
+            {{ msgs().processingPayment }}
+          } @else if (uiState() === 'awaiting') {
+            {{ msgs().awaitingProviderPayment }}
+          } @else if (uiState() === 'success') {
+            {{ msgs().paymentCompleted }}
+          } @else {
+            {{ payLabel() }}
+          }
+        </button>
+      }
     </div>
   `,
   styles: [
@@ -423,12 +434,26 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    // Redirect return is recovered by the owning host. While it is pending or owned,
-    // never create a new PaymentIntent; resume normally once the host releases it.
-    if (returnPhase !== 'none') {
+    // Redirect return is recovered by the owning host. While ownership is unresolved or
+    // recovery is in flight, never create a new PaymentIntent. After recovery settles,
+    // keep blocking Intent creation (settled/awaiting) while presentation stays chrome-aware:
+    // Full Checkout may show completion; Buttons Only (minimal) stays event-driven.
+    if (returnPhase === 'pending' || returnPhase === 'owner') {
       this.initGeneration += 1;
       this.sessionKey = null;
       this.uiState.set('processing');
+      return;
+    }
+    if (returnPhase === 'settled') {
+      this.initGeneration += 1;
+      this.sessionKey = null;
+      this.uiState.set('success');
+      return;
+    }
+    if (returnPhase === 'awaiting') {
+      this.initGeneration += 1;
+      this.sessionKey = null;
+      this.uiState.set('awaiting');
       return;
     }
 
@@ -524,8 +549,8 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     if (result.status === 'processing') {
-      // Host maps this to the optional `pending` output; panel stays locked.
-      this.uiState.set('processing');
+      // Host maps this to the optional `pending` output; panel stays locked without active-submit copy.
+      this.uiState.set('awaiting');
       this.success.emit(result);
       return;
     }

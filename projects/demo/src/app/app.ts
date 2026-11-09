@@ -26,6 +26,8 @@ import {
   PaymentTheme,
   PAYMENT_METHOD_LABELS,
   isAnyStripeBnplReturnAttempt,
+  type BnplConfirmMode,
+  type CheckoutOptions,
   type EasyPaymentButtonsAppearance,
   type EasyPaymentButtonsLayout,
   type EasyPaymentsAppearance,
@@ -35,22 +37,42 @@ import {
   type EasyPaymentsVisualStyle,
   resolveEffectiveLocale,
 } from '@easy-payments/angular';
-
-/** Main playground: Ready-to-Use Checkout vs Payment Buttons Only. */
-type PlaygroundExperience = 'checkout' | 'buttons';
 import { environment } from '../environments/environment';
 import {
   persistDemoMode,
   readPersistedDemoMode,
   type PersistedDemoMode,
 } from './demo-mode-persistence';
+import {
+  persistDemoExperience,
+  readPersistedDemoExperience,
+  type DemoPlaygroundExperience,
+} from './demo-experience-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
+import {
+  DEMO_BNPL_TEST_SAMPLE,
+  persistDemoBnplButtons,
+  readPersistedDemoBnplButtons,
+  type DemoBnplButtonsPersistedState,
+} from './demo-bnpl-buttons-persistence';
+import { HeadlessDemoPanel } from './headless-demo/headless-demo.panel';
+
+/** Main playground: Full Checkout, Buttons Only, or Headless session API. */
+type PlaygroundExperience = DemoPlaygroundExperience;
 
 function isMultiInstanceQaQuery(): boolean {
   if (typeof window === 'undefined') {
     return false;
   }
   return new URLSearchParams(window.location.search).get('ep_qa') === 'multi';
+}
+
+/** H6.2.4.1 — isolated BNPL Direct confirmation spike. Open `/?ep_qa=bnpl-direct`. */
+function isBnplDirectSpikeQuery(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(window.location.search).get('ep_qa') === 'bnpl-direct';
 }
 
 interface MethodRow {
@@ -204,7 +226,12 @@ const VISUAL_STYLE_FIELDS: readonly {
 
 @Component({
   selector: 'app-root',
-  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent, NgComponentOutlet],
+  imports: [
+    EasyPaymentsComponent,
+    EasyPaymentButtonsComponent,
+    HeadlessDemoPanel,
+    NgComponentOutlet,
+  ],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
@@ -216,8 +243,15 @@ export class App {
    * Not part of the published library API.
    */
   readonly multiInstanceQa = isMultiInstanceQaQuery();
+  /**
+   * H6.2.4.1 — Dev-only BNPL Direct spike. Open `/?ep_qa=bnpl-direct`.
+   * Isolated from library adapters; not part of the published package.
+   */
+  readonly bnplDirectSpike = isBnplDirectSpikeQuery();
   /** Set only when `?ep_qa=multi` — keeps MultiInstanceQaPage out of the initial bundle. */
   readonly qaPage = signal<Type<unknown> | null>(null);
+  /** Set only when `?ep_qa=bnpl-direct` — keeps BnplDirectSpikePage out of the initial bundle. */
+  readonly bnplDirectSpikePage = signal<Type<unknown> | null>(null);
 
   private readonly mockController = inject(MockPaymentController);
   private readonly configValidator = inject(EasyPaymentsConfigValidator);
@@ -280,8 +314,14 @@ export class App {
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
   readonly switchingMode = signal(false);
-  /** Full Checkout vs Payment Buttons Only playground surface. */
-  readonly playgroundExperience = signal<PlaygroundExperience>('checkout');
+  /**
+   * Full Checkout vs Buttons Only vs Headless playground surface.
+   * Restored from sessionStorage so Klarna/Affirm returns remount the same experience
+   * before checkoutReady enables provider hosts (ownership recovery stays experience-scoped).
+   */
+  readonly playgroundExperience = signal<PlaygroundExperience>(
+    readPersistedDemoExperience() ?? 'checkout',
+  );
   readonly buttonsLayout = signal<EasyPaymentButtonsLayout>('horizontal');
   readonly buttonsSeparators = signal<'none' | 'line'>('none');
   readonly buttonsSeparatorColor = signal('');
@@ -300,6 +340,134 @@ export class App {
   readonly buttonsWidthMode = signal<'auto' | 'fixed'>('auto');
   readonly buttonsFixedWidth = signal(160);
   readonly buttonsCheckoutInstanceId = signal('demo-buttons-1');
+
+  /**
+   * Buttons Only BNPL Direct opt-in (`[bnplConfirmMode]`). Default `element`.
+   * Changing mode or customer fields never starts a payment.
+   */
+  readonly buttonsBnplConfirmMode = signal<BnplConfirmMode>(
+    readPersistedDemoBnplButtons().bnplConfirmMode,
+  );
+  readonly buttonsCustomerEmail = signal(readPersistedDemoBnplButtons().customerEmail);
+  readonly buttonsCustomerName = signal(readPersistedDemoBnplButtons().customerName);
+  readonly buttonsCustomerPhone = signal(readPersistedDemoBnplButtons().customerPhone);
+  readonly buttonsBillingLine1 = signal(readPersistedDemoBnplButtons().billingLine1);
+  readonly buttonsBillingLine2 = signal(readPersistedDemoBnplButtons().billingLine2);
+  readonly buttonsBillingCity = signal(readPersistedDemoBnplButtons().billingCity);
+  readonly buttonsBillingState = signal(readPersistedDemoBnplButtons().billingState);
+  readonly buttonsBillingPostalCode = signal(readPersistedDemoBnplButtons().billingPostalCode);
+  readonly buttonsBillingCountry = signal(readPersistedDemoBnplButtons().billingCountry);
+  readonly buttonsShippingRequired = signal(readPersistedDemoBnplButtons().shippingRequired);
+  readonly buttonsShippingName = signal(readPersistedDemoBnplButtons().shippingName);
+  readonly buttonsShippingLine1 = signal(readPersistedDemoBnplButtons().shippingLine1);
+  readonly buttonsShippingLine2 = signal(readPersistedDemoBnplButtons().shippingLine2);
+  readonly buttonsShippingCity = signal(readPersistedDemoBnplButtons().shippingCity);
+  readonly buttonsShippingState = signal(readPersistedDemoBnplButtons().shippingState);
+  readonly buttonsShippingPostalCode = signal(readPersistedDemoBnplButtons().shippingPostalCode);
+  readonly buttonsShippingCountry = signal(readPersistedDemoBnplButtons().shippingCountry);
+
+  /**
+   * Experience A sample. Independent of the live appearance controls above
+   * so the default Buttons Only preview stays unchanged.
+   */
+  readonly styledButtonsAppearance: EasyPaymentButtonsAppearance = {
+    selectorBackgroundColor: '#111827',
+    selectorTextColor: '#f9fafb',
+    selectorFontSize: '15px',
+    selectorFontWeight: 650,
+    selectorPadding: '0 18px',
+    borderRadius: '999px',
+    buttonHeight: '48px',
+    selectorHoverBackgroundColor: '#1f2937',
+    selectorSelectedBackgroundColor: '#064e3b',
+    selectorSelectedTextColor: '#ecfdf5',
+    selectorFocusOutlineColor: '#34d399',
+    selectorDisabledBackgroundColor: '#374151',
+    selectorLoadingBackgroundColor: '#030712',
+    selectorLabels: {
+      card: 'Pay with card',
+      klarna: 'Pay with Klarna',
+      affirm: 'Pay with Affirm',
+    },
+  };
+
+  readonly merchantButtonsBusy = signal(false);
+  readonly merchantButtonsStatus = signal<'idle' | 'pending' | 'success' | 'error' | 'cancel'>('idle');
+  readonly merchantButtonsDetail = signal('');
+
+  /** Checkout options for Buttons Only only (customer / shipping for Direct readiness). */
+  readonly buttonsCheckout = computed<CheckoutOptions | undefined>(() => {
+    const email = this.buttonsCustomerEmail().trim();
+    const name = this.buttonsCustomerName().trim();
+    const phone = this.buttonsCustomerPhone().trim();
+    const line1 = this.buttonsBillingLine1().trim();
+    const line2 = this.buttonsBillingLine2().trim();
+    const city = this.buttonsBillingCity().trim();
+    const state = this.buttonsBillingState().trim();
+    const postalCode = this.buttonsBillingPostalCode().trim();
+    const country = this.buttonsBillingCountry().trim().toUpperCase();
+    const hasBilling =
+      !!line1 || !!line2 || !!city || !!state || !!postalCode || !!country;
+    const shippingRequired = this.buttonsShippingRequired();
+    const shippingName = this.buttonsShippingName().trim();
+    const shipLine1 = this.buttonsShippingLine1().trim();
+    const shipLine2 = this.buttonsShippingLine2().trim();
+    const shipCity = this.buttonsShippingCity().trim();
+    const shipState = this.buttonsShippingState().trim();
+    const shipPostal = this.buttonsShippingPostalCode().trim();
+    const shipCountry = this.buttonsShippingCountry().trim().toUpperCase();
+    const hasShippingAddress =
+      !!shipLine1 || !!shipLine2 || !!shipCity || !!shipState || !!shipPostal || !!shipCountry;
+
+    const hasCustomer = !!email || !!name || !!phone || hasBilling;
+    const hasShipping = shippingRequired || !!shippingName || hasShippingAddress;
+    if (!hasCustomer && !hasShipping) {
+      return undefined;
+    }
+
+    const billingComplete = !!line1 && !!city && !!postalCode && !!country;
+    const shippingComplete = !!shipLine1 && !!shipCity && !!shipPostal && !!shipCountry;
+
+    const checkout: CheckoutOptions = {};
+    if (hasCustomer) {
+      checkout.customer = {
+        ...(email ? { email } : {}),
+        ...(name ? { name } : {}),
+        ...(phone ? { phone } : {}),
+        ...(billingComplete
+          ? {
+              address: {
+                line1,
+                city,
+                postalCode,
+                country,
+                ...(line2 ? { line2 } : {}),
+                ...(state ? { state } : {}),
+              },
+            }
+          : {}),
+      };
+    }
+    if (hasShipping) {
+      checkout.shipping = {
+        required: shippingRequired,
+        ...(shippingName ? { name: shippingName } : {}),
+        ...(shippingComplete
+          ? {
+              address: {
+                line1: shipLine1,
+                city: shipCity,
+                postalCode: shipPostal,
+                country: shipCountry,
+                ...(shipLine2 ? { line2: shipLine2 } : {}),
+                ...(shipState ? { state: shipState } : {}),
+              },
+            }
+          : {}),
+      };
+    }
+    return checkout;
+  });
 
   /**
    * Demo controls for public `[cardButtonAppearance]` — Easy Payments–owned
@@ -512,6 +680,11 @@ readonly cardButtonAppearance: EasyPaymentsCardButtonAppearance = ${JSON.stringi
     const theme = this.theme();
     const layout = this.buttonsLayout();
     const instanceId = this.buttonsCheckoutInstanceId().trim() || 'demo-buttons-1';
+    const bnplMode = this.buttonsBnplConfirmMode();
+    const bnplModeBinding =
+      bnplMode === 'element' ? '' : `\n  bnplConfirmMode="${bnplMode}"`;
+    const checkoutBinding =
+      this.buttonsCheckout() == null ? '' : `\n  [checkout]="checkout"`;
 
     return `import { bootstrapApplication } from '@angular/platform-browser';
 import {
@@ -545,13 +718,15 @@ ${appearanceLines}
 };
 ${cardAppearanceBlock}
 // template — Buttons Only is event-driven; host owns outcome UI
+// bnplConfirmMode defaults to "element" (Payment Element + Continue).
+// Opt in to "auto" / "direct" only with sufficient [checkout] customer data.
 <easy-payment-buttons
   [product]="product"
   [methods]="methods"
   layout="${layout}"
   theme="${theme}"
   locale="${locale}"
-  [buttonsAppearance]="buttonsAppearance"${cardAppearanceBinding}
+  [buttonsAppearance]="buttonsAppearance"${cardAppearanceBinding}${bnplModeBinding}${checkoutBinding}
   checkoutInstanceId="${instanceId}"
   (started)="onStarted($event)"
   (methodChange)="onMethodChange($event)"
@@ -633,7 +808,11 @@ ${cardAppearanceBlock}
   constructor() {
     this.mockController.setDelay(350);
     this.applyThemeFromQuery();
-    if (this.multiInstanceQa) {
+    if (this.bnplDirectSpike) {
+      void import('./bnpl-direct-spike/bnpl-direct-spike.page').then((m) => {
+        this.bnplDirectSpikePage.set(m.BnplDirectSpikePage);
+      });
+    } else if (this.multiInstanceQa) {
       void import('./multi-instance-qa/multi-instance-qa.page').then((m) => {
         this.qaPage.set(m.MultiInstanceQaPage);
       });
@@ -659,6 +838,10 @@ ${cardAppearanceBlock}
   private async bootstrapPlaygroundMode(): Promise<void> {
     this.bootstrapping.set(true);
     this.checkoutReady.set(false);
+
+    // Restore experience before any checkout host mounts (checkoutReady stays false until mode is ready).
+    // Uses the user's last selection — never inferred from redirect query params or ownership markers.
+    this.playgroundExperience.set(readPersistedDemoExperience() ?? 'checkout');
 
     try {
       const forceReal = typeof window !== 'undefined' && isAnyStripeBnplReturnAttempt();
@@ -760,11 +943,119 @@ ${cardAppearanceBlock}
 
   setPlaygroundExperience(experience: PlaygroundExperience): void {
     this.playgroundExperience.set(experience);
+    persistDemoExperience(experience);
     this.buttonsHostOutcome.set(null);
   }
 
   setButtonsLayout(layout: EasyPaymentButtonsLayout): void {
     this.buttonsLayout.set(layout);
+  }
+
+  setButtonsBnplConfirmMode(mode: BnplConfirmMode): void {
+    this.buttonsBnplConfirmMode.set(mode);
+    this.persistButtonsBnplState();
+  }
+
+  onMerchantButtonsStarted(): void {
+    this.merchantButtonsBusy.set(true);
+    this.merchantButtonsStatus.set('idle');
+    this.merchantButtonsDetail.set('');
+  }
+
+  onMerchantButtonsSuccess(result: PaymentResult): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('success');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsPending(result: PaymentResult): void {
+    // The host keeps the page lock. Leave the buttons disabled until canRequestPayment is true.
+    this.merchantButtonsBusy.set(true);
+    this.merchantButtonsStatus.set('pending');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsCancel(result: PaymentResult): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('cancel');
+    this.merchantButtonsDetail.set(result.method);
+  }
+
+  onMerchantButtonsError(error: PaymentError): void {
+    this.merchantButtonsBusy.set(false);
+    this.merchantButtonsStatus.set('error');
+    this.merchantButtonsDetail.set(error.code);
+  }
+
+  /** Prefills Stripe TEST-style placeholders. Does not start a payment. */
+  fillButtonsBnplTestSample(): void {
+    this.buttonsCustomerEmail.set(DEMO_BNPL_TEST_SAMPLE.customerEmail);
+    this.buttonsCustomerName.set(DEMO_BNPL_TEST_SAMPLE.customerName);
+    this.buttonsCustomerPhone.set(DEMO_BNPL_TEST_SAMPLE.customerPhone);
+    this.buttonsBillingLine1.set(DEMO_BNPL_TEST_SAMPLE.billingLine1);
+    this.buttonsBillingLine2.set(DEMO_BNPL_TEST_SAMPLE.billingLine2);
+    this.buttonsBillingCity.set(DEMO_BNPL_TEST_SAMPLE.billingCity);
+    this.buttonsBillingState.set(DEMO_BNPL_TEST_SAMPLE.billingState);
+    this.buttonsBillingPostalCode.set(DEMO_BNPL_TEST_SAMPLE.billingPostalCode);
+    this.buttonsBillingCountry.set(DEMO_BNPL_TEST_SAMPLE.billingCountry);
+    this.buttonsShippingRequired.set(DEMO_BNPL_TEST_SAMPLE.shippingRequired);
+    this.buttonsShippingName.set(DEMO_BNPL_TEST_SAMPLE.shippingName);
+    this.buttonsShippingLine1.set(DEMO_BNPL_TEST_SAMPLE.shippingLine1);
+    this.buttonsShippingLine2.set(DEMO_BNPL_TEST_SAMPLE.shippingLine2);
+    this.buttonsShippingCity.set(DEMO_BNPL_TEST_SAMPLE.shippingCity);
+    this.buttonsShippingState.set(DEMO_BNPL_TEST_SAMPLE.shippingState);
+    this.buttonsShippingPostalCode.set(DEMO_BNPL_TEST_SAMPLE.shippingPostalCode);
+    this.buttonsShippingCountry.set(DEMO_BNPL_TEST_SAMPLE.shippingCountry);
+    this.persistButtonsBnplState();
+  }
+
+  clearButtonsBnplCustomerFields(): void {
+    this.buttonsCustomerEmail.set('');
+    this.buttonsCustomerName.set('');
+    this.buttonsCustomerPhone.set('');
+    this.buttonsBillingLine1.set('');
+    this.buttonsBillingLine2.set('');
+    this.buttonsBillingCity.set('');
+    this.buttonsBillingState.set('');
+    this.buttonsBillingPostalCode.set('');
+    this.buttonsBillingCountry.set('');
+    this.buttonsShippingRequired.set(false);
+    this.buttonsShippingName.set('');
+    this.buttonsShippingLine1.set('');
+    this.buttonsShippingLine2.set('');
+    this.buttonsShippingCity.set('');
+    this.buttonsShippingState.set('');
+    this.buttonsShippingPostalCode.set('');
+    this.buttonsShippingCountry.set('');
+    this.persistButtonsBnplState();
+  }
+
+  onButtonsBnplFieldChange(): void {
+    this.persistButtonsBnplState();
+  }
+
+  private persistButtonsBnplState(): void {
+    const state: DemoBnplButtonsPersistedState = {
+      bnplConfirmMode: this.buttonsBnplConfirmMode(),
+      customerEmail: this.buttonsCustomerEmail(),
+      customerName: this.buttonsCustomerName(),
+      customerPhone: this.buttonsCustomerPhone(),
+      billingLine1: this.buttonsBillingLine1(),
+      billingLine2: this.buttonsBillingLine2(),
+      billingCity: this.buttonsBillingCity(),
+      billingState: this.buttonsBillingState(),
+      billingPostalCode: this.buttonsBillingPostalCode(),
+      billingCountry: this.buttonsBillingCountry(),
+      shippingRequired: this.buttonsShippingRequired(),
+      shippingName: this.buttonsShippingName(),
+      shippingLine1: this.buttonsShippingLine1(),
+      shippingLine2: this.buttonsShippingLine2(),
+      shippingCity: this.buttonsShippingCity(),
+      shippingState: this.buttonsShippingState(),
+      shippingPostalCode: this.buttonsShippingPostalCode(),
+      shippingCountry: this.buttonsShippingCountry(),
+    };
+    persistDemoBnplButtons(state);
   }
 
   setButtonsSeparators(value: 'none' | 'line'): void {

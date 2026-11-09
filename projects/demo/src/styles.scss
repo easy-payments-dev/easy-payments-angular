@@ -1,9 +1,24 @@
 :root {
   color-scheme: light;
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Inter when installed locally. No font download. */
+  --demo-font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--demo-font);
 }
 
 body {
   margin: 0;
   background: #f1f5f9;
+  font-family: var(--demo-font);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Demo chrome for Buttons Only only. A merchant selectorFontFamily still overrides the selectors. */
+easy-payment-buttons {
+  --ep-font-family: var(--demo-font);
 }

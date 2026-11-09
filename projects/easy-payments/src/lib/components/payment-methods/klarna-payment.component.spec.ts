@@ -15,6 +15,7 @@ import {
   readStripePendingReturn,
 } from '../../adapters/stripe/stripe-redirect-return';
 import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 
 @Component({
   standalone: true,
@@ -71,7 +72,7 @@ describe('KlarnaPaymentComponent session reuse', () => {
 
   beforeEach(async () => {
     clearKlarnaPendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
 
     adapter = jasmine.createSpyObj<KlarnaAdapter>('KlarnaAdapter', [
       'ensureStripeLoaded',
@@ -110,7 +111,7 @@ describe('KlarnaPaymentComponent session reuse', () => {
 
   afterEach(() => {
     clearKlarnaPendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   it('creates a payment session once on mount', async () => {
@@ -275,14 +276,12 @@ describe('KlarnaPaymentComponent during Stripe redirect return', () => {
 
   afterEach(() => {
     clearKlarnaPendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   it('does not create a new PaymentIntent while Klarna return params are present', async () => {
     markKlarnaPendingReturn('premium-plan');
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_ret&payment_intent_client_secret=pi_ret_secret&ep_method=klarna',
     );
 

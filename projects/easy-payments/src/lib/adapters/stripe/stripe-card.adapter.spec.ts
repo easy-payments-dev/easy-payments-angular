@@ -200,13 +200,33 @@ describe('StripeCardAdapter', () => {
     expect(mount).toHaveBeenCalledWith(host);
     expect(adapter.hasMountedElement()).toBeTrue();
 
-    const result = await adapter.confirmPayment('https://example.com/return');
+    const result = await adapter.confirmPayment(`${window.location.origin}/return`);
     expect(submit).toHaveBeenCalled();
     expect(confirmPayment).toHaveBeenCalled();
     expect(result.status).toBe('success');
     expect(result.method).toBe('card');
     expect(result.provider).toBe('stripe');
     expect(result.transactionId).toBe('pi_123');
+  });
+
+  it('marks requires_capture as authorization-only success', async () => {
+    backend.createStripePayment.and.resolveTo({
+      provider: 'stripe',
+      clientSecret: 'pi_test_secret',
+      paymentIntentId: 'pi_auth',
+    });
+    confirmPayment.and.resolveTo({
+      paymentIntent: { id: 'pi_auth', status: 'requires_capture' },
+    });
+
+    await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
+    await adapter.mountPaymentElement(document.createElement('div'), 'pi_test_secret', 'light');
+
+    const result = await adapter.confirmPayment();
+    expect(result.status).toBe('success');
+    expect(result.metadata?.['stripeStatus']).toBe('requires_capture');
+    expect(result.metadata?.['authorizationOnly']).toBe(true);
+    expect(result.message).toContain('requires capture');
   });
 
   it('prevents duplicate confirmations', async () => {

@@ -10,6 +10,7 @@ import {
   readKlarnaPendingReturn,
   readStripeReturnParams,
 } from './klarna-return';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 
 describe('klarna-return helpers', () => {
   let memory: Record<string, string>;
@@ -85,13 +86,31 @@ describe('klarna-return helpers', () => {
   });
 
   it('strips Stripe return params from a URL', () => {
+    const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const next = clearStripeReturnParamsFromUrl(
-      'https://shop.example/checkout?payment_intent=pi_1&payment_intent_client_secret=sec&redirect_status=succeeded&ep_method=klarna&keep=1',
+      'https://shop.example/checkout?payment_intent=pi_1&payment_intent_client_secret=sec&redirect_status=succeeded&ep_method=klarna&ep_attempt=a1b2c3d4e5f60718&keep=1',
     );
     expect(next).toContain('keep=1');
+    expect(next).toContain('https://shop.example/checkout');
     expect(next).not.toContain('payment_intent=');
     expect(next).not.toContain('payment_intent_client_secret');
     expect(next).not.toContain('ep_method');
+    expect(next).not.toContain('ep_attempt');
     expect(next).not.toContain('redirect_status');
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(before);
+  });
+
+  it('strips Stripe return params from the live page without changing its path', () => {
+    const path = window.location.pathname === '/context.html' ? '/' : window.location.pathname;
+    setTestLocation(
+      `${path}?payment_intent=pi_live&payment_intent_client_secret=sec_live&ep_method=klarna&ep_attempt=a1b2c3d4e5f60718&keep=1`,
+    );
+    clearStripeReturnParamsFromUrl();
+    expect(window.location.pathname).toBe(path);
+    expect(window.location.search).toContain('keep=1');
+    expect(window.location.search).not.toContain('payment_intent');
+    expect(window.location.search).not.toContain('ep_method');
+    expect(window.location.search).not.toContain('ep_attempt');
+    resetTestLocation();
   });
 });

@@ -2,16 +2,26 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](./getting-started.md) | Install, Quick Start, compatibility |
+| [Getting Started](./getting-started.md) | Install, Quick Starts (Full Checkout · Buttons Only · Headless), compatibility |
+| [Migration 1.1 → 1.2](./migration-1.1-to-1.2.md) | Upgrading from 1.1.0 to 1.2.0 |
 | [Localization](./localization.md) | Locales (`auto` / `en` / `es` / `pt`), provider limits, overrides |
 | [Configuration](./configuration.md) | Theme, appearance, width, methods, events |
-| [API Reference](./api.md) | Complete public API |
+| [API Reference](./api.md) | Complete public API (including Buttons Only) |
+| [Headless Checkout](./headless.md) | Merchant Headless session API + redirect recovery |
 | [Backend](./backend.md) | Contract + NestJS reference |
 | [Demo](./demo.md) | Run the Angular playground |
 | [Payment flow](./payment-flow.md) | Checkout → processing → success / error / cancel |
 | [Security](./security.md) | Frontend vs backend secrets, pricing |
 | [Release branch](./release-branch.md) | `release/1.0.0`, GitHub visibility limits, protection |
 | [npm README images](./npm-readme-images.md) | Absolute URLs required before npm publish |
+
+## Integration experiences
+
+| Experience | Entry | Docs |
+|------------|-------|------|
+| **Full Checkout** | `<easy-payments>` | [Getting Started](./getting-started.md) |
+| **Buttons Only** | `<easy-payment-buttons>` | [Getting Started](./getting-started.md#payment-buttons-only-event-driven) · [API](./api.md#component-easy-payment-buttons) |
+| **Headless** | `EasyPaymentsHeadless` | [Getting Started](./getting-started.md#headless-quick-start) · [Headless guide](./headless.md) |
 
 ## Provider Setup
 

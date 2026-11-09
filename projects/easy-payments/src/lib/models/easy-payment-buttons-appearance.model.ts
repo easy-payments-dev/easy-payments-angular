@@ -65,4 +65,51 @@ export interface EasyPaymentButtonsAppearance {
 
   /** Minimum width for library-owned strip controls. Default: `100px`. */
   buttonMinWidth?: string;
+
+  /**
+   * Library-owned Card / Klarna / Affirm selector chrome.
+   * Omitted values keep the current default appearance.
+   * These fields do not restyle PayPal, Google Pay, or Apple Pay SDK buttons.
+   */
+  selectorBackgroundColor?: string;
+  selectorTextColor?: string;
+  selectorFontFamily?: string;
+  selectorFontSize?: string;
+  selectorFontWeight?: string | number;
+  /** CSS padding shorthand for library-owned selectors. */
+  selectorPadding?: string;
+  selectorHoverBackgroundColor?: string;
+  selectorHoverTextColor?: string;
+  selectorHoverBorderColor?: string;
+  selectorSelectedBackgroundColor?: string;
+  selectorSelectedTextColor?: string;
+  selectorSelectedBorderColor?: string;
+  selectorDisabledBackgroundColor?: string;
+  selectorDisabledTextColor?: string;
+  selectorLoadingBackgroundColor?: string;
+  selectorLoadingTextColor?: string;
+  selectorFocusOutlineColor?: string;
+
+  /**
+   * Plain-text labels for library-owned selectors.
+   * Angular text binding escapes the value. HTML is rejected.
+   * Wallet brand buttons are not relabelable.
+   */
+  selectorLabels?: EasyPaymentButtonsSelectorLabels;
+
+  /**
+   * Library brand mark beside a selector label.
+   * Default `true`. Does not replace or restyle official wallet SDK chrome.
+   */
+  showSelectorIcon?: boolean;
 }
+
+/** Plain-text overrides for library-owned strip selectors. */
+export interface EasyPaymentButtonsSelectorLabels {
+  card?: string;
+  klarna?: string;
+  affirm?: string;
+}
+
+/** Who renders the Card / Klarna / Affirm triggers. Wallets stay official SDK buttons. */
+export type EasyPaymentButtonsSelectorVisibility = 'library' | 'merchant';

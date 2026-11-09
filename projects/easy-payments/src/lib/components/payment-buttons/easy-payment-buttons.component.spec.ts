@@ -3,6 +3,7 @@ import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { MockPaymentController } from '../../adapters/mock/mock-payment.controller';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 import { EasyPaymentsComponent } from '../payments/easy-payments.component';
 import { EasyPaymentButtonsComponent } from './easy-payment-buttons.component';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
@@ -13,8 +14,15 @@ import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
+import {
+  clearStripePendingReturn,
+  readStripePendingReturn,
+  STRIPE_PENDING_STORAGE_KEY,
+} from '../../adapters/stripe/stripe-redirect-return';
+import { CheckoutHostContext } from '../../services/checkout-host-context';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentResult } from '../../models';
+import { EasyPaymentsHeadless } from '../../headless/easy-payments-headless.service';
 
 async function render(fixture: ComponentFixture<EasyPaymentButtonsComponent>): Promise<void> {
   fixture.detectChanges();
@@ -910,6 +918,98 @@ describe('EasyPaymentButtonsComponent', () => {
       expect(
         (fixture.nativeElement as HTMLElement).style.getPropertyValue('--ep-buttons-slot-width'),
       ).toBe('');
+    });
+
+    it('keeps mock wallet clickable buttons the same size as Card / Klarna / Affirm selectors', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '600px';
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('methods', [
+        'card',
+        'paypal',
+        'apple-pay',
+        'google-pay',
+        'klarna',
+        'affirm',
+      ]);
+      fixture.componentRef.setInput('buttonsAppearance', {
+        gap: '8px',
+        buttonHeight: '40px',
+        buttonMinWidth: '100px',
+      });
+      await render(fixture);
+
+      const clickable = (method: string): HTMLElement => {
+        const item = slotItem(fixture, method)!;
+        return (
+          (item.querySelector('button.ep-payment-buttons__selector') as HTMLElement) ||
+          (item.querySelector('button.ep-mock-panel__strip') as HTMLElement)
+        );
+      };
+
+      const sizes = (
+        ['card', 'paypal', 'apple-pay', 'google-pay', 'klarna', 'affirm'] as const
+      ).map((method) => {
+        const btn = clickable(method);
+        const rect = btn.getBoundingClientRect();
+        return {
+          method,
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        };
+      });
+
+      expect(sizes.every((s) => s.h === 40)).toBeTrue();
+      expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
+      expect(sizes[0].w).toBe(160);
+      host.remove();
+    });
+
+    it('keeps mock wallet clickable buttons the same size as Card / Klarna / Affirm selectors', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '600px';
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('methods', [
+        'card',
+        'paypal',
+        'apple-pay',
+        'google-pay',
+        'klarna',
+        'affirm',
+      ]);
+      fixture.componentRef.setInput('buttonsAppearance', {
+        gap: '8px',
+        buttonHeight: '40px',
+        buttonMinWidth: '100px',
+      });
+      await render(fixture);
+
+      const clickable = (method: string): HTMLElement => {
+        const item = slotItem(fixture, method)!;
+        return (
+          (item.querySelector('button.ep-payment-buttons__selector') as HTMLElement) ||
+          (item.querySelector('button.ep-mock-panel__strip') as HTMLElement)
+        );
+      };
+
+      const sizes = (
+        ['card', 'paypal', 'apple-pay', 'google-pay', 'klarna', 'affirm'] as const
+      ).map((method) => {
+        const btn = clickable(method);
+        const rect = btn.getBoundingClientRect();
+        return {
+          method,
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        };
+      });
+
+      expect(sizes.every((s) => s.h === 40)).toBeTrue();
+      expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
+      expect(sizes[0].w).toBe(160);
+      host.remove();
     });
 
     it('keeps library-owned selectors keyboard-focusable with a focus-visible outline rule', async () => {
@@ -2047,6 +2147,7 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
         'updateAppearance',
         'destroy',
         'confirmPayment',
+        'confirmDirectPayment',
         'isConfirming',
         'hasMountedElement',
         'wasReturnConsumed',
@@ -2066,6 +2167,7 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
         'updateAppearance',
         'destroy',
         'confirmPayment',
+        'confirmDirectPayment',
         'isConfirming',
         'hasMountedElement',
         'wasReturnConsumed',
@@ -2276,13 +2378,13 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
 
 describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   afterEach(() => {
-    history.replaceState({}, '', '/');
+    resetTestLocation();
+    clearStripePendingReturn();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   it('recovers Klarna return as success without emitting started', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_buttons_klarna&payment_intent_client_secret=sec_bk&ep_method=klarna',
     );
 
@@ -2337,14 +2439,81 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     expect(successes[0].method).toBe('klarna');
     expect(successes[0].transactionId).toBe('pi_buttons_klarna_txn');
     expect(errors.length).toBe(0);
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(fixture.componentInstance.processingMethod()).toBeNull();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna')).toBe(
+      'settled',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Payment completed');
+    // Duplicate Intent protection is returnPhase `settled`, not the strip busy lock.
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+
+    fixture.destroy();
+  });
+
+  it('recovers Affirm success without built-in completed UI while keeping settled lock', async () => {
+    setTestLocation(
+      '/?payment_intent=pi_buttons_aff_ok&payment_intent_client_secret=sec_aff_ok&ep_method=affirm',
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_return_affirm_ok' },
+            affirm: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            affirmCreatePaymentUrl: '/api/affirm/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'consumeReturn').and.resolveTo({
+      status: 'success',
+      method: 'affirm',
+      provider: 'affirm',
+      transactionId: 'pi_buttons_aff_ok_txn',
+    });
+
+    const successes: PaymentResult[] = [];
+    const fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['affirm', 'card']);
+    fixture.componentInstance.success.subscribe((result) => successes.push(result));
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(successes.length).toBe(1);
+    expect(successes[0].method).toBe('affirm');
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(fixture.componentInstance.processingMethod()).toBeNull();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('affirm')).toBe(
+      'settled',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Payment completed');
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.ep-affirm__pay'),
+    ).toBeNull();
 
     fixture.destroy();
   });
 
   it('recovers Affirm return and maps retrieve failure to error once', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_buttons_aff&payment_intent_client_secret=bad&ep_method=affirm',
     );
 
@@ -2407,9 +2576,7 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   });
 
   it('emits pending for a processing return (never success or error)', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_proc&payment_intent_client_secret=sec_proc&ep_method=klarna',
     );
 
@@ -2460,7 +2627,598 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
     expect(pending.length).toBe(1);
     expect(pending[0].status).toBe('processing');
     expect(fixture.componentInstance.methodsLocked()).toBeTrue();
+    expect(fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna')).toBe(
+      'awaiting',
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Processing payment');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Waiting for provider confirmation',
+    );
 
     fixture.destroy();
+  });
+});
+
+const DIRECT_READY_CHECKOUT = {
+  customer: {
+    email: 'jenny.rosen@example.com',
+    name: 'Jenny Rosen',
+    address: {
+      line1: '510 Townsend St',
+      city: 'San Francisco',
+      state: 'CA',
+      postalCode: '94103',
+      country: 'US',
+    },
+  },
+} as const;
+
+describe('EasyPaymentButtonsComponent BNPL Direct orchestration', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let klarna: jasmine.SpyObj<KlarnaAdapter>;
+  let affirm: jasmine.SpyObj<AffirmAdapter>;
+
+  beforeEach(async () => {
+    clearStripePendingReturn();
+    (
+      EasyPaymentButtonsComponent as unknown as { directPageLock: string | null }
+    ).directPageLock = null;
+    klarna = jasmine.createSpyObj<KlarnaAdapter>(
+      'KlarnaAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'confirmDirectPayment',
+        'isConfirming',
+        'hasMountedElement',
+        'wasReturnConsumed',
+        'consumeStripeReturn',
+      ],
+      { provider: 'klarna', isMock: false },
+    );
+    affirm = jasmine.createSpyObj<AffirmAdapter>(
+      'AffirmAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'confirmDirectPayment',
+        'isConfirming',
+        'hasMountedElement',
+        'wasReturnConsumed',
+        'consumeStripeReturn',
+      ],
+      { provider: 'affirm', isMock: false },
+    );
+
+    klarna.initialize.and.resolveTo();
+    klarna.isAvailable.and.resolveTo(true);
+    klarna.ensureStripeLoaded.and.resolveTo({} as never);
+    klarna.createPaymentSession.and.resolveTo({
+      clientSecret: 'pi_klarna_direct_secret',
+      paymentIntentId: 'pi_klarna_direct',
+    });
+    klarna.mountPaymentElement.and.resolveTo();
+    klarna.destroy.and.resolveTo();
+    klarna.isConfirming.and.returnValue(false);
+    klarna.hasMountedElement.and.returnValue(false);
+    klarna.wasReturnConsumed.and.returnValue(false);
+    klarna.confirmDirectPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_klarna_direct',
+    });
+
+    affirm.initialize.and.resolveTo();
+    affirm.isAvailable.and.resolveTo(true);
+    affirm.ensureStripeLoaded.and.resolveTo({} as never);
+    affirm.createPaymentSession.and.resolveTo({
+      clientSecret: 'pi_affirm_direct_secret',
+      paymentIntentId: 'pi_affirm_direct',
+    });
+    affirm.mountPaymentElement.and.resolveTo();
+    affirm.destroy.and.resolveTo();
+    affirm.isConfirming.and.returnValue(false);
+    affirm.hasMountedElement.and.returnValue(false);
+    affirm.wasReturnConsumed.and.returnValue(false);
+    affirm.confirmDirectPayment.and.resolveTo({
+      status: 'success',
+      method: 'affirm',
+      provider: 'affirm',
+      transactionId: 'pi_affirm_direct',
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent, EasyPaymentsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_bnpl_direct' },
+            klarna: {},
+            affirm: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            klarnaCreatePaymentUrl: '/api/klarna/create',
+            affirmCreatePaymentUrl: '/api/affirm/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: KlarnaAdapter, useValue: klarna },
+        { provide: AffirmAdapter, useValue: affirm },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['klarna', 'affirm', 'card']);
+    fixture.componentRef.setInput('checkoutInstanceId', 'demo-buttons-direct');
+  });
+
+  afterEach(() => {
+    clearStripePendingReturn();
+    (
+      EasyPaymentButtonsComponent as unknown as { directPageLock: string | null }
+    ).directPageLock = null;
+    resetTestLocation();
+    fixture.destroy();
+  });
+
+  async function settle(): Promise<void> {
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+  }
+
+  async function clickMethod(method: 'klarna' | 'affirm'): Promise<void> {
+    slotItem(fixture, method)?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+  }
+
+  it('defaults bnplConfirmMode to element (Payment Element + Continue)', async () => {
+    await settle();
+    expect(fixture.componentInstance.bnplConfirmMode()).toBe('element');
+    expect(fixture.nativeElement.getAttribute('data-bnpl-confirm-mode')).toBe('element');
+
+    await clickMethod('klarna');
+
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeTruthy();
+    expect(klarna.confirmDirectPayment).not.toHaveBeenCalled();
+    expect(klarna.createPaymentSession).toHaveBeenCalled();
+    expect(
+      fixture.nativeElement.querySelector('.ep-klarna__pay')?.textContent?.trim(),
+    ).toBe('Continue to Klarna');
+  });
+
+  it('auto + Direct-ready Klarna confirms once without PE or Continue', async () => {
+    const started: unknown[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    let resolveConfirm: ((value: PaymentResult) => void) | undefined;
+    klarna.confirmDirectPayment.and.returnValue(
+      new Promise<PaymentResult>((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(fixture.nativeElement.getAttribute('data-bnpl-direct-active')).toBe('true');
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.ep-klarna__pay')).toBeNull();
+    expect(klarna.mountPaymentElement).not.toHaveBeenCalled();
+    expect(klarna.confirmPayment).not.toHaveBeenCalled();
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(klarna.confirmDirectPayment).toHaveBeenCalledTimes(1);
+    expect(started.length).toBe(1);
+
+    const [request, ownerId] = klarna.confirmDirectPayment.calls.mostRecent().args;
+    expect(request.clientSecret).toBe('pi_klarna_direct_secret');
+    expect(request.returnUrl).toContain('ep_method=klarna');
+    expect(request.customer?.email).toBe('jenny.rosen@example.com');
+    expect(ownerId).toMatch(/^klarna-direct/);
+
+    resolveConfirm!({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_klarna_direct',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(successes.length).toBe(1);
+    expect(successes[0].transactionId).toBe('pi_klarna_direct');
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('auto + Direct-ready Affirm confirms once without PE', async () => {
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('affirm');
+
+    expect(fixture.nativeElement.querySelector('easy-affirm-payment')).toBeNull();
+    expect(affirm.mountPaymentElement).not.toHaveBeenCalled();
+    expect(affirm.confirmDirectPayment).toHaveBeenCalledTimes(1);
+    expect(affirm.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.selectedMethod()).toBeNull();
+  });
+
+  it('auto + incomplete data falls back to Payment Element', async () => {
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', {
+      customer: { email: 'only-email@example.com' },
+    });
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeTruthy();
+    expect(klarna.confirmDirectPayment).not.toHaveBeenCalled();
+    expect(
+      fixture.nativeElement.querySelector('.ep-klarna__pay')?.textContent?.trim(),
+    ).toBe('Continue to Klarna');
+  });
+
+  it('direct + incomplete data emits CONFIG_INVALID without creating an Intent', async () => {
+    const errors: PaymentError[] = [];
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+    fixture.componentRef.setInput('bnplConfirmMode', 'direct');
+    fixture.componentRef.setInput('checkout', {
+      customer: { email: 'only-email@example.com' },
+    });
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(klarna.createPaymentSession).not.toHaveBeenCalled();
+    expect(klarna.confirmDirectPayment).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(errors.length).toBe(1);
+    expect(errors[0].code).toBe('CONFIG_INVALID');
+    expect(errors[0].message).toContain('missing_name');
+    expect(errors[0].message).not.toContain('only-email@example.com');
+    const details = errors[0].originalError as {
+      reasonCodes: string[];
+      missingFields: string[];
+    };
+    expect(details.reasonCodes).toContain('direct_not_ready');
+    expect(details.missingFields).toContain('customer.name');
+  });
+
+  it('prevents double-click from creating two PaymentIntents', async () => {
+    let resolveConfirm: ((value: PaymentResult) => void) | undefined;
+    klarna.confirmDirectPayment.and.returnValue(
+      new Promise<PaymentResult>((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+    await clickMethod('klarna');
+
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(klarna.confirmDirectPayment).toHaveBeenCalledTimes(1);
+
+    resolveConfirm!({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_klarna_direct',
+    });
+    await fixture.whenStable();
+  });
+
+  it('prevents alternating Klarna/Affirm clicks from parallel Direct attempts', async () => {
+    let resolveKlarna: ((value: PaymentResult) => void) | undefined;
+    klarna.confirmDirectPayment.and.returnValue(
+      new Promise<PaymentResult>((resolve) => {
+        resolveKlarna = resolve;
+      }),
+    );
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+    await clickMethod('affirm');
+
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(affirm.createPaymentSession).not.toHaveBeenCalled();
+    expect(affirm.confirmDirectPayment).not.toHaveBeenCalled();
+
+    resolveKlarna!({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_klarna_direct',
+    });
+    await fixture.whenStable();
+  });
+
+  it('stamps redirect marker ownership for Direct Klarna', async () => {
+    klarna.confirmDirectPayment.and.callFake(async () => {
+      const pending = readStripePendingReturn();
+      expect(pending?.method).toBe('klarna');
+      expect(pending?.hostKind).toBe('buttons');
+      expect(pending?.checkoutInstanceId).toBe('demo-buttons-direct');
+      expect(pending?.productId).toBe(SAMPLE_PRODUCT.id);
+      return {
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: 'pi_klarna_direct',
+      };
+    });
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(klarna.confirmDirectPayment).toHaveBeenCalled();
+    expect(sessionStorage.getItem(STRIPE_PENDING_STORAGE_KEY)).toBeNull();
+  });
+
+  it('emits pending for processing Direct result and keeps methods locked', async () => {
+    const pending: PaymentResult[] = [];
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.pending.subscribe((value) => pending.push(value));
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    klarna.confirmDirectPayment.and.resolveTo({
+      status: 'processing',
+      method: 'klarna',
+      provider: 'klarna',
+      message: 'Payment is still processing.',
+    });
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(pending.length).toBe(1);
+    expect(successes.length).toBe(0);
+    expect(fixture.componentInstance.methodsLocked()).toBeTrue();
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain(
+      'Processing payment',
+    );
+  });
+
+  it('maps authorization-only Direct success with metadata', async () => {
+    const successes: PaymentResult[] = [];
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    klarna.confirmDirectPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_auth',
+      metadata: { authorizationOnly: true, stripeStatus: 'requires_capture' },
+    });
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+
+    expect(successes.length).toBe(1);
+    expect(successes[0].metadata?.['authorizationOnly']).toBe(true);
+    expect(successes[0].metadata?.['stripeStatus']).toBe('requires_capture');
+  });
+
+  it('allows safe retry after definitive Direct decline', async () => {
+    const errors: PaymentError[] = [];
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+    klarna.confirmDirectPayment.and.rejectWith(
+      new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'Declined by issuer.',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+    expect(errors.length).toBe(1);
+    expect(fixture.componentInstance.methodsLocked()).toBeFalse();
+
+    klarna.confirmDirectPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_retry',
+    });
+    await clickMethod('klarna');
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(2);
+    expect(klarna.confirmDirectPayment).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not auto-retry or unlock after ambiguous Direct network failure', async () => {
+    const errors: PaymentError[] = [];
+    fixture.componentInstance.error.subscribe((error) => errors.push(error));
+    klarna.confirmDirectPayment.and.rejectWith(
+      new PaymentError({
+        code: 'NETWORK_ERROR',
+        message: 'Network failed after confirm.',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+    await clickMethod('klarna');
+
+    expect(errors.length).toBe(1);
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(klarna.confirmDirectPayment).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.methodsLocked()).toBeTrue();
+  });
+
+  it('emits cancel on Direct cancellation and allows retry', async () => {
+    const cancels: PaymentResult[] = [];
+    fixture.componentInstance.cancel.subscribe((value) => cancels.push(value));
+    klarna.confirmDirectPayment.and.rejectWith(
+      new PaymentError({
+        code: 'PAYMENT_CANCELLED',
+        message: 'Cancelled.',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+
+    await settle();
+    await clickMethod('klarna');
+    expect(cancels.length).toBe(1);
+    expect(fixture.componentInstance.methodsLocked()).toBeFalse();
+  });
+
+  it('isolates Direct ownership across two Buttons Only instances', async () => {
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+    fixture.componentRef.setInput('checkoutInstanceId', 'buttons-a');
+
+    const fixtureB = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixtureB.componentRef.setInput('product', { ...SAMPLE_PRODUCT, id: 'other-plan' });
+    fixtureB.componentRef.setInput('methods', ['klarna', 'affirm']);
+    fixtureB.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixtureB.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+    fixtureB.componentRef.setInput('checkoutInstanceId', 'buttons-b');
+
+    await settle();
+    await render(fixtureB);
+    await Promise.resolve();
+    fixtureB.detectChanges();
+
+    const hostA = fixture.debugElement.injector.get(CheckoutHostContext);
+    const hostB = fixtureB.debugElement.injector.get(CheckoutHostContext);
+    expect(hostA).not.toBe(hostB);
+    expect(hostA.instanceId()).toBe('buttons-a');
+    expect(hostB.instanceId()).toBe('buttons-b');
+
+    let resolveA: ((value: PaymentResult) => void) | undefined;
+    klarna.confirmDirectPayment.and.returnValue(
+      new Promise<PaymentResult>((resolve) => {
+        resolveA = resolve;
+      }),
+    );
+
+    slotItem(fixture, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    slotItem(fixtureB, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixtureB.detectChanges();
+    await fixtureB.whenStable();
+
+    // Shared adapter gate / methodsLocked on A blocks a second concurrent Direct confirm.
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(1);
+
+    resolveA!({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_a',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    fixtureB.detectChanges();
+
+    // Definitive success releases the page lock so the other checkout can pay.
+    klarna.confirmDirectPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_b',
+    });
+    slotItem(fixtureB, 'klarna')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixtureB.detectChanges();
+    await fixtureB.whenStable();
+    await Promise.resolve();
+    fixtureB.detectChanges();
+
+    expect(klarna.createPaymentSession).toHaveBeenCalledTimes(2);
+    const ownerIds = klarna.createPaymentSession.calls.allArgs().map((args) => args[3]);
+    expect(new Set(ownerIds).size).toBe(2);
+    fixtureB.destroy();
+  });
+
+  it('does not confirm Direct on Stripe return recovery', async () => {
+    setTestLocation(
+      '/?payment_intent=pi_ret&payment_intent_client_secret=sec_ret&ep_method=klarna',
+    );
+    const recovery = TestBed.inject(StripeRedirectRecoveryService);
+    spyOn(recovery, 'claimReturn').and.resolveTo('owner');
+    spyOn(recovery, 'consumeReturn').and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_ret',
+    });
+
+    const started: unknown[] = [];
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+    fixture.componentRef.setInput('bnplConfirmMode', 'auto');
+    fixture.componentRef.setInput('checkout', DIRECT_READY_CHECKOUT);
+    fixture.componentRef.setInput('methods', ['klarna']);
+
+    await settle();
+
+    expect(started.length).toBe(0);
+    expect(klarna.confirmDirectPayment).not.toHaveBeenCalled();
+    expect(klarna.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('Full Checkout has no bnplConfirmMode input', () => {
+    const checkout = TestBed.createComponent(EasyPaymentsComponent);
+    checkout.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    expect(
+      (checkout.componentInstance as unknown as { bnplConfirmMode?: unknown }).bnplConfirmMode,
+    ).toBeUndefined();
+    checkout.destroy();
+  });
+
+  it('Headless has no bnplConfirmMode API', () => {
+    expect(
+      (EasyPaymentsHeadless.prototype as unknown as { bnplConfirmMode?: unknown }).bnplConfirmMode,
+    ).toBeUndefined();
   });
 });

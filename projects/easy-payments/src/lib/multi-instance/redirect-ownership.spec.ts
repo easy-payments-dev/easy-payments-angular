@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideEasyPayments } from '../config/provide-easy-payments';
 import { BrowserGuard } from '../utils/browser-guard';
+import { resetTestLocation, setTestLocation } from '../testing/test-history';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../testing/test-doubles';
 import { EasyPaymentsComponent } from '../components/payments/easy-payments.component';
 import { EasyPaymentButtonsComponent } from '../components/payment-buttons/easy-payment-buttons.component';
@@ -12,9 +13,13 @@ import {
 } from '../adapters/stripe/stripe-redirect-recovery.service';
 import {
   clearStripePendingReturn,
+  clearStripePendingReturnFor,
+  isStripePendingReturnExpired,
+  markHeadlessPendingReturn,
   markStripePendingReturn,
   readStripePendingReturn,
   readStripeReturnParams,
+  STRIPE_PENDING_TTL_MS,
   type StripeReturnHostKind,
 } from '../adapters/stripe/stripe-redirect-return';
 import { CheckoutHostContext } from '../services/checkout-host-context';
@@ -89,7 +94,7 @@ function totalEvents(host: HostHandle): number {
 }
 
 function setReturnUrl(params: Record<string, string>): void {
-  history.replaceState({}, '', `/?${new URLSearchParams(params).toString()}`);
+  setTestLocation(`/?${new URLSearchParams(params).toString()}`);
 }
 
 function returnUrl(extra: Record<string, string> = {}): Record<string, string> {
@@ -136,7 +141,12 @@ describe('Stripe redirect return ownership', () => {
       method,
       attemptId,
     });
-    const marker = (extra: object = {}) => ({ method: 'klarna' as const, productId: 'p', at: 1, ...extra });
+    const marker = (extra: object = {}) => ({
+      method: 'klarna' as const,
+      productId: 'p',
+      at: Date.now(),
+      ...extra,
+    });
 
     it('fails closed without a method', () => {
       expect(decideStripeReturnOwner([candidate('a', 'buttons', 0)], params(null, null), null)).toEqual({
@@ -227,21 +237,329 @@ describe('Stripe redirect return ownership', () => {
         owner: 'a',
       });
     });
+
+    it('fails closed when ep_attempt is present without a matching live marker (no legacy single-host claim)', () => {
+      expect(
+        decideStripeReturnOwner(
+          [candidate('c0', 'checkout', 0), candidate('b0', 'buttons', 0)],
+          params(ATTEMPT),
+          null,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
+
+    it('does not let checkout claim a Headless marker (waits for Headless owner)', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('c0', 'checkout', 0, 'p', ['klarna'], 'hl-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('does not let buttons claim a Headless marker (waits for Headless owner)', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('b0', 'buttons', 0, 'p', ['klarna'], 'hl-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('does not let Headless claim a checkout marker', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'checkout',
+        checkoutInstanceId: 'co-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h0', 'headless', 0, 'p', ['klarna'], 'co-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('does not let Headless claim a buttons marker', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'btn-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h0', 'headless', 0, 'p', ['klarna'], 'btn-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('attributes matching Headless attempt + instance', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [
+            candidate('h-a', 'headless', 0, 'p', ['klarna'], 'hl-a'),
+            candidate('h-b', 'headless', 1, 'p', ['klarna'], 'hl-b'),
+          ],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'owner', owner: 'h-a' });
+    });
+
+    it('rejects Headless session B claiming session A marker', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h-b', 'headless', 0, 'p', ['klarna'], 'hl-b')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'wait' });
+    });
+
+    it('rejects wrong Headless attempt id', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h-a', 'headless', 0, 'p', ['klarna'], 'hl-a')],
+          params(OTHER_ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
+
+    it('rejects wrong payment method on Headless marker', () => {
+      const m = marker({
+        method: 'affirm',
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h-a', 'headless', 0, 'p', ['klarna', 'affirm'], 'hl-a')],
+          params(ATTEMPT, 'klarna'),
+          m,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
+
+    it('rejects expired Headless markers (fail closed)', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+        at: Date.now() - STRIPE_PENDING_TTL_MS - 1,
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h-a', 'headless', 0, 'p', ['klarna'], 'hl-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
+
+    it('rejects Headless markers with missing timestamp', () => {
+      const m = marker({
+        attemptId: ATTEMPT,
+        hostKind: 'headless',
+        checkoutInstanceId: 'hl-a',
+        at: undefined as unknown as number,
+      });
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h-a', 'headless', 0, 'p', ['klarna'], 'hl-a')],
+          params(ATTEMPT),
+          m,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
+
+    it('legacy single-host fallback never claims when only Headless candidates exist with ep_attempt', () => {
+      expect(
+        decideStripeReturnOwner(
+          [candidate('h0', 'headless', 0)],
+          params(ATTEMPT),
+          null,
+        ),
+      ).toEqual({ kind: 'unattributed', reason: 'STALE_ATTEMPT' });
+    });
   });
 
-  describe('service ownership hand-off', () => {
+  describe('Headless pending marker storage (H4.2)', () => {
     afterEach(() => {
-      history.replaceState({}, '', '/');
       clearStripePendingReturn();
     });
 
-    it('hands an unconsumed return to a remounted host when the owner is destroyed first', async () => {
+    it('writes hostKind headless with attempt, instance, method, product, and timestamp', () => {
+      markHeadlessPendingReturn('klarna', 'premium', {
+        attemptId: ATTEMPT,
+        checkoutInstanceId: 'hl-a',
+      });
+      const pending = readStripePendingReturn();
+      expect(pending).toEqual(
+        jasmine.objectContaining({
+          method: 'klarna',
+          productId: 'premium',
+          attemptId: ATTEMPT,
+          hostKind: 'headless',
+          checkoutInstanceId: 'hl-a',
+        }),
+      );
+      expect(typeof pending?.at).toBe('number');
+      expect(isStripePendingReturnExpired(pending!)).toBeFalse();
+    });
+
+    it('refuses to overwrite a different unresolved Headless session marker', () => {
+      markHeadlessPendingReturn('klarna', 'premium', {
+        attemptId: ATTEMPT,
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(() =>
+        markHeadlessPendingReturn('klarna', 'premium', {
+          attemptId: OTHER_ATTEMPT,
+          checkoutInstanceId: 'hl-b',
+        }),
+      ).toThrowMatching((e) => e instanceof PaymentError && e.code === 'PAYMENT_FAILED');
+      expect(readStripePendingReturn()?.checkoutInstanceId).toBe('hl-a');
+    });
+
+    it('allows the same Headless instance to replace its own attempt', () => {
+      markHeadlessPendingReturn('klarna', 'premium', {
+        attemptId: ATTEMPT,
+        checkoutInstanceId: 'hl-a',
+      });
+      markHeadlessPendingReturn('affirm', 'premium', {
+        attemptId: OTHER_ATTEMPT,
+        checkoutInstanceId: 'hl-a',
+      });
+      expect(readStripePendingReturn()).toEqual(
+        jasmine.objectContaining({
+          method: 'affirm',
+          attemptId: OTHER_ATTEMPT,
+          checkoutInstanceId: 'hl-a',
+          hostKind: 'headless',
+        }),
+      );
+    });
+
+    it('refuses to overwrite an unresolved checkout/buttons marker', () => {
+      markStripePendingReturn('klarna', 'premium', undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'btn-a',
+      });
+      expect(() =>
+        markHeadlessPendingReturn('klarna', 'premium', {
+          attemptId: OTHER_ATTEMPT,
+          checkoutInstanceId: 'hl-a',
+        }),
+      ).toThrowMatching((e) => e instanceof PaymentError && e.code === 'PAYMENT_FAILED');
+    });
+
+    it('treats corrupted JSON as missing (no ownership)', () => {
+      sessionStorage.setItem('ep.stripe.redirect.pending', '{not-json');
+      expect(readStripePendingReturn()).toBeNull();
+    });
+
+    it('treats expired stored markers as missing and clears them', () => {
+      sessionStorage.setItem(
+        'ep.stripe.redirect.pending',
+        JSON.stringify({
+          method: 'klarna',
+          productId: 'p',
+          attemptId: ATTEMPT,
+          hostKind: 'headless',
+          checkoutInstanceId: 'hl-a',
+          at: Date.now() - STRIPE_PENDING_TTL_MS - 5_000,
+        }),
+      );
+      expect(readStripePendingReturn()).toBeNull();
+      expect(sessionStorage.getItem('ep.stripe.redirect.pending')).toBeNull();
+    });
+
+    it('clearStripePendingReturnFor only clears the matching attempt', () => {
+      markHeadlessPendingReturn('klarna', 'premium', {
+        attemptId: ATTEMPT,
+        checkoutInstanceId: 'hl-a',
+      });
+      clearStripePendingReturnFor(OTHER_ATTEMPT);
+      expect(readStripePendingReturn()?.attemptId).toBe(ATTEMPT);
+      clearStripePendingReturnFor(ATTEMPT);
+      expect(readStripePendingReturn()).toBeNull();
+    });
+
+    it('surfaces storage access failure when sessionStorage is unavailable', () => {
+      const broken = {
+        getItem: () => {
+          throw new Error('denied');
+        },
+        setItem: () => {
+          throw new Error('denied');
+        },
+        removeItem: () => undefined,
+        clear: () => undefined,
+        key: () => null,
+        length: 0,
+      } as Storage;
+      expect(() =>
+        markHeadlessPendingReturn(
+          'klarna',
+          'premium',
+          { attemptId: ATTEMPT, checkoutInstanceId: 'hl-a' },
+          broken,
+        ),
+      ).toThrowMatching((e) => e instanceof PaymentError && e.code === 'PROVIDER_UNAVAILABLE');
+    });
+  });
+
+  describe('service ownership hand-off', () => {
+    beforeEach(() => {
       TestBed.configureTestingModule({
         providers: [
           provideEasyPayments({ enableMockMode: true, providers: {} }),
           { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
         ],
       });
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+    });
+
+    afterEach(() => {
+      resetTestLocation();
+      clearStripePendingReturn();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+    });
+
+    it('hands an unconsumed return to a remounted host when the owner is destroyed first', async () => {
       setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
       markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
         attemptId: ATTEMPT,
@@ -266,6 +584,106 @@ describe('Stripe redirect return ownership', () => {
       service.registerHost(hostB);
       expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
     });
+
+    it('a superseded claim does not clear a return prepared for the next owner', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      const staleHost: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stale-host',
+      };
+      service.registerHost(staleHost);
+      const stale = service.claimReturn(staleHost, ['klarna']);
+      StripeRedirectRecoveryService.invalidateRedirectRecoveryForTests();
+
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const hostB: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
+      service.registerHost(hostB);
+
+      expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
+      expect(readStripeReturnParams().attemptId).toBe(ATTEMPT);
+      expect(readStripePendingReturn()?.attemptId).toBe(ATTEMPT);
+      expect(await stale).toBe('not-owner');
+    });
+
+    it('does not apply an in-flight verification after the return attempt changes', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      let release!: (value: PaymentResult) => void;
+      spyOn(service, 'retrieveReturningPayment').and.returnValue(
+        new Promise<PaymentResult>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const pending = service.consumeReturn();
+      await Promise.resolve();
+      expect(service.retrieveReturningPayment).toHaveBeenCalledTimes(1);
+
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: OTHER_ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-b',
+      });
+      release({
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: 'pi_old',
+      });
+
+      expect(await pending).toBeNull();
+      expect(service.wasReturnConsumed()).toBeFalse();
+      expect(readStripeReturnParams().attemptId).toBe(OTHER_ATTEMPT);
+      expect(readStripeReturnParams().paymentIntentId).toBe('pi_ret');
+      expect(readStripePendingReturn()?.attemptId).toBe(OTHER_ATTEMPT);
+      expect(readStripePendingReturn()?.checkoutInstanceId).toBe('stable-b');
+    });
+
+    it('a closed attempt does not block a later return with a different attempt id', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      const staleHost: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stale-host',
+      };
+      service.registerHost(staleHost);
+      expect(await service.claimReturn(staleHost, ['klarna'])).toBe('not-owner');
+      expect(readStripeReturnParams().attemptId).toBeNull();
+
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const hostB: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
+      service.registerHost(hostB);
+      expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
+      expect(readStripeReturnParams().attemptId).toBe(ATTEMPT);
+      expect(readStripePendingReturn()?.attemptId).toBe(ATTEMPT);
+    });
   });
 
   describe('component hosts (mock mode, retrieve stubbed)', () => {
@@ -280,14 +698,17 @@ describe('Stripe redirect return ownership', () => {
           { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
         ],
       }).compileComponents();
-      retrieve = spyOn(TestBed.inject(StripeRedirectRecoveryService), 'retrieveReturningPayment');
+      const recovery = TestBed.inject(StripeRedirectRecoveryService);
+      recovery.resetForTests();
+      retrieve = spyOn(recovery, 'retrieveReturningPayment');
       retrieve.and.resolveTo(successResult());
       warn = spyOn(console, 'warn');
     });
 
     afterEach(() => {
-      history.replaceState({}, '', '/');
+      resetTestLocation();
       clearStripePendingReturn();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     });
 
     function warned(code: string): boolean {
@@ -367,7 +788,8 @@ describe('Stripe redirect return ownership', () => {
           const view = (h.fixture.componentInstance as EasyPaymentsComponent).viewState();
           expect(view).toBe(h === checkouts[3] ? 'success' : 'checkout');
           const phase = h.fixture.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna');
-          expect(phase).toBe(h === checkouts[3] ? 'owner' : 'none');
+          // Successful recovery leaves `settled` (not `owner`) so BNPL panels clear Processing UI.
+          expect(phase).toBe(h === checkouts[3] ? 'settled' : 'none');
         });
         expect(retrieve).toHaveBeenCalledTimes(1);
       });

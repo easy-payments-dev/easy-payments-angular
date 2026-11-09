@@ -8,13 +8,13 @@ Angular payments and checkout library for Stripe, PayPal, Apple Pay, Google Pay,
 npm install @easy-payments/angular @stripe/stripe-js
 ```
 
-![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-0A7EA4)
+![Version 1.2.0](https://img.shields.io/badge/version-1.2.0-0A7EA4)
 ![Angular 20.3+ · 21 · 22](https://img.shields.io/badge/Angular-≥20.3%20·%2021%20·%2022-DD0031)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 | | |
 |---|---|
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Framework** | Angular |
 | **Compatibility** | Angular **20.3+**, **21**, **22** (`>=20.3.0 <23.0.0`) |
 | **Workspace** | Built with Angular **22.1.5** |
@@ -22,18 +22,20 @@ npm install @easy-payments/angular @stripe/stripe-js
 | **Locales** | `auto` · `en` · `es` · `pt` |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Easy Payments checkout — desktop viewport" width="640" />
+  <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Easy Payments checkout — desktop viewport" width="640" />
 </p>
 
 <p align="center">
-  <a href="docs/getting-started.md">Getting Started</a> ·
-  <a href="docs/localization.md">Localization</a> ·
-  <a href="docs/providers/stripe.md">Provider Setup</a> ·
-  <a href="docs/api.md">API</a> ·
-  <a href="docs/payment-flow.md">Payment flow</a> ·
-  <a href="docs/configuration.md">Configuration</a> ·
-  <a href="projects/demo">Demo source</a> ·
-  <a href="https://github.com/jantvb/easy-payments/issues">Issues</a>
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/getting-started.md">Getting Started</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/migration-1.1-to-1.2.md">1.1 → 1.2</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/headless.md">Headless</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md">Localization</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/stripe.md">Provider Setup</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/api.md">API</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/payment-flow.md">Payment flow</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/configuration.md">Configuration</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/tree/master/projects/demo">Demo source</a> ·
+  <a href="https://github.com/easy-payments-dev/easy-payments-angular/issues">Issues</a>
 </p>
 
 ---
@@ -42,14 +44,14 @@ npm install @easy-payments/angular @stripe/stripe-js
 
 | Easy Payments | Angular |
 |---------------|---------|
+| **1.2.x** | `>=20.3.0 <23.0.0` |
 | **1.1.x** | `>=20.3.0 <23.0.0` |
 | **1.0.x** | `>=20.3.0 <23.0.0` |
 
 - **Workspace / build:** Angular **22.1.5**
 - **Consumer peers:** `>=20.3.0 <23.0.0`
-- **Validated** with packed installs into fresh apps on Angular **20**, **21**, and **22**
 
-v1.1.x does **not** support Angular 19, Angular 23+, or non-Angular frameworks.
+v1.2.x keeps the same peer range. It does **not** support Angular 19, Angular 23+, or non-Angular frameworks. Packed consumer installs on Angular 20, 21, and 22 were verified for 1.0, 1.1, and **1.2.0** (mock-mode smoke; no live payments).
 
 ---
 
@@ -61,61 +63,61 @@ Screenshots are **real captures** of the local demo using browser viewport emula
   <tr>
     <td align="center" width="50%">
       <strong>Desktop</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Desktop viewport" width="420" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-desktop.png" alt="Desktop viewport" width="420" />
     </td>
     <td align="center" width="50%">
       <strong>Mobile</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-mobile.png" alt="Mobile viewport" width="220" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-mobile.png" alt="Mobile viewport" width="220" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Tablet</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-tablet.png" alt="Tablet viewport" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-tablet.png" alt="Tablet viewport" width="360" />
     </td>
     <td align="center">
       <strong>iPad viewport</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-ipad.png" alt="iPad viewport" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-ipad.png" alt="iPad viewport" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Light</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-light.png" alt="Light theme" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-light.png" alt="Light theme" width="360" />
     </td>
     <td align="center">
       <strong>Dark</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-dark.png" alt="Dark theme" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-dark.png" alt="Dark theme" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Default appearance</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-default.png" alt="Default appearance" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-default.png" alt="Default appearance" width="360" />
     </td>
     <td align="center">
       <strong>Transparent appearance</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-transparent.png" alt="Transparent appearance" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-transparent.png" alt="Transparent appearance" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Success</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-success.png" alt="Success confirmation" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-success.png" alt="Success confirmation" width="360" />
     </td>
     <td align="center">
       <strong>Custom method order</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-method-order.png" alt="Custom payment method order" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-method-order.png" alt="Custom payment method order" width="360" />
     </td>
   </tr>
 </table>
 
 <p align="center">
   <strong>Laptop</strong><br />
-  <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-laptop.png" alt="Laptop viewport" width="480" />
+  <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-laptop.png" alt="Laptop viewport" width="480" />
 </p>
 
-> **npm note:** Screenshot `src` values use immutable absolute URLs on the `v1.0.0` tag (`raw.githubusercontent.com/.../v1.0.0/docs/assets/...`) so images render on npm after publish. See [docs/npm-readme-images.md](docs/npm-readme-images.md).
+> **npm note:** Screenshot `src` values use immutable absolute URLs on the `v1.0.0` tag (`raw.githubusercontent.com/.../v1.0.0/docs/assets/...`) so images render on npm after publish. See [docs/npm-readme-images.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/npm-readme-images.md).
 
 ---
 
@@ -131,26 +133,26 @@ Alternate outcomes: **Processing → Error**, or **Provider flow → Cancelled**
   <tr>
     <td align="center" width="50%">
       <strong>Processing</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-processing.png" alt="Processing payment" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-processing.png" alt="Processing payment" width="360" />
     </td>
     <td align="center" width="50%">
       <strong>Success</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-success.png" alt="Payment successful" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-success.png" alt="Payment successful" width="360" />
     </td>
   </tr>
   <tr>
     <td align="center">
       <strong>Error</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-error.png" alt="Payment failed" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-error.png" alt="Payment failed" width="360" />
     </td>
     <td align="center">
       <strong>Cancelled</strong><br />
-      <img src="https://raw.githubusercontent.com/jantvb/easy-payments/v1.0.0/docs/assets/easy-payments-cancelled.png" alt="Payment cancelled" width="360" />
+      <img src="https://raw.githubusercontent.com/easy-payments-dev/easy-payments-angular/v1.0.0/docs/assets/easy-payments-cancelled.png" alt="Payment cancelled" width="360" />
     </td>
   </tr>
 </table>
 
-Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](docs/payment-flow.md)**
+Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/payment-flow.md)**
 
 ---
 
@@ -158,7 +160,7 @@ Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](doc
 
 **Is:** Angular payment integration library · unified checkout UI · provider abstraction · normalized events/errors · built-in UI localization  
 
-**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter  
+**Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · Samsung Pay
 
 Money settles to **your** Stripe / PayPal (and related) merchant accounts.
 
@@ -377,7 +379,7 @@ export class AppComponent {
 
 `PaymentProduct`: `id`, `name`, `amount`, `currency` required; optional `quantity`, `description`, `imageUrl`, `metadata`.
 
-`metadata` is an optional flat string map (`orderId`, `customerReference`, and similar). At most 10 entries, keys up to 40 characters, values up to 500 characters. It does not change the charged amount. PayPal receives only `orderId` as `custom_id`. Card, Apple Pay, Google Pay, Klarna, and Affirm store the validated map on the Stripe PaymentIntent. Do not put secrets or personal data in metadata. See [docs/api.md](../../docs/api.md#merchant-metadata).
+`metadata` is an optional flat string map (`orderId`, `customerReference`, and similar). At most 10 entries, keys up to 40 characters, values up to 500 characters. It does not change the charged amount. PayPal receives only `orderId` as `custom_id`. Card, Apple Pay, Google Pay, Klarna, and Affirm store the validated map on the Stripe PaymentIntent. Do not put secrets or personal data in metadata. See [docs/api.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/api.md#merchant-metadata).
 
 **Amount is major currency units** (dollars, not cents). Example: `amount: 99` with `currency: 'USD'` means **$99.00**.
 
@@ -421,7 +423,7 @@ The `methods` array is both the allow-list and the visual order. No separate `or
 | `es` | Spanish |
 | `pt` | Portuguese |
 
-Full guide: **[docs/localization.md](docs/localization.md)**
+Full guide: **[docs/localization.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md)**
 
 ### Custom translations
 
@@ -459,9 +461,9 @@ Locale changes **how** amounts are displayed (`Intl` number/currency formatting)
 | Wrong language | Set `locale` explicitly (`en` / `es` / `pt`) instead of `auto`, or check the browser language list. |
 | Amount looks like cents | Amounts are **major units** (`99` = $99.00), not Stripe-style cents. |
 
-Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
+Full walkthrough: **[docs/getting-started.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/getting-started.md)**
 
-**View complete example:** [`projects/demo`](projects/demo) · **Library source:** [`projects/easy-payments`](projects/easy-payments) · **Reference backend:** [`server`](server)
+**View complete example:** [`projects/demo`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/projects/demo) · **Library source:** [`projects/easy-payments`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/projects/easy-payments) · **Reference backend:** [`server`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/server)
 
 ---
 
@@ -471,16 +473,16 @@ Configure each provider with the matching guide. Start with Stripe if you use ca
 
 | Provider | Guide | SAFE FOR FRONTEND | SERVER ONLY |
 |----------|-------|-------------------|-------------|
-| Stripe | [docs/providers/stripe.md](docs/providers/stripe.md) | `pk_test_` / `pk_live_` | `sk_*` |
-| Apple Pay | [docs/providers/apple-pay.md](docs/providers/apple-pay.md) | Stripe publishable key | Stripe secret |
-| Google Pay | [docs/providers/google-pay.md](docs/providers/google-pay.md) | Stripe publishable key, Google merchant display fields | Stripe secret, production Google merchant secrets as required |
-| Klarna | [docs/providers/klarna.md](docs/providers/klarna.md) | Stripe publishable key | Stripe secret |
-| Affirm | [docs/providers/affirm.md](docs/providers/affirm.md) | Stripe publishable key | Stripe secret |
-| PayPal | [docs/providers/paypal.md](docs/providers/paypal.md) | PayPal Client ID | PayPal Client Secret |
+| Stripe | [docs/providers/stripe.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/stripe.md) | `pk_test_` / `pk_live_` | `sk_*` |
+| Apple Pay | [docs/providers/apple-pay.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/apple-pay.md) | Stripe publishable key | Stripe secret |
+| Google Pay | [docs/providers/google-pay.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/google-pay.md) | Stripe publishable key, Google merchant display fields | Stripe secret, production Google merchant secrets as required |
+| Klarna | [docs/providers/klarna.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/klarna.md) | Stripe publishable key | Stripe secret |
+| Affirm | [docs/providers/affirm.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/affirm.md) | Stripe publishable key | Stripe secret |
+| PayPal | [docs/providers/paypal.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/paypal.md) | PayPal Client ID | PayPal Client Secret |
 
-**Payment Method Domains:** register the checkout **hostname** (not a URL path) in Stripe so Apple Pay and related methods can appear. Temporary HTTPS tunnels need their public frontend hostname registered — and re-registered when the tunnel name changes. Details: [Stripe PMD docs](https://docs.stripe.com/payments/payment-methods/pmd-registration) and [docs/providers/stripe.md](docs/providers/stripe.md).
+**Payment Method Domains:** register the checkout **hostname** (not a URL path) in Stripe so Apple Pay and related methods can appear. Temporary HTTPS tunnels need their public frontend hostname registered — and re-registered when the tunnel name changes. Details: [Stripe PMD docs](https://docs.stripe.com/payments/payment-methods/pmd-registration) and [docs/providers/stripe.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/providers/stripe.md).
 
-Localization behavior and hard limits (wallet sheets, Klarna/Affirm hosted pages): **[docs/localization.md](docs/localization.md)**.
+Localization behavior and hard limits (wallet sheets, Klarna/Affirm hosted pages): **[docs/localization.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md)**.
 
 ---
 
@@ -505,7 +507,7 @@ Localization behavior and hard limits (wallet sheets, Klarna/Affirm hosted pages
 | `error` | `PaymentError` |
 | `successContinue` | `PaymentResult` |
 
-Complete reference: **[docs/api.md](docs/api.md)** · Localization: **[docs/localization.md](docs/localization.md)** · Recipes: **[docs/configuration.md](docs/configuration.md)**
+Complete reference: **[docs/api.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/api.md)** · Localization: **[docs/localization.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md)** · Recipes: **[docs/configuration.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/configuration.md)**
 
 ---
 
@@ -550,7 +552,7 @@ Snapshots omit secret keys, client secrets, PaymentIntent secrets, authorization
 
 Calling `EasyPaymentsConfigService.replace()` does not refresh diagnostics by itself. Call `PaymentOrchestratorService.reinitialize()`, then let `<easy-payments>` refresh or call `refreshAvailability()` yourself.
 
-Full reference: **[docs/api.md](docs/api.md#diagnostics)**.
+Full reference: **[docs/api.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/api.md#diagnostics)**.
 
 ---
 
@@ -581,7 +583,7 @@ PayPal `success` is emitted after capture. Apple Pay `started` is emitted on wal
 
 These events omit client secrets, secret keys, tokens, and raw provider responses. Log `PaymentError.code` rather than `message`. Diagnostics readiness is a separate API.
 
-Full reference: **[docs/api.md](docs/api.md#outputs)**.
+Full reference: **[docs/api.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/api.md#outputs)**.
 
 ---
 
@@ -602,7 +604,7 @@ Checkout is fluid up to `[maxWidth]`. The payment method grid reflows from the *
 | **Klarna** | `klarna` + Stripe | Stripe + `klarnaCreatePaymentUrl` | Redirect + return recovery |
 | **Affirm** | `affirm` + Stripe | Stripe + `affirmCreatePaymentUrl` | ~$35 min in library; eligibility varies |
 
-Details: [docs/providers/](docs/providers/) · Security: [docs/security.md](docs/security.md)
+Details: [docs/providers/](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/docs/providers/) · Security: [docs/security.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/security.md)
 
 > **Never** put Stripe secret keys or PayPal Client Secrets in Angular.
 
@@ -612,9 +614,9 @@ Details: [docs/providers/](docs/providers/) · Security: [docs/security.md](docs
 
 A backend is required for secrets, trusted pricing, and captures.
 
-Any language works (NestJS, Express, .NET, Java, PHP, Python, Go, …) if it implements the [HTTP contract](docs/backend.md).
+Any language works (NestJS, Express, .NET, Java, PHP, Python, Go, …) if it implements the [HTTP contract](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/backend.md).
 
-This repo’s [`server/`](server) NestJS app is a **reference example**, not a production mandate.
+This repo’s [`server/`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/server) NestJS app is a **reference example**, not a production mandate.
 
 ---
 
@@ -622,15 +624,21 @@ This repo’s [`server/`](server) NestJS app is a **reference example**, not a p
 
 | Area | Path |
 |------|------|
-| Library | [`projects/easy-payments`](projects/easy-payments) |
-| Angular demo | [`projects/demo`](projects/demo) |
-| Reference backend | [`server`](server) |
-| Documentation | [`docs`](docs) |
-| Issues | [GitHub Issues](https://github.com/jantvb/easy-payments/issues) |
+| Library | [`projects/easy-payments`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/projects/easy-payments) |
+| Angular demo | [`projects/demo`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/projects/demo) |
+| Reference backend | [`server`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/server) |
+| Documentation | [`docs`](https://github.com/easy-payments-dev/easy-payments-angular/tree/master/docs) |
+| Issues | [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues) |
 
 ---
 
-## Running the Example Locally
+## Run the demo locally
+
+This section is for the **library demo app** in this repository (`projects/demo` + NestJS `server/`). The public website Playground uses **mock payments** and is separate.
+
+### Angular demo
+
+From the repository root:
 
 ```bash
 npm install
@@ -640,16 +648,34 @@ npm start
 
 Demo: http://localhost:4200
 
+(`npm start` runs `ng serve demo`.)
+
+### NestJS demo backend
+
 ```bash
 cd server
 npm install
-# copy .env.example → .env (TEST secrets only)
+# copy .env.example → .env (TEST / Sandbox secrets only)
 npm run start:dev
 ```
 
-API: http://localhost:3000  
+Backend: http://localhost:3001
 
-More: [docs/demo.md](docs/demo.md)
+From the repository root you can also use `npm run server:install` and `npm run server:start` (same Nest install / `start:dev` flow).
+
+### Real / Test Providers
+
+1. Start **both** the NestJS backend and the Angular demo.
+2. Open http://localhost:4200
+3. Select **Real / Test Providers**
+
+If switching modes fails:
+
+1. Confirm http://localhost:3001/api/catalog/products returns JSON.
+2. Confirm the browser’s **exact origin** is allowed by the backend `FRONTEND_ORIGIN` CORS setting (default includes `http://localhost:4200` and `http://127.0.0.1:4200`).
+3. If the Angular demo runs on another port, add that origin to `FRONTEND_ORIGIN` and restart NestJS.
+
+More: [docs/demo.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/demo.md)
 
 ---
 
@@ -671,9 +697,15 @@ Do not use live credentials for basic integration testing.
 - HTTPS  
 - Stripe Payment Method Domains (wallets)  
 - PayPal Live + Google Pay PRODUCTION merchant ID when applicable  
-- Klarna / Affirm eligibility & approvals  
-- Webhooks / reconciliation  
+- Klarna / Affirm eligibility and approvals
+- Webhooks / reconciliation before fulfillment
 - Auth, rate limits, logging, CSP review  
+
+v1.2.0 adds Full Checkout, Buttons Only, and Headless. `[bnplConfirmMode]` defaults to `element`. Klarna and Affirm Direct are Buttons Only opt-in. Merchant `requestPayment` starts card, Klarna, and Affirm only. PayPal, Google Pay, and Apple Pay stay on their official SDK buttons. Samsung Pay is not supported.
+
+Stripe `checkout.successUrl` must be a same-origin `http:` or `https:` URL, or a relative path resolved against the current page. Other schemes and cross-origin URLs fail with `CONFIG_INVALID` before confirmation.
+
+A browser `success` event is not fulfillment. The NestJS app in `server/` is a local demo, not a production backend. Its webhook status store is process-local and lost on restart. Your backend owns durable idempotency, capture, and fulfillment. Stripe TEST Klarna and Affirm payments, and locally signed webhook simulations, are not live production verification.
 
 ---
 
@@ -693,15 +725,15 @@ Do not use live credentials for basic integration testing.
 
 **Can I choose method order?** Yes — `methods` array order. No separate `order` property.  
 
-**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt`) and optional `[translations]`. See [localization](docs/localization.md).  
+**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt`) and optional `[translations]`. See [localization](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md).
 
 **Does locale convert currency?** No — display formatting only.  
 
-**Dark / light / system / transparent / width?** Yes — see [configuration](docs/configuration.md).  
+**Dark / light / system / transparent / width?** Yes — see [configuration](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/configuration.md).
 
 **Does Apple Pay / Google Pay always appear?** No — capability and configuration dependent.  
 
-**How do I report a bug or suggest a feature?** [GitHub Issues](https://github.com/jantvb/easy-payments/issues).  
+**How do I report a bug or suggest a feature?** [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues).
 
 **Can I inspect the source / demo / backend?** Yes — links above.  
 
@@ -711,11 +743,11 @@ Do not use live credentials for basic integration testing.
 
 ## Community & Feedback
 
-Prefer **[GitHub Issues](https://github.com/jantvb/easy-payments/issues)** for bugs, features, provider ideas, docs, compatibility, and a11y/UX suggestions.
+Prefer **[GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues)** for bugs, features, provider ideas, docs, compatibility, and a11y/UX suggestions.
 
 Project contact (general / private): **jantvb@gmail.com**
 
-Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+Contributing guide: [CONTRIBUTING.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/CONTRIBUTING.md)
 
 ---
 
@@ -733,10 +765,10 @@ This is an optional way to support the open-source project. It is **not** a lice
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for **1.1.0**.
+See [CHANGELOG.md](https://unpkg.com/@easy-payments/angular@1.2.0/CHANGELOG.md) for **1.2.0**. 1.1.0 and 1.0.0 remain in that file. The same file is included in the published package. This absolute link is what opens from npm; it does not depend on a GitHub organization URL.
 
 ---
 
 ## License
 
-MIT © 2026 Jose Vicente — see [LICENSE](LICENSE).
+MIT © 2026 Jose Vicente — see [LICENSE](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/LICENSE).

@@ -81,6 +81,6 @@ npm run server:build
 
 ## Issues
 
-- Bugs / features: [GitHub Issues](https://github.com/jantvb/easy-payments/issues)
+- Bugs / features: [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues)
 - Use the bug / feature templates when available
 - General contact: jantvb@gmail.com

@@ -815,12 +815,14 @@ export class EasyPaymentsComponent {
       if (!this.destroyed) {
         this.providerBusy.set(false);
         // After cancel/error the panel may create a fresh PaymentIntent for retry.
-        // Keep ownership while success or still-processing so panels do not recreate.
-        if (
-          this.viewState() !== 'success' &&
-          this.viewState() !== 'processing' &&
-          !this.terminalSuccessEmitted
-        ) {
+        // After success/pending, keep a non-creating phase so panels do not recreate —
+        // but do not leave `owner` (which forces Affirm/Klarna into perpetual Processing UI).
+        const state = this.viewState();
+        if (state === 'success' || this.terminalSuccessEmitted) {
+          this.hostContext.setReturnPhase('settled', method);
+        } else if (state === 'processing') {
+          this.hostContext.setReturnPhase('awaiting', method);
+        } else {
           this.hostContext.setReturnPhase('none');
         }
       }

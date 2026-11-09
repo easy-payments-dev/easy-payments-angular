@@ -3,6 +3,8 @@
 Affirm in Easy Payments is **Stripe-backed** (Affirm-only PaymentIntent + Stripe Payment Element).  
 You do **not** configure Affirm’s direct JS SDK secrets in Angular for this integration.
 
+**Direct confirmation (Buttons Only opt-in):** When `<easy-payment-buttons [bnplConfirmMode]="'auto'|'direct'">` is set and [`evaluateBnplDirectReadiness`](../api.md#buttons-only-bnpl-confirm-mode) is ready, an Affirm selector click runs Stripe Direct (`confirmAffirmPayment`) without mounting Payment Element or showing Continue. Affirm Direct readiness requires a complete billing address. Default `element` keeps the existing PE flow. Full Checkout and Headless always use Payment Element. Direct is **not** universally available (Stripe eligibility / country / browser limits). Backend/webhooks remain authoritative for fulfillment.
+
 ## What you need
 
 - Stripe account with Affirm enabled  
