@@ -17,6 +17,7 @@ import {
   STRIPE_PENDING_STORAGE_KEY,
   STRIPE_PENDING_TTL_MS,
 } from '../adapters/stripe/stripe-redirect-return';
+import { resetTestLocation, setTestLocation } from '../testing/test-history';
 import { EasyPaymentsHeadless } from './easy-payments-headless.service';
 import { HeadlessSessionRegistry } from './headless-session-registry';
 import type { HeadlessCheckoutSession } from './headless.types';
@@ -36,6 +37,7 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
   let registry: HeadlessSessionRegistry;
   let recovery: StripeRedirectRecoveryService;
   let retrieve: jasmine.Spy;
+  const liveSessions: HeadlessCheckoutSession[] = [];
 
   const stripeMock = {
     elements: jasmine.createSpy('elements'),
@@ -45,7 +47,8 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
 
   beforeEach(() => {
     sessionStorage.removeItem(STRIPE_PENDING_STORAGE_KEY);
-    history.replaceState({}, '', '/');
+    resetTestLocation();
+    liveSessions.length = 0;
 
     const backend = jasmine.createSpyObj<BackendService>('BackendService', [
       'createStripePayment',
@@ -106,20 +109,29 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
     registry.clearForTests();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await Promise.all(
+      liveSessions.splice(0).map(async (session) => {
+        if (session.state() !== 'destroyed') {
+          try {
+            await session.destroy();
+          } catch {
+            // Ignore teardown failures — isolation is the goal.
+          }
+        }
+      }),
+    );
     registry.clearForTests();
     recovery.resetForTests();
     sessionStorage.removeItem(STRIPE_PENDING_STORAGE_KEY);
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   function setReturnUrl(
     method: 'klarna' | 'affirm' = 'klarna',
     extra: Record<string, string> = {},
   ): void {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       `/?${new URLSearchParams({
         payment_intent: 'pi_ret',
         payment_intent_client_secret: 'pi_ret_secret_x',
@@ -156,6 +168,7 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
           : overrides.checkoutInstanceId;
     }
     const session = headless.createSession(options);
+    liveSessions.push(session);
     await session.initialize();
     return session;
   }
@@ -213,6 +226,7 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
       product: PRODUCT,
       methods: ['klarna'],
     });
+    liveSessions.push(session);
     await session.initialize();
     await expectAsync(session.recoverReturn()).toBeRejectedWith(
       jasmine.objectContaining({ code: 'CONFIG_INVALID' }),
@@ -521,6 +535,7 @@ describe('HeadlessCheckoutSession recoverReturn (H4.3)', () => {
       methods: ['klarna'],
       checkoutInstanceId: 'hl-init',
     });
+    liveSessions.push(session);
     await expectAsync(session.recoverReturn()).toBeRejectedWith(
       jasmine.objectContaining({ code: 'CONFIG_INVALID' }),
     );

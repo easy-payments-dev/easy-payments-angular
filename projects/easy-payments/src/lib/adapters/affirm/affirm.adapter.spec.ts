@@ -4,6 +4,7 @@ import { EasyPaymentsConfigService } from '../../config/easy-payments-config.ser
 import { BackendService } from '../../services/backend.service';
 import { PaymentError } from '../../errors/payment-error';
 import { SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation } from '../../testing/test-history';
 import { AffirmAdapter } from './affirm.adapter';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
@@ -40,7 +41,7 @@ describe('AffirmAdapter', () => {
     sdkLoader.load.and.resolveTo(stripeMock as never);
     redirectRecovery.consumeReturn.and.resolveTo(null);
     redirectRecovery.wasReturnConsumed.and.returnValue(false);
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     confirmPayment.calls.reset();
     confirmAffirmPayment.calls.reset();
     elements.calls.reset();
@@ -204,7 +205,7 @@ describe('AffirmAdapter', () => {
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
 
-    const result = await adapter.confirmPayment('https://example.com/return');
+    const result = await adapter.confirmPayment(`${window.location.origin}/return`);
     expect(result.status).toBe('success');
     expect(result.method).toBe('affirm');
     expect(result.provider).toBe('affirm');
@@ -280,7 +281,7 @@ describe('AffirmAdapter', () => {
 
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
-    await adapter.confirmPayment('https://example.com/checkout');
+    await adapter.confirmPayment(`${window.location.origin}/checkout`);
 
     const args = confirmPayment.calls.mostRecent().args[0];
     expect(args.redirect).toBe('if_required');
@@ -374,7 +375,7 @@ describe('AffirmAdapter', () => {
       });
       await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
       await adapter.mountPaymentElement(document.createElement('div'), 'pi_affirm_secret', 'light');
-      await adapter.confirmPayment('https://example.com/pe');
+      await adapter.confirmPayment(`${window.location.origin}/pe`);
       expect(confirmPayment).toHaveBeenCalled();
       expect(confirmAffirmPayment).not.toHaveBeenCalled();
     });

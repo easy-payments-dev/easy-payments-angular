@@ -195,14 +195,14 @@ Before redirect, mount + confirm as usual. The library:
 1. Writes a Headless-only pending marker in **tab-scoped** `sessionStorage` (`hostKind: 'headless'`, method, product id, attempt id, `checkoutInstanceId`, timestamp; **24-hour TTL**; **no secrets**).
 2. Stamps `ep_method` / `ep_attempt` on the return URL.
 
-After a full-page return, recreate the session with the **same** `checkoutInstanceId`, `initialize()`, then `recoverReturn()`:
+After a full-page return, recreate the session with the **same** `checkoutInstanceId`, `initialize()`, then `recoverReturn()`. `successUrl` must be a same-origin `http:`/`https:` URL or a relative path. The relative path below resolves against the page that confirms.
 
 ```typescript
 // Before redirect
 const session = headless.createSession({
   product,
   methods: ['klarna', 'affirm'],
-  checkout: { successUrl: 'https://merchant.example/checkout/return' },
+  checkout: { successUrl: '/checkout/return' },
   checkoutInstanceId: 'merchant-checkout-id',
 });
 await session.initialize();
@@ -319,5 +319,14 @@ Merchant responsibilities (library cannot complete these alone):
 | Demo Headless playground (H5.1–H5.4) | Supported + demo QA/a11y/security audit |
 
 Full Checkout and Buttons Only remain unchanged; Headless is additive.
+
+### Mock mode (`enableMockMode: true`)
+
+When a method's status reports `mock: true` / `interaction: 'mock'`, `mount()` renders a DEMO surface into your container instead of Stripe.js / the PayPal SDK / wallet SDKs (no backend URLs are called):
+
+- `card` / `klarna` / `affirm` — a DEMO panel; call `session.confirm()` from your own CTA. Outcomes follow `MockPaymentController` (success / cancelled / failed) via `orchestrator.processPayment`.
+- `paypal` / `google-pay` / `apple-pay` — a DEMO button; the buyer click starts payment (`session.confirm()` is still rejected, as with real wallets).
+
+Each user action emits exactly one terminal event (`success` / `pending` / `cancel` / `error`). Non-mock sessions are unchanged.
 
 Mocked unit tests and local builds do **not** prove live payment production readiness. Complete §J with real Stripe TEST / PayPal Sandbox / wallet devices before claiming live verification.

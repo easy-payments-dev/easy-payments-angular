@@ -200,7 +200,7 @@ describe('StripeCardAdapter', () => {
     expect(mount).toHaveBeenCalledWith(host);
     expect(adapter.hasMountedElement()).toBeTrue();
 
-    const result = await adapter.confirmPayment('https://example.com/return');
+    const result = await adapter.confirmPayment(`${window.location.origin}/return`);
     expect(submit).toHaveBeenCalled();
     expect(confirmPayment).toHaveBeenCalled();
     expect(result.status).toBe('success');

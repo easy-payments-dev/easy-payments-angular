@@ -67,4 +67,8 @@ PayPal `PAYPAL-CERT-URL` is allowlisted to `api.paypal.com` / `api.sandbox.paypa
 
 Angular checkout events (`started`, `success`, `cancel`, `error`) are UX signals only. Do **not** fulfill orders from them alone. Prefer verified webhooks (or server-side retrieval of PaymentIntent / capture status) as the source of truth.
 
-The demo payment-status map is in-memory: not durable, not shared across instances, and not exactly-once across restarts. Production needs a persistent idempotent store. Merchant metadata / PayPal `custom_id` on webhook resources is descriptive — never proof of ownership.
+Stripe `checkout.successUrl` must stay on the current page origin. Relative paths are allowed. Cross-origin URLs and non-http(s) schemes are rejected with `CONFIG_INVALID` before confirmation, so `payment_intent_client_secret` is not sent to another origin.
+
+Samsung Pay is not a supported method.
+
+The demo payment-status map is in-memory: not durable, not shared across instances, and not exactly-once across restarts. Production needs a persistent idempotent store. Merchant metadata / PayPal `custom_id` on webhook resources is descriptive — never proof of ownership. The NestJS app is a reference demo, not a production fulfillment system.

@@ -98,6 +98,10 @@ export type MockMethodPanelPresentation = 'panel' | 'strip' | 'expand';
     `
       :host {
         display: block;
+        /* Fill the Buttons Only slot — parent __mock is flex; without this the
+           host shrink-wraps to the logo and strip width:100% collapses. */
+        width: 100%;
+        box-sizing: border-box;
         font-family: var(--ep-font-family, inherit);
       }
 
@@ -168,11 +172,13 @@ export type MockMethodPanelPresentation = 'panel' | 'strip' | 'expand';
 
       .ep-mock-panel__strip {
         box-sizing: border-box;
-        display: inline-flex;
+        display: flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
+        /* Match selector chrome: fill the slot (not logo intrinsic width). */
         width: var(--ep-buttons-width, 100%);
+        max-width: 100%;
         min-width: var(--ep-buttons-min-width, 100px);
         height: var(--ep-buttons-height, 40px);
         min-height: var(--ep-buttons-height, 40px);
@@ -209,14 +215,23 @@ export type MockMethodPanelPresentation = 'panel' | 'strip' | 'expand';
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        flex: 0 0 auto;
-        max-height: 24px;
+        flex: 1 1 auto;
+        width: 100%;
         max-width: 100%;
+        /* Leave room for 40px strip height + 1px borders; do not crush brand marks. */
+        max-height: calc(var(--ep-buttons-height, 40px) - 8px);
+        min-height: 0;
+      }
+
+      .ep-mock-panel__strip-icon ::ng-deep .ep-mark {
+        height: 100%;
+        max-height: calc(var(--ep-buttons-height, 40px) - 8px);
       }
 
       .ep-mock-panel__strip-icon ::ng-deep img,
       .ep-mock-panel__strip-icon ::ng-deep svg {
-        max-height: 22px;
+        /* Defer to payment-method-icon height tokens; only clamp to the strip. */
+        max-height: calc(var(--ep-buttons-height, 40px) - 8px);
         width: auto;
       }
 

@@ -1,6 +1,6 @@
 {
   "name": "@easy-payments/angular",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Angular payments and checkout library for Stripe, PayPal, Apple Pay, Google Pay, Klarna, and Affirm. Unified payment component with localization support.",
   "license": "MIT",
   "author": "jantvb",
@@ -43,11 +43,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jantvb/easy-payments.git"
+    "url": "git+https://github.com/easy-payments-dev/easy-payments-angular.git"
   },
-  "homepage": "https://github.com/jantvb/easy-payments#readme",
+  "homepage": "https://github.com/easy-payments-dev/easy-payments-angular#readme",
   "bugs": {
-    "url": "https://github.com/jantvb/easy-payments/issues"
+    "url": "https://github.com/easy-payments-dev/easy-payments-angular/issues"
   },
   "peerDependencies": {
     "@angular/common": ">=20.3.0 <23.0.0",

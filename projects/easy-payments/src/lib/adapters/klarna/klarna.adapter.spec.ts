@@ -4,9 +4,15 @@ import { EasyPaymentsConfigService } from '../../config/easy-payments-config.ser
 import { BackendService } from '../../services/backend.service';
 import { PaymentError } from '../../errors/payment-error';
 import { SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 import { KlarnaAdapter } from './klarna.adapter';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
+import {
+  markStripePendingReturn,
+  readStripePendingReturn,
+  STRIPE_PENDING_STORAGE_KEY,
+} from '../stripe/stripe-redirect-return';
 
 describe('KlarnaAdapter', () => {
   let adapter: KlarnaAdapter;
@@ -36,7 +42,7 @@ describe('KlarnaAdapter', () => {
     backend = jasmine.createSpyObj<BackendService>('BackendService', ['createKlarnaPayment']);
     sdkLoader = jasmine.createSpyObj<StripeSdkLoader>('StripeSdkLoader', ['load']);
     sdkLoader.load.and.resolveTo(stripeMock as never);
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     sessionStorage.clear();
     confirmPayment.calls.reset();
     confirmKlarnaPayment.calls.reset();
@@ -70,7 +76,7 @@ describe('KlarnaAdapter', () => {
   afterEach(() => {
     recovery.resetForTests();
     sessionStorage.clear();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   it('initializes without loading Stripe.js', async () => {
@@ -186,7 +192,7 @@ describe('KlarnaAdapter', () => {
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_klarna_secret', 'light');
 
-    const result = await adapter.confirmPayment('https://example.com/return');
+    const result = await adapter.confirmPayment(`${window.location.origin}/return`);
     expect(result.status).toBe('success');
     expect(result.method).toBe('klarna');
     expect(result.provider).toBe('klarna');
@@ -251,9 +257,7 @@ describe('KlarnaAdapter', () => {
   });
 
   it('consumeStripeReturn recovers once and cleans the URL', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_once&payment_intent_client_secret=sec_once&ep_method=klarna&redirect_status=succeeded',
     );
     retrievePaymentIntent.and.resolveTo({
@@ -273,7 +277,7 @@ describe('KlarnaAdapter', () => {
   });
 
   it('consumeStripeReturn errors for malformed Klarna return without client secret', async () => {
-    history.replaceState({}, '', '/?ep_method=klarna');
+    setTestLocation('/?ep_method=klarna');
 
     try {
       await adapter.consumeStripeReturn();
@@ -284,6 +288,49 @@ describe('KlarnaAdapter', () => {
     }
     expect(adapter.wasReturnConsumed()).toBeTrue();
     expect(window.location.search).not.toContain('ep_method');
+  });
+
+  it('clears a pending marker that has attemptId after a legacy (no ep_attempt) consume', async () => {
+    setTestLocation(
+      '/?payment_intent=pi_legacy&payment_intent_client_secret=sec_legacy&ep_method=klarna&redirect_status=succeeded',
+    );
+    markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+      attemptId: 'a1b2c3d4e5f60718',
+      hostKind: 'checkout',
+      checkoutInstanceId: 'legacy-host',
+    });
+    retrievePaymentIntent.and.resolveTo({
+      paymentIntent: { id: 'pi_legacy', status: 'succeeded' },
+    });
+
+    const result = await adapter.consumeStripeReturn();
+
+    expect(result?.status).toBe('success');
+    expect(readStripePendingReturn()).toBeNull();
+    expect(sessionStorage.getItem(STRIPE_PENDING_STORAGE_KEY)).toBeNull();
+    expect(window.location.search).not.toContain('payment_intent');
+  });
+
+  it('preserves a newer attempted marker written during a legacy consume', async () => {
+    setTestLocation(
+      '/?payment_intent=pi_race&payment_intent_client_secret=sec_race&ep_method=klarna&redirect_status=succeeded',
+    );
+    markStripePendingReturn('klarna', SAMPLE_PRODUCT.id);
+    retrievePaymentIntent.and.callFake(async () => {
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: 'ffffeeee00001111',
+        hostKind: 'buttons',
+        checkoutInstanceId: 'newer-host',
+      });
+      return { paymentIntent: { id: 'pi_race', status: 'succeeded' } };
+    });
+
+    const result = await adapter.consumeStripeReturn();
+
+    expect(result?.status).toBe('success');
+    expect(readStripePendingReturn()?.attemptId).toBe('ffffeeee00001111');
+    expect(readStripePendingReturn()?.checkoutInstanceId).toBe('newer-host');
+    expect(window.location.search).not.toContain('payment_intent');
   });
 
   it('polls while PaymentIntent status is processing then succeeds', async () => {
@@ -344,7 +391,7 @@ describe('KlarnaAdapter', () => {
 
     await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
     await adapter.mountPaymentElement(document.createElement('div'), 'pi_klarna_secret', 'light');
-    await adapter.confirmPayment('https://example.com/checkout');
+    await adapter.confirmPayment(`${window.location.origin}/checkout`);
 
     const args = confirmPayment.calls.mostRecent().args[0];
     expect(args.redirect).toBe('if_required');

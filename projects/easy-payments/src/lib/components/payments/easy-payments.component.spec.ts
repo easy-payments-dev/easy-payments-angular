@@ -10,10 +10,12 @@ import { PaymentError } from '../../errors/payment-error';
 import { PaymentMethodChangeEvent, PaymentResult, PaymentStartedEvent } from '../../models';
 import { EasyPaymentsDiagnosticsService } from '../../diagnostics/easy-payments-diagnostics.service';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { resetProviderDiagnosticsForTests } from '../../diagnostics/provider-diagnostics';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
+import { clearStripePendingReturn } from '../../adapters/stripe/stripe-redirect-return';
 import { EasyPaymentsComponent } from './easy-payments.component';
 
 async function render(fixture: ComponentFixture<EasyPaymentsComponent>): Promise<void> {
@@ -77,8 +79,15 @@ describe('EasyPaymentsComponent', () => {
     }).compileComponents();
 
     TestBed.inject(MockPaymentController).reset();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     fixture = TestBed.createComponent(EasyPaymentsComponent);
     fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+  });
+
+  afterEach(() => {
+    resetTestLocation();
+    clearStripePendingReturn();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   it('renders the requested methods in array order', async () => {
@@ -1413,9 +1422,7 @@ describe('EasyPaymentsComponent', () => {
     });
 
     it('Klarna parent-owned redirect recovery transitions Processing to Success', async () => {
-      history.replaceState(
-        {},
-        '',
+      setTestLocation(
         '/?payment_intent=pi_parent&payment_intent_client_secret=sec_parent&ep_method=klarna',
       );
 
@@ -1452,12 +1459,12 @@ describe('EasyPaymentsComponent', () => {
         fixtureReturn.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('klarna'),
       ).toBe('settled');
 
-      history.replaceState({}, '', '/');
+      resetTestLocation();
       fixtureReturn.destroy();
     });
 
     it('Klarna parent-owned redirect recovery maps retrieve failure to Error', async () => {
-      history.replaceState({}, '', '/?ep_method=klarna&payment_intent_client_secret=bad');
+      setTestLocation('/?ep_method=klarna&payment_intent_client_secret=bad');
 
       const recovery = TestBed.inject(StripeRedirectRecoveryService);
       spyOn(recovery, 'consumeReturn').and.rejectWith(
@@ -1485,14 +1492,12 @@ describe('EasyPaymentsComponent', () => {
       expect(fixtureReturn.componentInstance.viewState()).toBe('error');
       expect(fixtureReturn.nativeElement.textContent).toContain('Payment failed');
 
-      history.replaceState({}, '', '/');
+      resetTestLocation();
       fixtureReturn.destroy();
     });
 
     it('Affirm parent-owned redirect recovery transitions Processing to Success', async () => {
-      history.replaceState(
-        {},
-        '',
+      setTestLocation(
         '/?payment_intent=pi_aff&payment_intent_client_secret=sec_aff&ep_method=affirm',
       );
 
@@ -1528,7 +1533,7 @@ describe('EasyPaymentsComponent', () => {
         fixtureReturn.debugElement.injector.get(CheckoutHostContext).returnPhaseFor('affirm'),
       ).toBe('settled');
 
-      history.replaceState({}, '', '/');
+      resetTestLocation();
       fixtureReturn.destroy();
     });
 

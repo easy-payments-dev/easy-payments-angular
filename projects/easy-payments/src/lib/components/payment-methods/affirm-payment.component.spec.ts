@@ -10,6 +10,7 @@ import {
   markStripePendingReturn,
   STRIPE_PENDING_STORAGE_KEY,
 } from '../../adapters/stripe/stripe-redirect-return';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 
 @Component({
   standalone: true,
@@ -66,7 +67,7 @@ describe('AffirmPaymentComponent session reuse', () => {
 
   beforeEach(async () => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
 
     adapter = jasmine.createSpyObj<AffirmAdapter>('AffirmAdapter', [
       'ensureStripeLoaded',
@@ -104,7 +105,7 @@ describe('AffirmPaymentComponent session reuse', () => {
 
   afterEach(() => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   it('creates a payment session once on mount', async () => {
@@ -198,14 +199,12 @@ describe('AffirmPaymentComponent during Stripe redirect return', () => {
 
   afterEach(() => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
   });
 
   it('does not create a new PaymentIntent while Affirm return params are present', async () => {
     markStripePendingReturn('affirm', 'premium-plan');
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_ret&payment_intent_client_secret=pi_ret_secret&ep_method=affirm',
     );
 

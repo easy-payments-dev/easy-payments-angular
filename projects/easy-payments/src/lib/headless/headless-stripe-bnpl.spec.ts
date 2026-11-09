@@ -410,7 +410,7 @@ describe('HeadlessCheckoutSession Klarna & Affirm (H3.2)', () => {
     const session = await readySession({
       methods: ['klarna'],
       checkoutInstanceId: 'bnpl-marker-ok',
-      checkout: { successUrl: 'https://merchant.example/return' },
+      checkout: { successUrl: `${window.location.origin}/return` },
     });
     await session.mount('klarna', document.createElement('div'));
     await session.confirm();

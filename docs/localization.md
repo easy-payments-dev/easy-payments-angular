@@ -1,6 +1,6 @@
 # Localization
 
-Easy Payments **v1.1.0** ships built-in UI localization for checkout chrome owned by the library.
+Since **v1.1.0**, Easy Payments ships built-in UI localization for checkout chrome owned by the library. v1.2.0 keeps the same locales.
 
 Supported `[locale]` values:
 
@@ -124,4 +124,4 @@ Reminder: `amount` uses **major currency units** (`99` = $99.00 USD), not cents.
 - [Getting Started](./getting-started.md)  
 - [Provider Setup](./providers/stripe.md) (and sibling provider guides)  
 - [API Reference](./api.md)  
-- [CHANGELOG](../CHANGELOG.md) (`1.1.0`)
+- [CHANGELOG](../CHANGELOG.md) (`1.2.0`, with 1.1.0 and 1.0.0 retained)

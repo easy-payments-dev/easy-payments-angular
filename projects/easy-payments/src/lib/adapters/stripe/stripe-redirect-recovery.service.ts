@@ -14,6 +14,7 @@ import {
   isStripeReturnAttempt,
   readStripePendingReturn,
   readStripeReturnParams,
+  STRIPE_PENDING_STORAGE_KEY,
   STRIPE_PROCESSING_DELAY_MS,
   STRIPE_PROCESSING_MAX_ATTEMPTS,
   STRIPE_RETRIEVE_RETRY_ATTEMPTS,
@@ -24,6 +25,18 @@ import {
   type StripeReturnOrigin,
   type StripeReturnParams,
 } from './stripe-redirect-return';
+
+/** Exact sessionStorage payload for the pending marker (identity, not timestamp). */
+function readPendingReturnRaw(): string | null {
+  try {
+    if (typeof sessionStorage === 'undefined') {
+      return null;
+    }
+    return sessionStorage.getItem(STRIPE_PENDING_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 /** A checkout host (`<easy-payments>` / `<easy-payment-buttons>`) that can own a redirect return. */
 export interface StripeReturnHost {
@@ -196,6 +209,8 @@ interface PendingClaim {
   host: StripeReturnHost;
   methods: readonly PaymentMethod[];
   resolve: (claim: StripeReturnClaim) => void;
+  /** Claim batch this caller joined. A newer batch must not be settled by an older turn. */
+  turn: number;
 }
 
 function looksLikeSecretKey(value: string): boolean {
@@ -223,33 +238,67 @@ export class StripeRedirectRecoveryService {
   private stripe: Stripe | null = null;
   private loadPromise: Promise<Stripe> | null = null;
   private consumePromise: Promise<PaymentResult | null> | null = null;
+  private consumeEpoch = -1;
   private consumed = false;
 
   /** Live hosts in registration (render) order — used for return ownership ordinals. */
   private readonly hosts: StripeReturnHost[] = [];
   private pendingClaims: PendingClaim[] = [];
   private claimScheduled = false;
-  /** Bumped by {@link resetForTests} so a queued claim microtask cannot clear a later test's URL. */
-  private claimEpoch = 0;
+  /**
+   * Epoch captured when the current claim microtask was queued.
+   * A newer claim after {@link mutationEpoch} advances must schedule its own turn.
+   */
+  private scheduledEpoch = 0;
+  private scheduledSearch = '';
+  /**
+   * Increments for every newly scheduled claim batch and on test reset.
+   * An older microtask must not settle a newer batch, even when the page search string is unchanged.
+   */
+  private claimTurn = 0;
+  /**
+   * Shared by every instance. Tests advance it when a spec ends so a claim or
+   * consume started in an earlier spec cannot clear the next spec's URL or marker.
+   * Production does not advance it; overlapping claim batches are ordered by claimTurn.
+   */
+  private static mutationEpoch = 0;
+  /** Epoch this instance has already folded into its claim/consume fields. */
+  private observedEpoch = 0;
   private returnOwner: StripeReturnHost | null = null;
   private returnClosed = false;
+  /** Attempt id captured when the return was closed or an owner was granted. */
+  private boundAttempt: string | null = null;
   private waitWarned = false;
 
   wasReturnConsumed(): boolean {
     return this.consumed;
   }
 
+  /**
+   * Test helper — drops queued claims and in-flight return cleanup on every instance.
+   * Does not run during a payment. Safe to call when the service instance is already destroyed.
+   */
+  static invalidateRedirectRecoveryForTests(): void {
+    StripeRedirectRecoveryService.mutationEpoch += 1;
+  }
+
   /** Test helper — clears consume/claim state between Karma specs (root singleton). */
   resetForTests(): void {
+    StripeRedirectRecoveryService.invalidateRedirectRecoveryForTests();
+    this.observedEpoch = StripeRedirectRecoveryService.mutationEpoch;
+    this.claimTurn += 1;
     this.consumed = false;
     this.consumePromise = null;
+    this.consumeEpoch = -1;
     this.returnOwner = null;
     this.returnClosed = false;
+    this.boundAttempt = null;
     this.waitWarned = false;
     const abandoned = this.pendingClaims;
     this.pendingClaims = [];
     this.claimScheduled = false;
-    this.claimEpoch += 1;
+    this.scheduledEpoch = 0;
+    this.scheduledSearch = '';
     abandoned.forEach((claim) => claim.resolve('not-owner'));
     this.hosts.length = 0;
     this.stripe = null;
@@ -287,23 +336,75 @@ export class StripeRedirectRecoveryService {
    * Asks whether `host` owns the current Stripe redirect return. Claims made in
    * the same render pass are decided together, so sibling hosts are all visible.
    */
+  /**
+   * Drop claim/consume conclusions from a previous {@link mutationEpoch}.
+   * Does not unregister hosts. Production never advances the epoch, so this is a no-op there.
+   * A claim or consume started before a test reset must not close the next return.
+   */
+  private adoptEpoch(): void {
+    const epoch = StripeRedirectRecoveryService.mutationEpoch;
+    if (this.observedEpoch === epoch) {
+      return;
+    }
+    this.observedEpoch = epoch;
+    this.consumed = false;
+    this.consumePromise = null;
+    this.consumeEpoch = -1;
+    this.returnOwner = null;
+    this.returnClosed = false;
+    this.boundAttempt = null;
+    this.waitWarned = false;
+    this.claimTurn += 1;
+    this.claimScheduled = false;
+    this.scheduledEpoch = epoch;
+    this.scheduledSearch = '';
+    const abandoned = this.pendingClaims;
+    this.pendingClaims = [];
+    abandoned.forEach((claim) => claim.resolve('not-owner'));
+  }
+
   claimReturn(host: StripeReturnHost, methods: readonly PaymentMethod[]): Promise<StripeReturnClaim> {
     if (!this.browser.isBrowser) {
       return Promise.resolve('not-owner');
     }
-    const epoch = this.claimEpoch;
+    this.adoptEpoch();
+    const epoch = StripeRedirectRecoveryService.mutationEpoch;
+    const search = pageSearch();
     return new Promise((resolve) => {
-      this.pendingClaims.push({ host, methods, resolve });
-      if (!this.claimScheduled) {
-        this.claimScheduled = true;
-        queueMicrotask(() => {
-          if (epoch !== this.claimEpoch) {
-            return;
-          }
-          this.resolveClaims();
-        });
+      if (epoch !== StripeRedirectRecoveryService.mutationEpoch) {
+        resolve('not-owner');
+        return;
       }
+      const scheduleNew =
+        !this.claimScheduled || this.scheduledEpoch !== epoch || this.scheduledSearch !== search;
+      if (scheduleNew) {
+        this.claimTurn += 1;
+        this.claimScheduled = true;
+        this.scheduledEpoch = epoch;
+        this.scheduledSearch = search;
+        const turn = this.claimTurn;
+        queueMicrotask(() => this.flushClaims(turn, epoch, search));
+      }
+      this.pendingClaims.push({ host, methods, resolve, turn: this.claimTurn });
     });
+  }
+
+  /** Settle only the batch queued for `turn`. Never the claims a newer turn already holds. */
+  private flushClaims(turn: number, epoch: number, search: string): void {
+    const mine = this.pendingClaims.filter((claim) => claim.turn === turn);
+    this.pendingClaims = this.pendingClaims.filter((claim) => claim.turn !== turn);
+    const superseded =
+      turn !== this.claimTurn ||
+      epoch !== StripeRedirectRecoveryService.mutationEpoch ||
+      search !== pageSearch();
+    if (superseded) {
+      if (this.claimTurn === turn) {
+        this.claimScheduled = false;
+      }
+      mine.forEach((claim) => claim.resolve('not-owner'));
+      return;
+    }
+    this.resolveClaims(mine);
   }
 
   private ordinalOf(host: StripeReturnHost): number {
@@ -313,12 +414,33 @@ export class StripeRedirectRecoveryService {
       .indexOf(host);
   }
 
-  private resolveClaims(): void {
-    this.claimScheduled = false;
-    const batch = this.pendingClaims;
-    this.pendingClaims = [];
-    const live = batch.filter((claim) => this.hosts.includes(claim.host));
+  private resolveClaims(batch: PendingClaim[]): void {
+    const epoch = StripeRedirectRecoveryService.mutationEpoch;
+    const turn = batch[0]?.turn;
+    if (turn === this.claimTurn) {
+      this.claimScheduled = false;
+    }
     const rejectAll = () => batch.forEach((claim) => claim.resolve('not-owner'));
+    if (
+      batch.length === 0 ||
+      turn !== this.claimTurn ||
+      epoch !== StripeRedirectRecoveryService.mutationEpoch
+    ) {
+      rejectAll();
+      return;
+    }
+    const attemptNow = readStripeReturnParams().attemptId;
+    if (attemptNow && this.boundAttempt && attemptNow !== this.boundAttempt) {
+      // A newer attempt is on the page. The previous close or owner must not apply to it.
+      this.returnClosed = false;
+      this.returnOwner = null;
+      this.consumed = false;
+      this.boundAttempt = null;
+      // Drop the cached consume so a newer attempt is verified, not joined to the old promise.
+      this.consumePromise = null;
+      this.consumeEpoch = -1;
+    }
+    const live = batch.filter((claim) => this.hosts.includes(claim.host));
 
     if (this.returnClosed || !isStripeReturnAttempt()) {
       rejectAll();
@@ -354,6 +476,7 @@ export class StripeRedirectRecoveryService {
 
     if (decision.kind === 'owner') {
       this.returnOwner = decision.owner;
+      this.boundAttempt = readStripeReturnParams().attemptId;
       batch.forEach((claim) => claim.resolve(claim.host === decision.owner ? 'owner' : 'not-owner'));
       return;
     }
@@ -368,7 +491,16 @@ export class StripeRedirectRecoveryService {
       return;
     }
 
+    if (
+      turn !== this.claimTurn ||
+      epoch !== StripeRedirectRecoveryService.mutationEpoch
+    ) {
+      rejectAll();
+      return;
+    }
+    const closingAttempt = readStripeReturnParams().attemptId;
     this.returnClosed = true;
+    this.boundAttempt = closingAttempt;
     warnReturnDiagnostic(`STRIPE_RETURN_UNATTRIBUTED (${decision.reason})`);
     if (decision.reason !== 'STALE_ATTEMPT') {
       clearStripePendingReturn();
@@ -383,20 +515,26 @@ export class StripeRedirectRecoveryService {
    * and preserve marker + URL so the owner may retry verification (not confirmation).
    */
   consumeReturn(): Promise<PaymentResult | null> {
-    if (!this.consumePromise) {
-      this.consumePromise = this.doConsumeReturn().catch((error) => {
-        if (isTransientStripeVerificationError(error)) {
+    this.adoptEpoch();
+    const epoch = StripeRedirectRecoveryService.mutationEpoch;
+    if (!this.consumePromise || this.consumeEpoch !== epoch) {
+      this.consumeEpoch = epoch;
+      const promise = this.doConsumeReturn(epoch).catch((error: unknown) => {
+        if (this.consumePromise === promise && isTransientStripeVerificationError(error)) {
           // Allow a later consumeReturn() to retry verification.
+          // Do not drop a newer attempt's in-flight consume.
           this.consumePromise = null;
         }
         throw error;
       });
+      this.consumePromise = promise;
     }
     return this.consumePromise;
   }
 
-  private async doConsumeReturn(): Promise<PaymentResult | null> {
-    if (!this.browser.isBrowser || !isStripeReturnAttempt()) {
+  private async doConsumeReturn(epoch: number): Promise<PaymentResult | null> {
+    const stillCurrent = (): boolean => epoch === StripeRedirectRecoveryService.mutationEpoch;
+    if (!stillCurrent() || !this.browser.isBrowser || !isStripeReturnAttempt()) {
       return null;
     }
 
@@ -405,7 +543,11 @@ export class StripeRedirectRecoveryService {
     }
 
     const method = detectStripeReturnMethod() ?? readStripeReturnParams().method;
-    const { clientSecret, redirectStatus } = readStripeReturnParams();
+    const { clientSecret, redirectStatus, attemptId } = readStripeReturnParams();
+    // Exact storage identity of the marker at consume start. Used so a legacy
+    // (no ep_attempt) cleanup can clear that marker without deleting a different
+    // attempted marker written while verification was in flight.
+    const pendingRawAtStart = readPendingReturnRaw();
 
     try {
       if (!method) {
@@ -436,22 +578,57 @@ export class StripeRedirectRecoveryService {
       }
 
       const result = await this.retrieveReturningPayment(method, clientSecret);
-      this.finishConsumeCleanup();
+      if (!stillCurrent()) {
+        return null;
+      }
+      if (!this.finishConsumeCleanup(attemptId, pendingRawAtStart)) {
+        return null;
+      }
       return result;
     } catch (error) {
+      if (!stillCurrent()) {
+        return null;
+      }
       if (isTransientStripeVerificationError(error)) {
         // Outcome uncertain — keep correlation data for a bounded verification retry.
         throw error;
       }
-      this.finishConsumeCleanup();
+      if (!this.finishConsumeCleanup(attemptId, pendingRawAtStart)) {
+        return null;
+      }
       throw error;
     }
   }
 
-  private finishConsumeCleanup(): void {
+  /** @returns false when a newer attempt owns the page and this result must be discarded. */
+  private finishConsumeCleanup(
+    attemptAtStart: string | null,
+    pendingRawAtStart: string | null,
+  ): boolean {
+    if (readStripeReturnParams().attemptId !== attemptAtStart) {
+      // A newer return was written while verification was in flight. Leave it alone.
+      return false;
+    }
     this.consumed = true;
-    clearStripePendingReturn();
+    const pendingRaw = readPendingReturnRaw();
+    const pendingAttempt = readStripePendingReturn()?.attemptId ?? null;
+    let clearMarker = false;
+    if (!pendingRaw) {
+      clearMarker = false;
+    } else if (attemptAtStart != null) {
+      // Attempted return: clear missing/legacy markers or the matching attempt.
+      clearMarker = !pendingAttempt || pendingAttempt === attemptAtStart;
+    } else {
+      // Legacy URL (no ep_attempt): clear the exact marker observed at start, or
+      // any attempt-less marker. Never clear a different attempted marker that
+      // appeared mid-flight (raw identity, not timestamp).
+      clearMarker = !pendingAttempt || pendingRaw === pendingRawAtStart;
+    }
+    if (clearMarker) {
+      clearStripePendingReturn();
+    }
     clearStripeReturnParamsFromUrl();
+    return true;
   }
 
   async retrieveReturningPayment(
@@ -695,6 +872,10 @@ export class StripeRedirectRecoveryService {
 
     return this.loadPromise;
   }
+}
+
+function pageSearch(): string {
+  return typeof window !== 'undefined' ? window.location.search : '';
 }
 
 function warnReturnDiagnostic(code: string): void {

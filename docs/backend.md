@@ -16,8 +16,9 @@ You do **not** need NestJS. Any stack works if it implements the HTTP contract b
 | Capture PayPal order | Backend |
 | Klarna / Affirm PaymentIntent create | Backend |
 | Webhooks & reconciliation (production) | Backend |
+| Durable PaymentIntent / order idempotency | Backend |
 
-The Angular app may send `productId` + `quantity` (+ display amount for some Stripe flows). **Production backends must not trust browser amounts** as the final charge authority.
+The Angular app may send `productId` + `quantity` (+ display amount for some Stripe flows). **Production backends must not trust browser amounts** as the final charge authority. In-page confirmation locks do not replace an idempotency key on create or capture.
 
 ---
 

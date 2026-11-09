@@ -1,6 +1,6 @@
-# Easy Payments API Reference (v1.1.0)
+# Easy Payments API Reference (v1.2.0)
 
-Complete public API for the Angular `<easy-payments>` and `<easy-payment-buttons>` components and related exports.
+Complete public API for `<easy-payments>`, `<easy-payment-buttons>`, `EasyPaymentsHeadless`, and related exports.
 
 Package: `@easy-payments/angular`  
 Peers: `@angular/core` / `@angular/common` `>=20.3.0 <23.0.0`, `@stripe/stripe-js` `^8.0.0`
@@ -563,6 +563,7 @@ interface CheckoutOptions {
 Notes:
 
 - `successUrl` / `cancelUrl` are **merchant hints**. Easy Payments does **not** auto-redirect on them.
+- Stripe return URLs built from `successUrl` must be same-origin `http:` or `https:`, or a relative path resolved against the current page. `javascript:`, `data:`, `file:`, `blob:`, protocol-relative URLs, and cross-origin destinations throw `CONFIG_INVALID` and are not sent to Stripe. `localhost` and `127.0.0.1` are different origins.
 - `successBehavior` on `checkout` overrides the `successBehavior` input when present.
 - `customer` / `shipping` fields feed Buttons Only Direct readiness and Stripe Direct confirm params when `[bnplConfirmMode]` is `auto` or `direct`. They are **not** sent to create-payment backends in this release. Full Checkout and Headless ignore Direct orchestration and keep Payment Element / existing flows.
 - Country codes must be **ISO 3166-1 alpha-2**. Do not log raw customer PII from these fields.

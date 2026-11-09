@@ -3,6 +3,7 @@ import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { MockPaymentController } from '../../adapters/mock/mock-payment.controller';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 import { EasyPaymentsComponent } from '../payments/easy-payments.component';
 import { EasyPaymentButtonsComponent } from './easy-payment-buttons.component';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
@@ -917,6 +918,98 @@ describe('EasyPaymentButtonsComponent', () => {
       expect(
         (fixture.nativeElement as HTMLElement).style.getPropertyValue('--ep-buttons-slot-width'),
       ).toBe('');
+    });
+
+    it('keeps mock wallet clickable buttons the same size as Card / Klarna / Affirm selectors', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '600px';
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('methods', [
+        'card',
+        'paypal',
+        'apple-pay',
+        'google-pay',
+        'klarna',
+        'affirm',
+      ]);
+      fixture.componentRef.setInput('buttonsAppearance', {
+        gap: '8px',
+        buttonHeight: '40px',
+        buttonMinWidth: '100px',
+      });
+      await render(fixture);
+
+      const clickable = (method: string): HTMLElement => {
+        const item = slotItem(fixture, method)!;
+        return (
+          (item.querySelector('button.ep-payment-buttons__selector') as HTMLElement) ||
+          (item.querySelector('button.ep-mock-panel__strip') as HTMLElement)
+        );
+      };
+
+      const sizes = (
+        ['card', 'paypal', 'apple-pay', 'google-pay', 'klarna', 'affirm'] as const
+      ).map((method) => {
+        const btn = clickable(method);
+        const rect = btn.getBoundingClientRect();
+        return {
+          method,
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        };
+      });
+
+      expect(sizes.every((s) => s.h === 40)).toBeTrue();
+      expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
+      expect(sizes[0].w).toBe(160);
+      host.remove();
+    });
+
+    it('keeps mock wallet clickable buttons the same size as Card / Klarna / Affirm selectors', async () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '600px';
+      document.body.appendChild(host);
+      fixture.componentRef.setInput('layout', 'horizontal');
+      fixture.componentRef.setInput('methods', [
+        'card',
+        'paypal',
+        'apple-pay',
+        'google-pay',
+        'klarna',
+        'affirm',
+      ]);
+      fixture.componentRef.setInput('buttonsAppearance', {
+        gap: '8px',
+        buttonHeight: '40px',
+        buttonMinWidth: '100px',
+      });
+      await render(fixture);
+
+      const clickable = (method: string): HTMLElement => {
+        const item = slotItem(fixture, method)!;
+        return (
+          (item.querySelector('button.ep-payment-buttons__selector') as HTMLElement) ||
+          (item.querySelector('button.ep-mock-panel__strip') as HTMLElement)
+        );
+      };
+
+      const sizes = (
+        ['card', 'paypal', 'apple-pay', 'google-pay', 'klarna', 'affirm'] as const
+      ).map((method) => {
+        const btn = clickable(method);
+        const rect = btn.getBoundingClientRect();
+        return {
+          method,
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        };
+      });
+
+      expect(sizes.every((s) => s.h === 40)).toBeTrue();
+      expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
+      expect(sizes[0].w).toBe(160);
+      host.remove();
     });
 
     it('keeps library-owned selectors keyboard-focusable with a focus-visible outline rule', async () => {
@@ -2285,13 +2378,13 @@ describe('EasyPaymentButtonsComponent real Klarna / Affirm selectors', () => {
 
 describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   afterEach(() => {
-    history.replaceState({}, '', '/');
+    resetTestLocation();
+    clearStripePendingReturn();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
   });
 
   it('recovers Klarna return as success without emitting started', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_buttons_klarna&payment_intent_client_secret=sec_bk&ep_method=klarna',
     );
 
@@ -2360,9 +2453,7 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   });
 
   it('recovers Affirm success without built-in completed UI while keeping settled lock', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_buttons_aff_ok&payment_intent_client_secret=sec_aff_ok&ep_method=affirm',
     );
 
@@ -2422,9 +2513,7 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   });
 
   it('recovers Affirm return and maps retrieve failure to error once', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_buttons_aff&payment_intent_client_secret=bad&ep_method=affirm',
     );
 
@@ -2487,9 +2576,7 @@ describe('EasyPaymentButtonsComponent Stripe BNPL redirect recovery', () => {
   });
 
   it('emits pending for a processing return (never success or error)', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_proc&payment_intent_client_secret=sec_proc&ep_method=klarna',
     );
 
@@ -2688,7 +2775,7 @@ describe('EasyPaymentButtonsComponent BNPL Direct orchestration', () => {
     (
       EasyPaymentButtonsComponent as unknown as { directPageLock: string | null }
     ).directPageLock = null;
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     fixture.destroy();
   });
 
@@ -3095,9 +3182,7 @@ describe('EasyPaymentButtonsComponent BNPL Direct orchestration', () => {
   });
 
   it('does not confirm Direct on Stripe return recovery', async () => {
-    history.replaceState(
-      {},
-      '',
+    setTestLocation(
       '/?payment_intent=pi_ret&payment_intent_client_secret=sec_ret&ep_method=klarna',
     );
     const recovery = TestBed.inject(StripeRedirectRecoveryService);

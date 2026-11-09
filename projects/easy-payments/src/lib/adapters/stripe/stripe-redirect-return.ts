@@ -11,6 +11,7 @@
  */
 
 import { PaymentError } from '../../errors/payment-error';
+import type { PaymentMethod, PaymentProviderName } from '../../models';
 
 export type StripeRedirectMethod = 'klarna' | 'affirm';
 
@@ -113,6 +114,83 @@ export function isStripePendingReturnExpired(
   return now - marker.at > STRIPE_PENDING_TTL_MS;
 }
 
+const STRIPE_RETURN_URL_MESSAGE =
+  'Checkout successUrl must be a same-origin http(s) URL. Relative paths are resolved against the current page. Other schemes and cross-origin destinations are not allowed.';
+
+function invalidStripeReturnUrl(method: PaymentMethod): never {
+  const provider: PaymentProviderName =
+    method === 'klarna' || method === 'affirm' ? method : 'stripe';
+  throw new PaymentError({
+    code: 'CONFIG_INVALID',
+    message: STRIPE_RETURN_URL_MESSAGE,
+    method,
+    provider,
+  });
+}
+
+function currentPageHref(locationHref?: string): string {
+  const explicit = locationHref?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin}${window.location.pathname}${window.location.search}`;
+  }
+  return 'http://localhost/';
+}
+
+/**
+ * Resolve a merchant return destination against the current page.
+ * Does not add Stripe return markers and does not echo the supplied URL.
+ */
+export function resolveSameOriginStripeReturnUrl(
+  baseUrl: string | undefined,
+  locationHref: string | undefined,
+  method: PaymentMethod,
+): URL {
+  let page: URL;
+  try {
+    page = new URL(currentPageHref(locationHref));
+  } catch {
+    invalidStripeReturnUrl(method);
+  }
+  if (page.protocol !== 'http:' && page.protocol !== 'https:') {
+    invalidStripeReturnUrl(method);
+  }
+
+  const raw = baseUrl?.trim() ?? '';
+  if (!raw) {
+    return page;
+  }
+  if (raw.startsWith('//') || raw.startsWith('\\\\') || raw.startsWith('/\\')) {
+    invalidStripeReturnUrl(method);
+  }
+
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(raw);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme !== 'http' && scheme !== 'https') {
+      invalidStripeReturnUrl(method);
+    }
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw, page);
+  } catch {
+    invalidStripeReturnUrl(method);
+  }
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username ||
+    url.password ||
+    url.origin !== page.origin
+  ) {
+    invalidStripeReturnUrl(method);
+  }
+  return url;
+}
+
 /** Build a return_url that preserves merchant params and marks the Stripe redirect method. */
 export function buildStripeReturnUrl(
   method: StripeRedirectMethod,
@@ -120,12 +198,7 @@ export function buildStripeReturnUrl(
   locationHref?: string,
   attemptId?: string,
 ): string {
-  const href =
-    locationHref ??
-    (typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}${window.location.search}`
-      : 'http://localhost/');
-  const url = new URL(baseUrl || href, href);
+  const url = resolveSameOriginStripeReturnUrl(baseUrl, locationHref, method);
   url.searchParams.set(STRIPE_RETURN_METHOD_PARAM, method);
   if (attemptId) {
     url.searchParams.set(STRIPE_RETURN_ATTEMPT_PARAM, attemptId);
@@ -381,20 +454,36 @@ export function isStripeReturnAttempt(
   return method ? pending.method === method : true;
 }
 
-/** Remove Stripe + Easy Payments return query params without a full reload. */
+/**
+ * Remove Stripe + Easy Payments return query params without a full reload.
+ * An explicit `href` is pure: it never writes `window.history` (callers that pass a
+ * sample URL must not navigate the live page). The live page is updated only when
+ * `href` is omitted, using the current pathname and `location.search` so a stale
+ * `location.href` cannot keep or restore another attempt's query.
+ */
 export function clearStripeReturnParamsFromUrl(href?: string): string | null {
   if (typeof window === 'undefined' && !href) {
     return null;
   }
-  const url = new URL(href ?? window.location.href);
+  let url: URL;
+  try {
+    if (href) {
+      url = new URL(href);
+    } else {
+      const live = window.location;
+      url = new URL(`${live.origin}${live.pathname}${live.search}${live.hash}`);
+    }
+  } catch {
+    return null;
+  }
   url.searchParams.delete('payment_intent');
   url.searchParams.delete('payment_intent_client_secret');
   url.searchParams.delete('redirect_status');
   url.searchParams.delete(STRIPE_RETURN_METHOD_PARAM);
   url.searchParams.delete(STRIPE_RETURN_ATTEMPT_PARAM);
-  const next = `${url.pathname}${url.search}${url.hash}`;
-  if (typeof window !== 'undefined' && typeof window.history?.replaceState === 'function') {
-    window.history.replaceState({}, '', next);
+  const next = href ? url.href : `${url.pathname}${url.search}${url.hash}`;
+  if (!href && typeof window !== 'undefined' && typeof window.history?.replaceState === 'function') {
+    window.history.replaceState({}, '', url.href);
   }
   return next;
 }

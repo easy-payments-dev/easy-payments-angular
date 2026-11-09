@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../../testing/test-doubles';
+import { resetTestLocation } from '../../testing/test-history';
 import { EasyPaymentButtonsComponent } from './easy-payment-buttons.component';
 import { EasyPaymentsComponent } from '../payments/easy-payments.component';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
@@ -32,7 +33,7 @@ describe('EasyPaymentButtonsComponent customization', () => {
 
   beforeEach(async () => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     await TestBed.configureTestingModule({
       imports: [EasyPaymentButtonsComponent],
       providers: [
@@ -49,7 +50,7 @@ describe('EasyPaymentButtonsComponent customization', () => {
 
   afterEach(() => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     fixture.destroy();
   });
@@ -200,7 +201,7 @@ describe('EasyPaymentButtonsComponent merchant-owned actions', () => {
 
   beforeEach(async () => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     (EasyPaymentButtonsComponent as unknown as { directPageLock: string | null }).directPageLock =
       null;
     klarna = jasmine.createSpyObj<KlarnaAdapter>(
@@ -312,7 +313,7 @@ describe('EasyPaymentButtonsComponent merchant-owned actions', () => {
 
   afterEach(() => {
     clearStripePendingReturn();
-    history.replaceState({}, '', '/');
+    resetTestLocation();
     TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     (EasyPaymentButtonsComponent as unknown as { directPageLock: string | null }).directPageLock =
       null;

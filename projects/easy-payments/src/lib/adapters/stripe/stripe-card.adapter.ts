@@ -22,6 +22,7 @@ import {
   STRIPE_PAYMENT_ELEMENT_OPTIONS,
 } from './stripe-appearance';
 import { StripeConfirmationGate } from './stripe-confirmation-gate';
+import { resolveSameOriginStripeReturnUrl } from './stripe-redirect-return';
 import { StripeElementSession, StripeElementSessionStore } from './stripe-element-sessions';
 import { mapStripeError } from './stripe-error.mapper';
 import { StripeSdkLoader } from './stripe-sdk.loader';
@@ -307,9 +308,11 @@ export class StripeCardAdapter extends BaseProviderAdapter {
         throw mapStripeError(submitError);
       }
 
-      const resolvedReturnUrl =
-        returnUrl ||
-        (this.browser.isBrowser ? `${window.location.origin}${window.location.pathname}` : undefined);
+      const resolvedReturnUrl = returnUrl?.trim()
+        ? resolveSameOriginStripeReturnUrl(returnUrl, undefined, 'card').href
+        : this.browser.isBrowser
+          ? `${window.location.origin}${window.location.pathname}`
+          : undefined;
 
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,

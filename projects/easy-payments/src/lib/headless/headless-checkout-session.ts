@@ -48,7 +48,14 @@ import {
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
 } from '../i18n';
+import { resolveMessages } from '../i18n';
 import { toHeadlessMethodStatus } from './headless-method-meta';
+import {
+  isMockHeadlessStatus,
+  isMockWalletMethod,
+  renderHeadlessMockSurface,
+  type HeadlessMockSurface,
+} from './headless-mock-surface';
 import { resolveHeadlessTheme } from './resolve-headless-theme';
 import type { HeadlessSessionRegistry } from './headless-session-registry';
 import type {
@@ -227,6 +234,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private applePayEceMountId: string | null = null;
   private applePayAttemptAnnounced = false;
 
+  /**
+   * DEMO surface mounted for a mock-adapter method (`enableMockMode`). Non-null only while a
+   * mock mount is active; real Stripe / PayPal / wallet adapters are never used for it.
+   */
+  private mockSurface: HeadlessMockSurface | null = null;
+  /** Guards duplicate in-flight DEMO wallet clicks for this mount generation. */
+  private mockClickInFlight = false;
+
   /** In-flight recoverReturn() promise (idempotent concurrent callers). */
   private recoverPromise: Promise<PaymentResult | null> | null = null;
   /** True after this session owned and applied (or failed) a consume for the current page load. */
@@ -366,10 +381,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
   async mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle> {
     this.assertNotDestroyed('mount');
+    // Lock before yielding. Otherwise initialize() flushing claim microtasks can
+    // finish recovery and let mount/confirm start against a return already in flight.
+    this.assertNotPaymentLocked('mount', method);
 
     if (this.initPromise) {
       await this.initPromise;
       this.assertNotDestroyed('mount');
+      this.assertNotPaymentLocked('mount', method);
     }
 
     if (this._state() === 'idle' || this._state() === 'initializing') {
@@ -410,7 +429,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
 
     const methodStatus = this._availableMethods().find((entry) => entry.method === method);
-    if (method === 'apple-pay') {
+    // enableMockMode: the registered adapter is a mock. Availability comes from the mock
+    // controller, so skip the real Apple Pay ECE config gate (which would report unconfigured).
+    const isMock = isMockHeadlessStatus(methodStatus);
+    if (method === 'apple-pay' && !isMock) {
       this.assertApplePayMountable(methodStatus);
     } else if (!methodStatus?.available) {
       throw new PaymentError({
@@ -431,7 +453,19 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
     this.applePayAttemptAnnounced = false;
+    this.mockClickInFlight = false;
     await this.teardownActiveMounts();
+
+    // WHY mock bypasses the real adapters: `enableMockMode` registers mock adapters in the
+    // orchestrator, but Headless owns its own provider instances (Stripe / PayPal / wallets)
+    // for mount/confirm. Using them here would call real SDK + backend paths
+    // (createPaymentSession → affirmCreatePaymentUrl, PayPal clientId, …) and fail with
+    // CONFIG_MISSING even though availability correctly reported `interaction: 'mock'`.
+    // Mock methods mount a DEMO surface and settle through `orchestrator.processPayment`
+    // (MockPaymentController outcomes) instead. No fake endpoints; errors are surfaced as-is.
+    if (isMock) {
+      return this.mountMock(method, container, mountGen);
+    }
 
     if (method === 'paypal') {
       return this.mountPayPal(container, mountGen);
@@ -444,6 +478,182 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
 
     return this.mountStripeElement(method, container, mountGen);
+  }
+
+  /**
+   * Mock mount: DEMO surface only (no Stripe.js / PayPal SDK / backend URLs).
+   * - card / klarna / affirm: DEMO panel; the merchant CTA calls `confirm()`.
+   * - paypal / google-pay / apple-pay: DEMO button; the buyer click starts payment.
+   */
+  private async mountMock(
+    method: HeadlessMountableMethod,
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    this.throwIfDestroyedOrMountStale(mountGen, 'mount', method);
+
+    const prefersDark = this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
+    const theme = resolveHeadlessTheme(this.theme, prefersDark);
+    const messages = resolveMessages(resolveEffectiveLocale(this.locale), this.translations);
+
+    const surface = renderHeadlessMockSurface(container, {
+      method,
+      theme,
+      messages,
+      onActivate: isMockWalletMethod(method)
+        ? () => {
+            void this.onMockWalletClick(method, mountGen);
+          }
+        : undefined,
+    });
+
+    this.mockSurface = surface;
+    this.mountedMethod = method;
+    this._lastError.set(null);
+    if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+      this._state.set('ready');
+    }
+
+    let unmounted = false;
+    return {
+      method,
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+          surface.destroy();
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.mockClickInFlight = false;
+        if (this.mockSurface === surface) {
+          this.mockSurface = null;
+        }
+        surface.destroy();
+        // An in-flight mock payment is now stale and will not settle; do not leave the
+        // session locked in `processing`.
+        if (this._state() === 'processing') {
+          this._state.set('ready');
+        }
+      },
+    };
+  }
+
+  /** DEMO wallet click: starts payment through the orchestrator (mock adapter), once per click. */
+  private async onMockWalletClick(method: HeadlessMountableMethod, mountGen: number): Promise<void> {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this.mockClickInFlight ||
+      this._state() === 'processing' ||
+      this._state() === 'success' ||
+      this._state() === 'pending'
+    ) {
+      return;
+    }
+
+    this.mockClickInFlight = true;
+    const confirmGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this._lastError.set(null);
+    this._state.set('processing');
+    this.emitStarted(method);
+    this.mockSurface?.setBusy(true);
+
+    try {
+      await this.settleMockPayment(method, mountGen, confirmGen);
+    } catch {
+      // Already surfaced via lastError / events.error.
+    } finally {
+      if (mountGen === this.mountGeneration) {
+        this.mockClickInFlight = false;
+        this.mockSurface?.setBusy(false);
+        this.restoreMockReadyAfterTerminal(mountGen);
+      }
+    }
+  }
+
+  /** `confirm()` for a mounted mock card / klarna / affirm. */
+  private async confirmMock(method: HeadlessStripeElementMethod): Promise<void> {
+    const mountGen = this.mountGeneration;
+    const confirmGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+
+    this._lastError.set(null);
+    this._state.set('processing');
+    this.emitStarted(method);
+
+    await this.settleMockPayment(method, mountGen, confirmGen);
+  }
+
+  /**
+   * Runs the mock payment through the orchestrator and emits exactly one terminal event
+   * (success / pending / cancel / error). Throws on failure after emitting, like real confirm().
+   */
+  private async settleMockPayment(
+    method: HeadlessMountableMethod,
+    mountGen: number,
+    confirmGen: number,
+  ): Promise<void> {
+    try {
+      const result = await this.orchestrator.processPayment(method, this.product, this.checkout);
+
+      if (this.isConfirmStale(mountGen, confirmGen)) {
+        return;
+      }
+
+      // applyPaymentResult maps success / processing / cancelled / failed and dedupes terminals.
+      this.applyPaymentResult(result, confirmGen, method);
+    } catch (error) {
+      if (this.isConfirmStale(mountGen, confirmGen)) {
+        return;
+      }
+
+      const paymentError = normalizeError(error, {
+        method,
+        provider: this.providerOf(method),
+      });
+
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.applyPaymentResult(
+          {
+            status: 'cancelled',
+            method,
+            provider: this.providerOf(method),
+            message: paymentError.message,
+          },
+          confirmGen,
+          method,
+        );
+        return;
+      }
+
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      throw paymentError;
+    }
+  }
+
+  /** DEMO wallet control stays mounted after cancel/error so the buyer can retry. */
+  private restoreMockReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        !this.mockSurface ||
+        this.mountedMethod === null ||
+        !isMockWalletMethod(this.mountedMethod)
+      ) {
+        return;
+      }
+      if (this._state() === 'cancelled' || this._state() === 'error') {
+        this._state.set('ready');
+      }
+    });
   }
 
   private async mountStripeElement(
@@ -899,6 +1109,12 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       });
     }
 
+    // Mock mount (enableMockMode): settle through the orchestrator's mock adapter — never the
+    // real Stripe Payment Element, and no redirect-ownership / stable-identity requirement.
+    if (this.mockSurface) {
+      return this.confirmMock(selected);
+    }
+
     const adapter = this.adapterFor(selected);
     if (!adapter.hasMountedElement(this.stripeOwnerId)) {
       throw new PaymentError({
@@ -1153,6 +1369,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
     this.applePayAttemptAnnounced = false;
+    this.mockClickInFlight = false;
+    this.destroyMockSurfaceOnly();
     this._state.set('destroyed');
     this._selectedMethod.set(null);
     this._availableMethods.set([]);
@@ -1580,7 +1798,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     });
   }
 
+  private destroyMockSurfaceOnly(): void {
+    const surface = this.mockSurface;
+    this.mockSurface = null;
+    surface?.destroy();
+  }
+
   private async teardownActiveMounts(): Promise<void> {
+    this.destroyMockSurfaceOnly();
     this.unmountAllStripeElements();
     await this.destroyPayPalButtonsOnly();
     this.destroyGooglePayButtonOnly();
@@ -1837,11 +2062,11 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
     const attemptId = createStripeReturnAttemptId();
     const redirectMethod = method as StripeRedirectMethod;
+    const returnUrl = buildStripeReturnUrl(redirectMethod, base, undefined, attemptId);
     markHeadlessPendingReturn(redirectMethod, this.product.id, {
       attemptId,
       checkoutInstanceId: this.stableCheckoutIdentity,
     });
-    const returnUrl = buildStripeReturnUrl(redirectMethod, base, undefined, attemptId);
     return { returnUrl, attemptId };
   }
 

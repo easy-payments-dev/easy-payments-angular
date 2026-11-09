@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideEasyPayments } from '../config/provide-easy-payments';
 import { BrowserGuard } from '../utils/browser-guard';
+import { resetTestLocation, setTestLocation } from '../testing/test-history';
 import { FakeBrowserGuard, SAMPLE_PRODUCT } from '../testing/test-doubles';
 import { EasyPaymentsComponent } from '../components/payments/easy-payments.component';
 import { EasyPaymentButtonsComponent } from '../components/payment-buttons/easy-payment-buttons.component';
@@ -93,7 +94,7 @@ function totalEvents(host: HostHandle): number {
 }
 
 function setReturnUrl(params: Record<string, string>): void {
-  history.replaceState({}, '', `/?${new URLSearchParams(params).toString()}`);
+  setTestLocation(`/?${new URLSearchParams(params).toString()}`);
 }
 
 function returnUrl(extra: Record<string, string> = {}): Record<string, string> {
@@ -542,19 +543,23 @@ describe('Stripe redirect return ownership', () => {
   });
 
   describe('service ownership hand-off', () => {
-    afterEach(() => {
-      history.replaceState({}, '', '/');
-      clearStripePendingReturn();
-      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
-    });
-
-    it('hands an unconsumed return to a remounted host when the owner is destroyed first', async () => {
+    beforeEach(() => {
       TestBed.configureTestingModule({
         providers: [
           provideEasyPayments({ enableMockMode: true, providers: {} }),
           { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
         ],
       });
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+    });
+
+    afterEach(() => {
+      resetTestLocation();
+      clearStripePendingReturn();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+    });
+
+    it('hands an unconsumed return to a remounted host when the owner is destroyed first', async () => {
       setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
       markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
         attemptId: ATTEMPT,
@@ -579,6 +584,106 @@ describe('Stripe redirect return ownership', () => {
       service.registerHost(hostB);
       expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
     });
+
+    it('a superseded claim does not clear a return prepared for the next owner', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      const staleHost: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stale-host',
+      };
+      service.registerHost(staleHost);
+      const stale = service.claimReturn(staleHost, ['klarna']);
+      StripeRedirectRecoveryService.invalidateRedirectRecoveryForTests();
+
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const hostB: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
+      service.registerHost(hostB);
+
+      expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
+      expect(readStripeReturnParams().attemptId).toBe(ATTEMPT);
+      expect(readStripePendingReturn()?.attemptId).toBe(ATTEMPT);
+      expect(await stale).toBe('not-owner');
+    });
+
+    it('does not apply an in-flight verification after the return attempt changes', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      let release!: (value: PaymentResult) => void;
+      spyOn(service, 'retrieveReturningPayment').and.returnValue(
+        new Promise<PaymentResult>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const pending = service.consumeReturn();
+      await Promise.resolve();
+      expect(service.retrieveReturningPayment).toHaveBeenCalledTimes(1);
+
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: OTHER_ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-b',
+      });
+      release({
+        status: 'success',
+        method: 'klarna',
+        provider: 'klarna',
+        transactionId: 'pi_old',
+      });
+
+      expect(await pending).toBeNull();
+      expect(service.wasReturnConsumed()).toBeFalse();
+      expect(readStripeReturnParams().attemptId).toBe(OTHER_ATTEMPT);
+      expect(readStripeReturnParams().paymentIntentId).toBe('pi_ret');
+      expect(readStripePendingReturn()?.attemptId).toBe(OTHER_ATTEMPT);
+      expect(readStripePendingReturn()?.checkoutInstanceId).toBe('stable-b');
+    });
+
+    it('a closed attempt does not block a later return with a different attempt id', async () => {
+      setReturnUrl(returnUrl({ ep_attempt: OTHER_ATTEMPT }));
+      const service = TestBed.inject(StripeRedirectRecoveryService);
+      const staleHost: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stale-host',
+      };
+      service.registerHost(staleHost);
+      expect(await service.claimReturn(staleHost, ['klarna'])).toBe('not-owner');
+      expect(readStripeReturnParams().attemptId).toBeNull();
+
+      setReturnUrl(returnUrl({ ep_attempt: ATTEMPT }));
+      markStripePendingReturn('klarna', SAMPLE_PRODUCT.id, undefined, {
+        attemptId: ATTEMPT,
+        hostKind: 'buttons',
+        checkoutInstanceId: 'stable-a',
+      });
+      const hostB: StripeReturnHost = {
+        kind: 'buttons',
+        productId: () => SAMPLE_PRODUCT.id,
+        instanceId: () => 'stable-a',
+      };
+      service.registerHost(hostB);
+      expect(await service.claimReturn(hostB, ['klarna'])).toBe('owner');
+      expect(readStripeReturnParams().attemptId).toBe(ATTEMPT);
+      expect(readStripePendingReturn()?.attemptId).toBe(ATTEMPT);
+    });
   });
 
   describe('component hosts (mock mode, retrieve stubbed)', () => {
@@ -601,7 +706,7 @@ describe('Stripe redirect return ownership', () => {
     });
 
     afterEach(() => {
-      history.replaceState({}, '', '/');
+      resetTestLocation();
       clearStripePendingReturn();
       TestBed.inject(StripeRedirectRecoveryService).resetForTests();
     });
