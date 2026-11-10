@@ -4,19 +4,17 @@ Angular payments and checkout library for Stripe, PayPal, Apple Pay, Google Pay,
 
 `@easy-payments/angular` provides a unified Angular payment component for card payments, digital wallets, PayPal, Klarna, and Affirm with one consistent API — including built-in UI localization for English, Spanish, and Portuguese.
 
-**[Official website](https://www.easy-payments.dev)** · [Documentation](https://www.easy-payments.dev/docs/angular/1.2.0/getting-started) · [Playground](https://www.easy-payments.dev/playground) · [Contact](https://www.easy-payments.dev/contact)
-
 ```bash
 npm install @easy-payments/angular @stripe/stripe-js
 ```
 
-![Version 1.2.1](https://img.shields.io/badge/version-1.2.1-0A7EA4)
+![Version 1.2.0](https://img.shields.io/badge/version-1.2.0-0A7EA4)
 ![Angular 20.3+ · 21 · 22](https://img.shields.io/badge/Angular-≥20.3%20·%2021%20·%2022-DD0031)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 | | |
 |---|---|
-| **Version** | 1.2.1 |
+| **Version** | 1.2.0 |
 | **Framework** | Angular |
 | **Compatibility** | Angular **20.3+**, **21**, **22** (`>=20.3.0 <23.0.0`) |
 | **Workspace** | Built with Angular **22.1.5** |
@@ -767,7 +765,7 @@ This is an optional way to support the open-source project. It is **not** a lice
 
 ## Changelog
 
-See [CHANGELOG.md](https://unpkg.com/@easy-payments/angular@1.2.1/CHANGELOG.md) for **1.2.1**. 1.2.0, 1.1.0, and 1.0.0 remain in that file. The same file is included in the published package. This absolute link is what opens from npm; it does not depend on a GitHub organization URL.
+See [CHANGELOG.md](https://unpkg.com/@easy-payments/angular@1.2.0/CHANGELOG.md) for **1.2.0**. 1.1.0 and 1.0.0 remain in that file. The same file is included in the published package. This absolute link is what opens from npm; it does not depend on a GitHub organization URL.
 
 ---
 
