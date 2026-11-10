@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+Documentation and package metadata release announcing the official website. **No runtime or public API changes.**
+
+- Official website: [https://www.easy-payments.dev](https://www.easy-payments.dev)
+- Package `homepage` now points to the official site
+- README links for Documentation, Playground, and Contact
+
+Published npm package remains: `@easy-payments/angular`.
+
 ## 1.2.0
 
 Headless Checkout, Buttons Only Klarna/Affirm Direct, and merchant-owned triggers. Peer range is unchanged: `@angular/core` / `@angular/common` `>=20.3.0 <23.0.0`, `@stripe/stripe-js` `^8.0.0`.
