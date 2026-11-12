@@ -83,6 +83,7 @@ import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.compon
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
+import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 import { UsBankAccountAdapter } from '../../adapters/us-bank-account/us-bank-account.adapter';
 import {
@@ -108,6 +109,7 @@ export type EasyPaymentButtonSlotKind =
   | 'affirm-selector'
   | 'us-bank-account-selector'
   | 'cash-app-pay-selector'
+  | 'afterpay-selector'
   | 'paypal-express'
   | 'paypal-mock'
   | 'google-pay-express'
@@ -121,6 +123,7 @@ const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'affirm-selector',
   'us-bank-account-selector',
   'cash-app-pay-selector',
+  'afterpay-selector',
 ]);
 
 export interface EasyPaymentButtonSlot {
@@ -157,9 +160,9 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
  * Payment Buttons Only — compact payment strip + shared expanded panel.
  *
  * Wallets (Apple Pay / Google Pay / PayPal) mount official SDK buttons in the strip.
- * Card / Klarna / Affirm / US bank account / Cash App Pay use compact selectors; their secure forms
+ * Card / Klarna / Affirm / US bank account / Cash App Pay / Afterpay use compact selectors; their secure forms
  * open in one shared region below the entire strip. Mock wallet stand-ins are
- * development-only.
+ * development-only. Afterpay is never Direct BNPL (`bnplConfirmMode`).
  */
 @Component({
   selector: 'easy-payment-buttons',
@@ -174,6 +177,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
+    AfterpayPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -201,6 +205,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
     '[attr.data-us-bank-account-ready]': 'hasAvailableUsBankAccount() ? "true" : "false"',
     '[attr.data-cash-app-pay-ready]': 'hasAvailableCashAppPay() ? "true" : "false"',
+    '[attr.data-afterpay-ready]': 'hasAvailableAfterpay() ? "true" : "false"',
     '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
     '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
     '[attr.data-selector-visibility]': 'selectorVisibility()',
@@ -520,11 +525,13 @@ export class EasyPaymentButtonsComponent {
             ? msgs.methodUsBankAccount
             : method === 'cash-app-pay'
               ? msgs.methodCashAppPay
-              : brandLabel);
+              : method === 'afterpay'
+                ? msgs.methodAfterpay
+                : brandLabel);
       // Brand marks already name the provider — never duplicate visible text.
       // Card / ACH generic icons do not include the name; show a compact label
       // so the selector stays visible in light/dark and selected states.
-      // Brand marks that already name the provider (Klarna / Affirm) omit duplicate text.
+      // Brand marks that already name the provider (Klarna / Affirm / Afterpay) omit duplicate text.
       // Card / ACH / Cash App Pay keep a compact label (Cash App badge is the $ plate only).
       const showVisibleLabel =
         method === 'card' ||
@@ -600,6 +607,10 @@ export class EasyPaymentButtonsComponent {
     this.methodSlots().some(
       (slot) => slot.method === 'cash-app-pay' && slot.state === 'available',
     ),
+  );
+
+  readonly hasAvailableAfterpay = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'afterpay' && slot.state === 'available'),
   );
 
   readonly selectedCardEntry = computed(() => {
@@ -717,6 +728,26 @@ export class EasyPaymentButtonsComponent {
     return !!entry && entry.isMock;
   });
 
+  readonly selectedAfterpayEntry = computed(() => {
+    if (this.selectedMethod() !== 'afterpay') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'afterpay' && entry.available) ??
+      null
+    );
+  });
+
+  readonly showAfterpayPanel = computed(() => {
+    const entry = this.selectedAfterpayEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockAfterpayPanel = computed(() => {
+    const entry = this.selectedAfterpayEntry();
+    return !!entry && entry.isMock;
+  });
+
   /**
    * True when at least one configured method is still loading (placeholder, not unavailable).
    */
@@ -823,7 +854,8 @@ export class EasyPaymentButtonsComponent {
         selected !== 'klarna' &&
         selected !== 'affirm' &&
         selected !== 'us-bank-account' &&
-        selected !== 'cash-app-pay'
+        selected !== 'cash-app-pay' &&
+        selected !== 'afterpay'
       ) {
         return;
       }
@@ -933,7 +965,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'klarna' &&
       method !== 'affirm' &&
       method !== 'us-bank-account' &&
-      method !== 'cash-app-pay'
+      method !== 'cash-app-pay' &&
+      method !== 'afterpay'
     ) {
       this.error.emit(
         new PaymentError({
@@ -970,7 +1003,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'klarna' &&
       method !== 'affirm' &&
       method !== 'us-bank-account' &&
-      method !== 'cash-app-pay'
+      method !== 'cash-app-pay' &&
+      method !== 'afterpay'
     ) {
       return false;
     }
@@ -1100,6 +1134,26 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  onAfterpayStarted(): void {
+    this.onPaymentStarted('afterpay');
+  }
+
+  onAfterpayBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onAfterpaySuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onAfterpayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAfterpayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   /**
    * Official PayPal has no separate selector — engaging the SDK (order create)
    * selects PayPal for methodChange, then emits started.
@@ -1195,6 +1249,10 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('cash-app-pay');
   }
 
+  async onMockAfterpayPay(): Promise<void> {
+    await this.runMockPayment('afterpay');
+  }
+
   async onMockPayPalPay(): Promise<void> {
     if (this.methodsLocked() || this.destroyed) {
       return;
@@ -1253,6 +1311,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'cash-app-pay') {
       return 'cash-app-pay-selector';
+    }
+    if (method === 'afterpay') {
+      return 'afterpay-selector';
     }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';
@@ -1399,7 +1460,13 @@ export class EasyPaymentButtonsComponent {
     this.providerBusy.set(true);
 
     const label =
-      method === 'affirm' ? 'Affirm' : method === 'cash-app-pay' ? 'Cash App Pay' : 'Klarna';
+      method === 'affirm'
+        ? 'Affirm'
+        : method === 'cash-app-pay'
+          ? 'Cash App Pay'
+          : method === 'afterpay'
+            ? 'Afterpay'
+            : 'Klarna';
     const provider = stripeRedirectProvider(method);
 
     try {
@@ -1933,7 +2000,8 @@ function selectorLabel(
       method !== 'klarna' &&
       method !== 'affirm' &&
       method !== 'us-bank-account' &&
-      method !== 'cash-app-pay')
+      method !== 'cash-app-pay' &&
+      method !== 'afterpay')
   ) {
     return null;
   }

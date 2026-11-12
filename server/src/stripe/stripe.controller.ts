@@ -4,6 +4,7 @@ import { CreateKlarnaPaymentIntentDto } from './dto/create-klarna-payment-intent
 import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent.dto';
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
+import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
 import { StripeService } from './stripe.service';
 
 @Controller('api/payments')
@@ -58,5 +59,15 @@ export class StripeController {
   @HttpCode(201)
   createCashAppPayPaymentIntent(@Body() body: CreateCashAppPayPaymentIntentDto) {
     return this.stripeService.createCashAppPayPaymentIntent(body);
+  }
+
+  /**
+   * Afterpay/Clearpay via Stripe PaymentIntent:
+   * POST http://localhost:3000/api/payments/afterpay/create
+   */
+  @Post('afterpay/create')
+  @HttpCode(201)
+  createAfterpayPaymentIntent(@Body() body: CreateAfterpayPaymentIntentDto) {
+    return this.stripeService.createAfterpayPaymentIntent(body);
   }
 }

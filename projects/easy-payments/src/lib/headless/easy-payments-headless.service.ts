@@ -9,6 +9,7 @@ import { EasyPaymentsConfigService } from '../config/easy-payments-config.servic
 import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import { CashAppPayAdapter } from '../adapters/cash-app-pay/cash-app-pay.adapter';
+import { AfterpayAdapter } from '../adapters/afterpay/afterpay.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
@@ -47,6 +48,7 @@ export class EasyPaymentsHeadless {
   private readonly affirm = inject(AffirmAdapter);
   private readonly usBankAccount = inject(UsBankAccountAdapter);
   private readonly cashAppPay = inject(CashAppPayAdapter);
+  private readonly afterpay = inject(AfterpayAdapter);
   private readonly paypal = inject(PayPalAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
@@ -92,6 +94,7 @@ export class EasyPaymentsHeadless {
         affirm: this.affirm,
         usBankAccount: this.usBankAccount,
         cashAppPay: this.cashAppPay,
+        afterpay: this.afterpay,
         paypal: this.paypal,
         googlePay: this.googlePay,
         applePay: this.applePay,

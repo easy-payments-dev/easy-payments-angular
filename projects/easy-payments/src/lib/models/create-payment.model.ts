@@ -286,10 +286,57 @@ export interface CreateCashAppPayPaymentResponse {
   sessionId?: string;
 }
 
+/**
+ * Minimal wire contract for Afterpay/Clearpay via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface AfterpayCreatePaymentRequest {
+  provider: 'afterpay';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the Afterpay create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toAfterpayCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): AfterpayCreatePaymentRequest {
+  const body: AfterpayCreatePaymentRequest = {
+    provider: 'afterpay',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Afterpay create (afterpay_clearpay-only Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateAfterpayPaymentResponse {
+  provider: 'afterpay';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
 export type CreatePaymentResponse =
   | CreateStripePaymentResponse
   | CreatePayPalOrderResponse
   | CreateKlarnaPaymentResponse
   | CreateAffirmPaymentResponse
   | CreateUsBankAccountPaymentResponse
-  | CreateCashAppPayPaymentResponse;
+  | CreateCashAppPayPaymentResponse
+  | CreateAfterpayPaymentResponse;

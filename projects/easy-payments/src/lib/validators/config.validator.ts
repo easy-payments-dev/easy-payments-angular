@@ -19,6 +19,7 @@ const ALL_PROVIDERS = [
   'affirm',
   'usBankAccount',
   'cashAppPay',
+  'afterpay',
 ] as const satisfies ReadonlyArray<keyof EasyPaymentsProviderConfig>;
 
 @Injectable({ providedIn: 'root' })
@@ -129,6 +130,15 @@ export class EasyPaymentsConfigValidator {
         const cfg = providerConfig as EasyPaymentsProviderConfig['cashAppPay'];
         // Presence of the cashAppPay config object is enough to opt in.
         // Stripe publishableKey + cashAppPayCreatePaymentUrl are enforced at runtime.
+        if (!cfg || typeof cfg !== 'object') {
+          return { provider, status: 'invalid', message: required };
+        }
+        break;
+      }
+      case 'afterpay': {
+        const cfg = providerConfig as EasyPaymentsProviderConfig['afterpay'];
+        // Presence of the afterpay config object is enough to opt in.
+        // Stripe publishableKey + afterpayCreatePaymentUrl are enforced at runtime.
         if (!cfg || typeof cfg !== 'object') {
           return { provider, status: 'invalid', message: required };
         }

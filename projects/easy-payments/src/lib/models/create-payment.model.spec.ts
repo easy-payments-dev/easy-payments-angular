@@ -1,5 +1,6 @@
 import {
   toAffirmCreatePaymentRequest,
+  toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
@@ -179,6 +180,36 @@ describe('toCashAppPayCreatePaymentRequest', () => {
       metadata: { orderId: 'ORDER-CASH-1' },
     });
     expect(body.metadata).toEqual({ orderId: 'ORDER-CASH-1' });
+    expect(Object.keys(body)).not.toContain('amount');
+  });
+});
+
+describe('toAfterpayCreatePaymentRequest', () => {
+  it('maps only provider, productId, quantity, and currency', () => {
+    const body = toAfterpayCreatePaymentRequest({
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'usd',
+    });
+
+    expect(body).toEqual({
+      provider: 'afterpay',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+    expect(Object.keys(body)).not.toContain('amount');
+    expect(Object.keys(body)).not.toContain('metadata');
+  });
+
+  it('copies validated metadata and still omits amount', () => {
+    const body = toAfterpayCreatePaymentRequest({
+      productId: 'premium-plan',
+      quantity: 2,
+      currency: 'CAD',
+      metadata: { orderId: 'ORDER-AP-1' },
+    });
+    expect(body.metadata).toEqual({ orderId: 'ORDER-AP-1' });
     expect(Object.keys(body)).not.toContain('amount');
   });
 });

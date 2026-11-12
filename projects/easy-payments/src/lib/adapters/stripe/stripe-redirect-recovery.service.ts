@@ -894,6 +894,7 @@ function methodLabel(method: StripeRedirectMethod): string {
     case 'affirm':
       return 'Affirm';
     case 'cash-app-pay':
+    case 'afterpay':
       return 'Cash App Pay';
     default:
       return 'Klarna';

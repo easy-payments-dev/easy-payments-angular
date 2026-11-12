@@ -34,7 +34,8 @@ Start here when wiring real providers:
 5. [Affirm](./providers/affirm.md) — Stripe-backed BNPL  
 6. [US bank account (ACH)](./providers/us-bank-account.md) — opt-in Direct Debit (FC / Buttons / Headless)
 7. [Cash App Pay](./providers/cash-app-pay.md) — opt-in Stripe wallet (FC / Buttons / Headless)
-8. [PayPal](./providers/paypal.md) — JS SDK + Orders API
+8. [Afterpay](./providers/afterpay.md) — opt-in Stripe BNPL / Clearpay (FC / Buttons / Headless)
+9. [PayPal](./providers/paypal.md) — JS SDK + Orders API
 
 ## Screenshots
 

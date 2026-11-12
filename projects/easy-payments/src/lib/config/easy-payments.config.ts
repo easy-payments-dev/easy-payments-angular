@@ -80,6 +80,17 @@ export interface UsBankAccountProviderConfig {
  */
 export type CashAppPayProviderConfig = Record<string, never>;
 
+/**
+ * Afterpay/Clearpay via Stripe Payment Element (`afterpay_clearpay` PaymentIntent).
+ * Opt in with `providers.afterpay: {}`.
+ * Requires Stripe publishableKey + backend.afterpayCreatePaymentUrl.
+ * AU/CA/GB/NZ/US; currencies AUD/CAD/GBP/NZD/USD. Stripe does not support
+ * Afterpay in the Express Checkout Element.
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ * UK customers know the brand as Clearpay; Stripe PE shows the regional name.
+ */
+export type AfterpayProviderConfig = Record<string, never>;
+
 export interface EasyPaymentsBackendConfig {
   /**
    * Optional origin or origin + path prefix for relative backend endpoints.
@@ -117,6 +128,11 @@ export interface EasyPaymentsBackendConfig {
    */
   cashAppPayCreatePaymentUrl?: string;
   /**
+   * Creates an Afterpay/Clearpay Stripe PaymentIntent (`afterpay_clearpay` only).
+   * Returns clientSecret. Required for real Afterpay. Catalog amount is authoritative.
+   */
+  afterpayCreatePaymentUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -132,6 +148,7 @@ export interface EasyPaymentsProviderConfig {
   affirm?: AffirmProviderConfig;
   usBankAccount?: UsBankAccountProviderConfig;
   cashAppPay?: CashAppPayProviderConfig;
+  afterpay?: AfterpayProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -153,6 +170,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   affirm: 'Affirm',
   usBankAccount: 'US bank account',
   cashAppPay: 'Cash App Pay',
+  afterpay: 'Afterpay',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -166,6 +184,7 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
     'configuration missing (requires Stripe publishableKey + createUsBankAccountPaymentUrl)',
   cashAppPay:
     'configuration missing (requires Stripe publishableKey + cashAppPayCreatePaymentUrl)',
+  afterpay: 'configuration missing (requires Stripe publishableKey + afterpayCreatePaymentUrl)',
 };
 
 export type ProviderConfigStatus =

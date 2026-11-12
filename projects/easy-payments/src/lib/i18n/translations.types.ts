@@ -15,6 +15,7 @@ export interface EasyPaymentsTranslations {
   methodCard: string;
   methodUsBankAccount: string;
   methodCashAppPay: string;
+  methodAfterpay: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -78,6 +79,7 @@ export interface EasyPaymentsTranslations {
   affirmPaymentRegionAria: string;
   usBankAccountPaymentRegionAria: string;
   cashAppPayPaymentRegionAria: string;
+  afterpayPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -134,6 +136,11 @@ export interface EasyPaymentsTranslations {
   secureCheckoutCashAppPay: string;
   preparingCashAppPay: string;
   cashAppPayFormAria: string;
+
+  payWithAfterpay: string;
+  secureCheckoutAfterpay: string;
+  preparingAfterpay: string;
+  afterpayFormAria: string;
 }
 
 /** Partial overrides supplied by the consuming app. */

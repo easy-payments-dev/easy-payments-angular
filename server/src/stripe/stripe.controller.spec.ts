@@ -11,6 +11,7 @@ describe('StripeController', () => {
     createAffirmPaymentIntent: jest.Mock;
     createUsBankAccountPaymentIntent: jest.Mock;
     createCashAppPayPaymentIntent: jest.Mock;
+    createAfterpayPaymentIntent: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -20,6 +21,7 @@ describe('StripeController', () => {
       createAffirmPaymentIntent: jest.fn(),
       createUsBankAccountPaymentIntent: jest.fn(),
       createCashAppPayPaymentIntent: jest.fn(),
+      createAfterpayPaymentIntent: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -142,6 +144,27 @@ describe('StripeController', () => {
       provider: 'cashAppPay',
       clientSecret: 'pi_cash_secret',
       paymentIntentId: 'pi_cash_1',
+    });
+  });
+
+  it('creates an Afterpay PaymentIntent via the dedicated endpoint', async () => {
+    service.createAfterpayPaymentIntent.mockResolvedValue({
+      provider: 'afterpay',
+      clientSecret: 'pi_afterpay_secret',
+      paymentIntentId: 'pi_afterpay_1',
+    });
+
+    await expect(
+      controller.createAfterpayPaymentIntent({
+        provider: 'afterpay',
+        productId: 'premium-plan',
+        quantity: 1,
+        currency: 'USD',
+      }),
+    ).resolves.toEqual({
+      provider: 'afterpay',
+      clientSecret: 'pi_afterpay_secret',
+      paymentIntentId: 'pi_afterpay_1',
     });
   });
 });

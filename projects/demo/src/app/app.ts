@@ -120,6 +120,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'us-bank-account', enabled: true },
   // Opt-in Cash App Pay for Full Checkout, Buttons Only, and Headless.
   { method: 'cash-app-pay', enabled: true },
+  // Opt-in Afterpay for Full Checkout, Buttons Only, and Headless.
+  { method: 'afterpay', enabled: true },
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
@@ -1219,6 +1221,7 @@ ${cardAppearanceBlock}
               },
               usBankAccount: {},
               cashAppPay: {},
+              afterpay: {},
             }
           : {}),
         ...(this.paypalConfigReady()
@@ -1240,6 +1243,7 @@ ${cardAppearanceBlock}
         affirmCreatePaymentUrl: environment.affirmCreatePaymentUrl.trim(),
         createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
         cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
+        afterpayCreatePaymentUrl: environment.afterpayCreatePaymentUrl.trim(),
       },
     });
 
