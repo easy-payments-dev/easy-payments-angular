@@ -27,6 +27,7 @@ import {
   ACH_CONFIRM_HANG_MS,
   ACH_RECONCILE_DELAY_MS,
   ACH_RECONCILE_MAX_ATTEMPTS,
+  ACH_RETRIEVE_TIMEOUT_MS,
   buildAchReturnUrl,
   delay as achDelay,
 } from './us-bank-account-return';
@@ -126,7 +127,7 @@ export class UsBankAccountAdapter extends BaseProviderAdapter {
     throw new PaymentError({
       code: 'PROVIDER_UNAVAILABLE',
       message:
-        'US bank account payments require the secure Payment Element UI. Use the us-bank-account method inside <easy-payments>.',
+        'US bank account payments require the secure Payment Element UI. Use the us-bank-account method in Full Checkout, Payment Buttons Only, or Headless Checkout.',
       method: 'us-bank-account',
       provider: 'usBankAccount',
     });
@@ -476,11 +477,33 @@ export class UsBankAccountAdapter extends BaseProviderAdapter {
     stripe: Stripe,
     clientSecret: string,
   ): Promise<PaymentIntentLike | undefined> {
-    const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret);
-    if (error) {
-      throw mapUsBankAccountStripeError(error);
+    // Real timer (not achDelay) so hang-reconcile test stubs cannot instant-timeout retrieves.
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const { paymentIntent, error } = await Promise.race([
+        stripe.retrievePaymentIntent(clientSecret),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(
+              new PaymentError({
+                code: 'NETWORK_ERROR',
+                message: 'Timed out retrieving the US bank account PaymentIntent.',
+                method: 'us-bank-account',
+                provider: 'usBankAccount',
+              }),
+            );
+          }, ACH_RETRIEVE_TIMEOUT_MS);
+        }),
+      ]);
+      if (error) {
+        throw mapUsBankAccountStripeError(error);
+      }
+      return paymentIntent ?? undefined;
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
     }
-    return paymentIntent ?? undefined;
   }
 
   private statusCheckResult(session: StripeElementSession): PaymentResult {

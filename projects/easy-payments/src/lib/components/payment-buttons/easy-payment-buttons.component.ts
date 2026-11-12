@@ -80,7 +80,14 @@ import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
+import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
+import { UsBankAccountAdapter } from '../../adapters/us-bank-account/us-bank-account.adapter';
+import {
+  clearAchReturnParamsFromUrl,
+  isAchReturnAttempt,
+  readAchReturnParams,
+} from '../../adapters/us-bank-account/us-bank-account-return';
 
 /** Slot readiness for the method list. */
 export type EasyPaymentButtonSlotState = 'loading' | 'available' | 'unavailable';
@@ -97,6 +104,7 @@ export type EasyPaymentButtonSlotKind =
   | 'card-selector'
   | 'klarna-selector'
   | 'affirm-selector'
+  | 'us-bank-account-selector'
   | 'paypal-express'
   | 'paypal-mock'
   | 'google-pay-express'
@@ -108,6 +116,7 @@ const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'card-selector',
   'klarna-selector',
   'affirm-selector',
+  'us-bank-account-selector',
 ]);
 
 export interface EasyPaymentButtonSlot {
@@ -117,13 +126,14 @@ export interface EasyPaymentButtonSlot {
   readonly label: string;
   readonly kind: EasyPaymentButtonSlotKind;
   /**
-   * True for Card / Klarna / Affirm strip selectors.
+   * True for Card / Klarna / Affirm / US bank account strip selectors.
    * Express mounts are interactive payments but not selectors.
    */
   readonly interactive: boolean;
   /**
    * Visible text next to the mark. Always false when the mark already includes
-   * the brand name (Klarna / Affirm) or when Card uses the icon alone.
+   * the brand name (Klarna / Affirm). Card / US bank account use a generic icon
+   * and show a compact label.
    */
   readonly showVisibleLabel: boolean;
   /** Library brand mark. Ignored by official wallet SDK slots. */
@@ -143,8 +153,9 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
  * Payment Buttons Only — compact payment strip + shared expanded panel.
  *
  * Wallets (Apple Pay / Google Pay / PayPal) mount official SDK buttons in the strip.
- * Card / Klarna / Affirm use compact selectors; their secure forms open in one shared
- * region below the entire strip. Mock wallet stand-ins are development-only.
+ * Card / Klarna / Affirm / US bank account use compact selectors; their secure forms
+ * open in one shared region below the entire strip. Mock wallet stand-ins are
+ * development-only.
  */
 @Component({
   selector: 'easy-payment-buttons',
@@ -157,6 +168,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     ApplePayPaymentComponent,
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
+    UsBankAccountPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -182,6 +194,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-apple-pay-ready]': 'hasAvailableApplePay() ? "true" : "false"',
     '[attr.data-klarna-ready]': 'hasAvailableKlarna() ? "true" : "false"',
     '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
+    '[attr.data-us-bank-account-ready]': 'hasAvailableUsBankAccount() ? "true" : "false"',
     '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
     '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
     '[attr.data-selector-visibility]': 'selectorVisibility()',
@@ -235,6 +248,7 @@ export class EasyPaymentButtonsComponent {
   private readonly applePayAdapter = inject(ApplePayAdapter);
   private readonly klarnaAdapter = inject(KlarnaAdapter);
   private readonly affirmAdapter = inject(AffirmAdapter);
+  private readonly usBankAccountAdapter = inject(UsBankAccountAdapter);
   private readonly confirmationGate = inject(StripeConfirmationGate);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
   private readonly hostContext = inject(CheckoutHostContext);
@@ -265,6 +279,12 @@ export class EasyPaymentButtonsComponent {
   private stripeReturnClaimed = false;
   /** A recovered return succeeded: its panel must not create another PaymentIntent. */
   private successAfterReturn = false;
+  /** Host-owned ACH return recovery (retrieve only — never a second confirm). */
+  private achReturnRecovering = false;
+  private achReturnClaimed = false;
+  private achReturnRecoveryStarted = false;
+  /** After host ACH return settles, keep the PE panel unmounted (no new Intent). */
+  private achReturnComplete = false;
 
   readonly product = input.required<PaymentProduct>();
   readonly methods = input<PaymentMethod[]>(DEFAULT_BUTTON_METHODS);
@@ -292,10 +312,13 @@ export class EasyPaymentButtonsComponent {
    */
   readonly buttonsAppearance = input<EasyPaymentButtonsAppearance | null>(null);
   /**
-   * Optional Easy Payments–owned Stripe Card confirmation CTA presentation
+   * Optional Easy Payments–owned Card / ACH confirmation CTA presentation
    * (label, colors, typography, border, size, hover/disabled/loading/focus).
    * Independent of `[buttonsAppearance]` (strip chrome). Does not restyle the
    * Stripe Payment Element iframe or official wallet SDK buttons.
+   * For ACH with `selectorVisibility="merchant"`, keep a single submit control:
+   * host CTA calls {@link requestPayment}('us-bank-account') to open the panel;
+   * the library Pay button inside the panel remains the only confirm control.
    */
   readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
   /**
@@ -306,7 +329,7 @@ export class EasyPaymentButtonsComponent {
    */
   readonly bnplConfirmMode = input<BnplConfirmMode>('element');
   /**
-   * `library` (default) renders Easy Payments Card / Klarna / Affirm selectors.
+   * `library` (default) renders Easy Payments Card / Klarna / Affirm / ACH selectors.
    * `merchant` hides those selectors so the host app calls {@link requestPayment}.
    * PayPal, Google Pay, and Apple Pay stay official SDK buttons either way.
    */
@@ -465,8 +488,7 @@ export class EasyPaymentButtonsComponent {
    * Availability filters state only — never reorders.
    */
   readonly methodSlots = computed<EasyPaymentButtonSlot[]>(() => {
-    // ACH is Full Checkout only — never advertise it in Buttons Only.
-    const requested = this.methods().filter((method) => method !== 'us-bank-account');
+    const requested = this.methods();
     const published = this.availabilityPublished();
     const availability = this.availableMethods();
     const theme = this.resolvedTheme();
@@ -483,12 +505,19 @@ export class EasyPaymentButtonsComponent {
       const presentation = getPaymentMethodPresentation(method, theme);
       const brandLabel = presentation.label || PAYMENT_METHOD_LABELS[method];
       const customLabel = selectorLabel(this.buttonsAppearance()?.selectorLabels, method);
-      // Card is library-owned copy; wallet brand names stay provider trademarks.
-      const label = customLabel ?? (method === 'card' ? msgs.methodCard : brandLabel);
+      // Card / ACH use library-owned copy; wallet brand names stay provider trademarks.
+      const label =
+        customLabel ??
+        (method === 'card'
+          ? msgs.methodCard
+          : method === 'us-bank-account'
+            ? msgs.methodUsBankAccount
+            : brandLabel);
       // Brand marks already name the provider — never duplicate visible text.
-      // Card's generic icon does not include the name; show a compact "Card" label
+      // Card / ACH generic icons do not include the name; show a compact label
       // so the selector stays visible in light/dark and selected states.
-      const showVisibleLabel = method === 'card' || customLabel != null;
+      const showVisibleLabel =
+        method === 'card' || method === 'us-bank-account' || customLabel != null;
       const showBrandIcon = this.buttonsAppearance()?.showSelectorIcon !== false;
       return {
         method,
@@ -548,6 +577,12 @@ export class EasyPaymentButtonsComponent {
     this.methodSlots().some((slot) => slot.method === 'affirm' && slot.state === 'available'),
   );
 
+  readonly hasAvailableUsBankAccount = computed(() =>
+    this.methodSlots().some(
+      (slot) => slot.method === 'us-bank-account' && slot.state === 'available',
+    ),
+  );
+
   readonly selectedCardEntry = computed(() => {
     if (this.selectedMethod() !== 'card') {
       return null;
@@ -600,6 +635,45 @@ export class EasyPaymentButtonsComponent {
 
   readonly showMockAffirmPanel = computed(() => {
     const entry = this.selectedAffirmEntry();
+    return !!entry && entry.isMock;
+  });
+
+  readonly selectedUsBankAccountEntry = computed(() => {
+    if (this.selectedMethod() !== 'us-bank-account') {
+      return null;
+    }
+    return (
+      this.availableMethods().find(
+        (entry) => entry.method === 'us-bank-account' && entry.available,
+      ) ?? null
+    );
+  });
+
+  readonly showUsBankAccountPanel = computed(() => {
+    // Host-owned ACH return: recover via retrieve only; do not remount PE / create Intent.
+    if (this.achReturnRecovering || this.achReturnComplete) {
+      return false;
+    }
+    if (this.selectedMethod() !== 'us-bank-account') {
+      return false;
+    }
+    const entry =
+      this.availableMethods().find((item) => item.method === 'us-bank-account') ?? null;
+    if (entry?.isMock) {
+      return false;
+    }
+    if (entry?.available) {
+      return true;
+    }
+    // Keep the confirming panel alive across availability flaps.
+    return this.providerBusy() || this.processingMethod() === 'us-bank-account';
+  });
+
+  readonly showMockUsBankAccountPanel = computed(() => {
+    if (this.achReturnRecovering || this.achReturnComplete) {
+      return false;
+    }
+    const entry = this.selectedUsBankAccountEntry();
     return !!entry && entry.isMock;
   });
 
@@ -657,6 +731,12 @@ export class EasyPaymentButtonsComponent {
       this.hostContext.setReturnPhase('pending', method);
       this.updateSelectedMethod(method);
       this.providerBusy.set(true);
+    } else if (typeof window !== 'undefined' && isAchReturnAttempt()) {
+      // ACH return: host recovers via retrievePaymentIntent (no second confirm).
+      this.achReturnRecovering = true;
+      this.updateSelectedMethod('us-bank-account');
+      this.providerBusy.set(true);
+      this.paymentAttempt = 'active';
     }
 
     effect(() => {
@@ -667,6 +747,7 @@ export class EasyPaymentButtonsComponent {
         this.hostContext.setCheckoutInstanceId(checkoutInstanceId);
         this.hostContext.setProductId(product.id);
         this.claimStripeReturnOnce(methods);
+        this.claimAchReturnOnce(methods);
       });
     });
 
@@ -697,13 +778,19 @@ export class EasyPaymentButtonsComponent {
     // Skip while busy / BNPL redirect recovery so availability publish cannot steal selection.
     effect(() => {
       const selected = this.selectedMethod();
-      if (selected !== 'card' && selected !== 'klarna' && selected !== 'affirm') {
+      if (
+        selected !== 'card' &&
+        selected !== 'klarna' &&
+        selected !== 'affirm' &&
+        selected !== 'us-bank-account'
+      ) {
         return;
       }
       if (
         untracked(
           () =>
             this.stripeReturnRecovering ||
+            this.achReturnRecovering ||
             this.providerBusy() ||
             this.processingMethod() !== null,
         )
@@ -717,7 +804,7 @@ export class EasyPaymentButtonsComponent {
     });
   }
 
-  /** Merchant-owned mode hides library Card / Klarna / Affirm triggers. Wallets stay visible. */
+  /** Merchant-owned mode hides library Card / Klarna / Affirm / ACH triggers. Wallets stay visible. */
   merchantOwnsSelector(slot: EasyPaymentButtonSlot): boolean {
     return this.selectorVisibility() === 'merchant' && slot.interactive;
   }
@@ -781,7 +868,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   /**
-   * Merchant-owned trigger for Card, Klarna, and Affirm.
+   * Merchant-owned trigger for Card, Klarna, Affirm, and US bank account.
    * Runs only when the host application calls it from a user action.
    * PayPal, Google Pay, and Apple Pay are refused: those methods stay on official SDK buttons.
    */
@@ -800,7 +887,12 @@ export class EasyPaymentButtonsComponent {
       );
       return;
     }
-    if (method !== 'card' && method !== 'klarna' && method !== 'affirm') {
+    if (
+      method !== 'card' &&
+      method !== 'klarna' &&
+      method !== 'affirm' &&
+      method !== 'us-bank-account'
+    ) {
       this.error.emit(
         new PaymentError({
           code: 'CONFIG_INVALID',
@@ -831,7 +923,12 @@ export class EasyPaymentButtonsComponent {
     if (this.destroyed || this.methodsLocked()) {
       return false;
     }
-    if (method !== 'card' && method !== 'klarna' && method !== 'affirm') {
+    if (
+      method !== 'card' &&
+      method !== 'klarna' &&
+      method !== 'affirm' &&
+      method !== 'us-bank-account'
+    ) {
       return false;
     }
     const slot = this.methodSlots().find((entry) => entry.method === method);
@@ -917,6 +1014,26 @@ export class EasyPaymentButtonsComponent {
   }
 
   onAffirmError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  onUsBankAccountStarted(): void {
+    this.onPaymentStarted('us-bank-account');
+  }
+
+  onUsBankAccountBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onUsBankAccountSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onUsBankAccountCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onUsBankAccountError(error: PaymentError): void {
     this.handlePaymentError(error);
   }
 
@@ -1007,6 +1124,10 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('affirm');
   }
 
+  async onMockUsBankAccountPay(): Promise<void> {
+    await this.runMockPayment('us-bank-account');
+  }
+
   async onMockPayPalPay(): Promise<void> {
     if (this.methodsLocked() || this.destroyed) {
       return;
@@ -1060,6 +1181,9 @@ export class EasyPaymentButtonsComponent {
     if (method === 'affirm') {
       return 'affirm-selector';
     }
+    if (method === 'us-bank-account') {
+      return 'us-bank-account-selector';
+    }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';
     }
@@ -1090,6 +1214,94 @@ export class EasyPaymentButtonsComponent {
         }
       })
       .finally(done);
+  }
+
+  /**
+   * Host-owned ACH return: retrieve the same PaymentIntent only.
+   * Never creates or confirms a second payment.
+   */
+  private claimAchReturnOnce(methods: readonly PaymentMethod[]): void {
+    if (!this.achReturnRecovering || this.achReturnClaimed) {
+      return;
+    }
+    this.achReturnClaimed = true;
+    if (!methods.includes('us-bank-account')) {
+      this.achReturnRecovering = false;
+      this.providerBusy.set(false);
+      this.paymentAttempt = 'idle';
+      this.handlePaymentError(
+        new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'US bank account is not enabled for this checkout return.',
+          method: 'us-bank-account',
+          provider: 'usBankAccount',
+        }),
+      );
+      return;
+    }
+    const done = this.pendingTasks.add();
+    void this.recoverAchReturn().finally(done);
+  }
+
+  private async recoverAchReturn(): Promise<void> {
+    if (this.achReturnRecoveryStarted) {
+      return;
+    }
+    this.achReturnRecoveryStarted = true;
+    this.updateSelectedMethod('us-bank-account');
+    this.providerBusy.set(true);
+
+    try {
+      const { clientSecret } = readAchReturnParams();
+      clearAchReturnParamsFromUrl();
+      if (!clientSecret) {
+        this.handlePaymentError(
+          new PaymentError({
+            code: 'PAYMENT_FAILED',
+            message: 'US bank account return could not be verified.',
+            method: 'us-bank-account',
+            provider: 'usBankAccount',
+          }),
+        );
+        return;
+      }
+
+      const result = await this.usBankAccountAdapter.recoverReturningPayment(clientSecret);
+      if (this.destroyed) {
+        return;
+      }
+      if (result.status === 'success' || result.status === 'processing') {
+        // Avoid remounting PE after a verified return (would create a new Intent).
+        this.achReturnComplete = true;
+        this.handleSuccess(result);
+      } else if (result.status === 'cancelled') {
+        this.handleCancelled(result);
+      } else {
+        this.handlePaymentError(
+          new PaymentError({
+            code: 'PAYMENT_FAILED',
+            message: result.message ?? 'US bank account payment failed.',
+            method: 'us-bank-account',
+            provider: 'usBankAccount',
+          }),
+        );
+      }
+    } catch (err) {
+      if (this.destroyed) {
+        return;
+      }
+      this.handlePaymentError(
+        normalizeError(err, {
+          method: 'us-bank-account',
+          provider: 'usBankAccount',
+        }),
+      );
+    } finally {
+      this.achReturnRecovering = false;
+      if (!this.destroyed) {
+        this.providerBusy.set(false);
+      }
+    }
   }
 
   /** Another host owns the return (or it was unattributable): resume a normal, idle list. */
@@ -1228,7 +1440,9 @@ export class EasyPaymentButtonsComponent {
         this.handlePaymentError(paymentError);
       }
     } finally {
-      if (!this.destroyed) {
+      // Pending settles with paymentAttempt='settled' and keeps processingMethod locked
+      // so the host cannot start another payment. Success / cancel / error already cleared it.
+      if (!this.destroyed && this.paymentAttempt !== 'settled') {
         this.processingMethod.set(null);
       }
     }
@@ -1238,6 +1452,7 @@ export class EasyPaymentButtonsComponent {
     if (this.destroyed || this.paymentAttempt === 'active') {
       return;
     }
+    // Allow a new attempt after ACH success (settled) or a fresh idle host.
     this.paymentAttempt = 'active';
     const product = this.product();
     this.started.emit({
@@ -1289,7 +1504,10 @@ export class EasyPaymentButtonsComponent {
     this.processingMethod.set(null);
     this.bnplDirectActive.set(false);
     this.success.emit(result);
-    this.paymentAttempt = 'idle';
+    // ACH: stay settled so a late panel emit cannot duplicate success.
+    // A later started attempt can still move idle→active via onPaymentStarted.
+    this.paymentAttempt = result.method === 'us-bank-account' ? 'settled' : 'idle';
+    this.closeUsBankAccountPanelAfterSettled(result.method);
   }
 
   /** Asynchronous pending PaymentIntent — lock retry; do not emit success or error. */
@@ -1301,6 +1519,21 @@ export class EasyPaymentButtonsComponent {
     // Keep processingMethod set so methodsLocked stays true (no retry / double charge).
     this.processingMethod.set(result.method);
     this.pending.emit(result);
+    // ACH Buttons Only: host owns outcome UI — close the PE panel; lock remains.
+    this.closeUsBankAccountPanelAfterSettled(result.method);
+  }
+
+  /**
+   * After a verified ACH pending/success, collapse the expanded panel so the
+   * consumer decides messaging/navigation. Pending keeps {@link methodsLocked}.
+   */
+  private closeUsBankAccountPanelAfterSettled(method: PaymentMethod): void {
+    if (method !== 'us-bank-account') {
+      return;
+    }
+    if (this.selectedMethod() === 'us-bank-account') {
+      this.updateSelectedMethod(null);
+    }
   }
 
   private handleCancelled(result: PaymentResult): void {
@@ -1622,10 +1855,17 @@ function selectorLabel(
   labels: EasyPaymentButtonsSelectorLabels | undefined,
   method: PaymentMethod,
 ): string | null {
-  if (!labels || (method !== 'card' && method !== 'klarna' && method !== 'affirm')) {
+  if (
+    !labels ||
+    (method !== 'card' &&
+      method !== 'klarna' &&
+      method !== 'affirm' &&
+      method !== 'us-bank-account')
+  ) {
     return null;
   }
-  return sanitizeSelectorLabel(labels[method]);
+  const key = method === 'us-bank-account' ? 'usBankAccount' : method;
+  return sanitizeSelectorLabel(labels[key]);
 }
 
 /** Plain text only. Rejects markup so a label cannot inject HTML. */

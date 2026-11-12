@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import {
   CheckoutOptions,
+  EasyPaymentsCardButtonAppearance,
   PaymentProduct,
   PaymentResult,
   ResolvedPaymentTheme,
@@ -42,18 +43,52 @@ import {
   toStripeElementsLocale,
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
+import { resolveCardButtonAppearance } from '../../themes/resolve-card-button-appearance';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
 
 @Component({
   selector: 'easy-us-bank-account-payment',
   standalone: true,
   imports: [CheckoutSecurityMessageComponent],
+  host: {
+    '[style.--ep-card-cta-bg]': 'cardButtonCssVars().backgroundColor',
+    '[style.--ep-card-cta-text]': 'cardButtonCssVars().textColor',
+    '[style.--ep-card-cta-font-family]': 'cardButtonCssVars().fontFamily',
+    '[style.--ep-card-cta-font-size]': 'cardButtonCssVars().fontSize',
+    '[style.--ep-card-cta-font-weight]': 'cardButtonCssVars().fontWeight',
+    '[style.--ep-card-cta-text-align]': 'cardButtonCssVars().textAlign',
+    '[style.--ep-card-cta-border-width]': 'cardButtonCssVars().borderWidth',
+    '[style.--ep-card-cta-border-style]': 'cardButtonCssVars().borderStyle',
+    '[style.--ep-card-cta-border-color]': 'cardButtonCssVars().borderColor',
+    '[style.--ep-card-cta-radius]': 'cardButtonCssVars().borderRadius',
+    '[style.--ep-card-cta-min-height]': 'cardButtonCssVars().minHeight',
+    '[style.--ep-card-cta-width]': 'cardButtonCssVars().width',
+    '[style.--ep-card-cta-padding]': 'cardButtonCssVars().padding',
+    '[style.--ep-card-cta-hover-bg]': 'cardButtonCssVars().hoverBackgroundColor',
+    '[style.--ep-card-cta-hover-text]': 'cardButtonCssVars().hoverTextColor',
+    '[style.--ep-card-cta-disabled-bg]': 'cardButtonCssVars().disabledBackgroundColor',
+    '[style.--ep-card-cta-disabled-text]': 'cardButtonCssVars().disabledTextColor',
+    '[style.--ep-card-cta-loading-bg]': 'cardButtonCssVars().loadingBackgroundColor',
+    '[style.--ep-card-cta-loading-text]': 'cardButtonCssVars().loadingTextColor',
+    '[style.--ep-card-cta-focus-color]': 'cardButtonCssVars().focusOutlineColor',
+    '[style.--ep-card-cta-focus-width]': 'cardButtonCssVars().focusOutlineWidth',
+    '[style.--ep-card-cta-focus-offset]': 'cardButtonCssVars().focusOutlineOffset',
+  },
   template: `
-    <div class="ep-ach" [attr.data-state]="uiState()">
-      <div class="ep-ach__header">
-        <h3 class="ep-ach__title">{{ msgs().payWithUsBankAccount }}</h3>
+    <div
+      class="ep-ach"
+      [class.ep-ach--minimal]="chrome() === 'minimal'"
+      [attr.data-state]="uiState()"
+      [attr.data-chrome]="chrome()"
+    >
+      @if (chrome() === 'full') {
+        <div class="ep-ach__header">
+          <h3 class="ep-ach__title">{{ msgs().payWithUsBankAccount }}</h3>
+          <easy-checkout-security-message [message]="msgs().secureCheckoutUsBankAccount" />
+        </div>
+      } @else {
         <easy-checkout-security-message [message]="msgs().secureCheckoutUsBankAccount" />
-      </div>
+      }
 
       @if (uiState() === 'initializing' || uiState() === 'loading-session') {
         <p class="ep-ach__status" role="status">{{ msgs().preparingUsBankAccount }}</p>
@@ -63,7 +98,10 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         #paymentElementHost
         class="ep-ach__element"
         [class.ep-ach__element--pending]="
-          uiState() === 'initializing' || uiState() === 'loading-session'
+          uiState() === 'initializing' ||
+          uiState() === 'loading-session' ||
+          uiState() === 'pending' ||
+          uiState() === 'success'
         "
         [attr.aria-hidden]="uiState() === 'error' || uiState() === 'idle'"
         [attr.aria-label]="msgs().usBankAccountFormAria"
@@ -73,7 +111,19 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-ach__error" role="alert">{{ inlineError() }}</p>
       }
 
-      @if (uiState() === 'success') {
+      <!--
+        Full Checkout: in-panel pending/success copy.
+        Buttons Only (chrome=minimal): keep the processing CTA until the host
+        closes the panel after a verified pending/success emit.
+      -->
+      @if (uiState() === 'pending' && chrome() !== 'minimal') {
+        <p class="ep-ach__pending" role="status">
+          <span class="ep-ach__pending-title">{{ msgs().pendingTitle }}</span>
+          <span class="ep-ach__pending-body">{{ msgs().pendingBody }}</span>
+        </p>
+      }
+
+      @if (uiState() === 'success' && chrome() !== 'minimal') {
         <p class="ep-ach__success" role="status">{{ msgs().paymentCompleted }}</p>
       }
 
@@ -81,12 +131,14 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         type="button"
         class="ep-ach__pay"
         [disabled]="!canPay()"
-        [attr.aria-busy]="uiState() === 'processing'"
+        [attr.aria-busy]="showProcessingCta()"
         (click)="onPay()"
       >
-        @if (uiState() === 'processing') {
+        @if (showProcessingCta()) {
           {{ msgs().processingPayment }}
-        } @else if (uiState() === 'success') {
+        } @else if (uiState() === 'pending') {
+          {{ msgs().pendingTitle }}
+        } @else if (uiState() === 'success' && chrome() !== 'minimal') {
           {{ msgs().paymentCompleted }}
         } @else {
           {{ payLabel() }}
@@ -143,6 +195,23 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         font-size: 13px;
       }
 
+      .ep-ach__pending {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        color: var(--ep-text, #0f172a);
+        font-size: 13px;
+      }
+
+      .ep-ach__pending-title {
+        font-weight: 650;
+      }
+
+      .ep-ach__pending-body {
+        color: var(--ep-text-secondary, #64748b);
+      }
+
       .ep-ach__success {
         margin: 0;
         color: var(--ep-success, #15803d);
@@ -151,30 +220,96 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
       }
 
       .ep-ach__pay {
-        min-height: 48px;
-        border: 0;
-        border-radius: var(--ep-radius-md, 10px);
-        background: var(--ep-cta-bg, #0f172a);
-        color: var(--ep-cta-text, #f8fafc);
-        font: inherit;
-        font-size: 15px;
-        font-weight: 650;
+        box-sizing: border-box;
+        min-height: var(--ep-card-cta-min-height, 48px);
+        width: var(--ep-card-cta-width, auto);
+        max-width: 100%;
+        padding: var(--ep-card-cta-padding, 0 16px);
+        border-width: var(--ep-card-cta-border-width, 0);
+        border-style: var(--ep-card-cta-border-style, none);
+        border-color: var(--ep-card-cta-border-color, transparent);
+        border-radius: var(--ep-card-cta-radius, var(--ep-radius-md, 10px));
+        background: var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a));
+        color: var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc));
+        font-family: var(--ep-card-cta-font-family, inherit);
+        font-size: var(--ep-card-cta-font-size, 15px);
+        font-weight: var(--ep-card-cta-font-weight, 650);
+        text-align: var(--ep-card-cta-text-align, center);
         cursor: pointer;
+        transition:
+          background-color 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
       }
 
       .ep-ach__pay:hover:not(:disabled) {
-        background: var(--ep-cta-bg-hover, #1e293b);
+        background: var(--ep-card-cta-hover-bg, var(--ep-cta-bg-hover, #1e293b));
+        color: var(
+          --ep-card-cta-hover-text,
+          var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc))
+        );
+      }
+
+      .ep-ach__pay:active:not(:disabled) {
+        background: var(--ep-card-cta-hover-bg, var(--ep-cta-bg-hover, #1e293b));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, #000 18%, transparent);
       }
 
       .ep-ach__pay:focus-visible {
-        outline: 2px solid var(--ep-focus, #2563eb);
-        outline-offset: 2px;
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--ep-focus, #2563eb) 28%, transparent);
+        outline: var(--ep-card-cta-focus-width, 2px) solid
+          var(--ep-card-cta-focus-color, var(--ep-focus, #2563eb));
+        outline-offset: var(--ep-card-cta-focus-offset, 2px);
+        box-shadow: 0 0 0 4px
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-focus-color, var(--ep-focus, #2563eb)) 28%,
+            transparent
+          );
+      }
+
+      .ep-ach--minimal .ep-ach__pay {
+        min-height: var(--ep-card-cta-min-height, 44px);
+        align-self: flex-start;
+        min-width: min(100%, 200px);
+        padding: var(--ep-card-cta-padding, 0 20px);
+        font-size: var(--ep-card-cta-font-size, 14px);
       }
 
       .ep-ach__pay:disabled {
-        opacity: 0.55;
         cursor: not-allowed;
+        opacity: 1;
+        background: var(
+          --ep-card-cta-disabled-bg,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a)) 42%,
+            var(--ep-surface, #ffffff)
+          )
+        );
+        color: var(
+          --ep-card-cta-disabled-text,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc)) 72%,
+            var(--ep-text-secondary, #64748b)
+          )
+        );
+      }
+
+      .ep-ach__pay[aria-busy='true']:disabled {
+        background: var(
+          --ep-card-cta-loading-bg,
+          color-mix(
+            in srgb,
+            var(--ep-card-cta-bg, var(--ep-cta-bg, #0f172a)) 58%,
+            var(--ep-surface, #ffffff)
+          )
+        );
+        color: var(
+          --ep-card-cta-loading-text,
+          var(--ep-card-cta-text, var(--ep-cta-text, #f8fafc))
+        );
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -196,6 +331,16 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
   readonly product = input.required<PaymentProduct>();
   readonly checkout = input<CheckoutOptions>();
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
+  /**
+   * `full` — checkout chrome (title + amount CTA).
+   * `minimal` — Buttons Only expanded panel (security + Element + confirm).
+   */
+  readonly chrome = input<'full' | 'minimal'>('full');
+  /**
+   * Optional Easy Payments–owned ACH CTA presentation (same shape as Card).
+   * Invalid / omitted fields keep theme defaults and localized labels.
+   */
+  readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -220,6 +365,11 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
   private attemptSettled = false;
   private returnRecoveryStarted = false;
 
+  readonly resolvedCardButton = computed(() =>
+    resolveCardButtonAppearance(this.cardButtonAppearance()),
+  );
+  readonly cardButtonCssVars = computed(() => this.resolvedCardButton().cssVars);
+
   readonly amountLabel = computed(() =>
     this.i18n
       ? this.i18n.formatMoney(
@@ -234,9 +384,15 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
           'en',
         ),
   );
-  readonly payLabel = computed(() =>
-    interpolate(this.msgs().payAmount, { amount: this.amountLabel() }),
-  );
+  readonly payLabel = computed(() => {
+    const custom = this.resolvedCardButton().label;
+    if (custom) {
+      return custom;
+    }
+    return this.chrome() === 'minimal'
+      ? this.msgs().payWithUsBankAccount
+      : interpolate(this.msgs().payAmount, { amount: this.amountLabel() });
+  });
 
   constructor() {
     effect(() => {
@@ -244,11 +400,13 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
       const checkout = this.checkout();
       const ready = this.viewReady();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const chrome = this.chrome();
       if (!ready) {
         return;
       }
       untracked(() => {
-        if (isAchReturnAttempt()) {
+        // Full Checkout recovers returns in-panel. Buttons Only (minimal) is host-owned.
+        if (chrome === 'full' && isAchReturnAttempt()) {
           void this.recoverReturnIfNeeded();
           return;
         }
@@ -283,6 +441,18 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
 
   canPay(): boolean {
     return this.uiState() === 'ready' && !this.achAdapter.isConfirming(this.ownerId);
+  }
+
+  /**
+   * Buttons Only keeps the processing CTA until the host closes the panel after
+   * a verified pending/success. Full Checkout uses its own pending/success chrome.
+   */
+  showProcessingCta(): boolean {
+    const state = this.uiState();
+    if (state === 'processing') {
+      return true;
+    }
+    return this.chrome() === 'minimal' && (state === 'pending' || state === 'success');
   }
 
   async onPay(): Promise<void> {
@@ -352,8 +522,8 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
     if (result.status === 'processing') {
-      // Parent remaps processing → pending (or status-check). Never emit as success alone.
-      this.uiState.set('processing');
+      // Exit loading into a settled pending state. Parent remaps to (pending).
+      this.uiState.set('pending');
       this.success.emit(result);
       return;
     }
@@ -376,9 +546,10 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
   /**
    * After a Stripe-hosted ACH next action, recover the SAME PaymentIntent via
    * retrieve only — never create or confirm a second payment.
+   * Buttons Only (chrome=minimal) uses host-owned recovery instead.
    */
   private async recoverReturnIfNeeded(): Promise<void> {
-    if (this.returnRecoveryStarted || this.destroyed) {
+    if (this.returnRecoveryStarted || this.destroyed || this.chrome() !== 'full') {
       return;
     }
     this.returnRecoveryStarted = true;
@@ -436,6 +607,11 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
     checkout: CheckoutOptions | undefined,
     locale: EasyPaymentsResolvedLocale,
   ): Promise<void> {
+    // Do not recreate a PaymentIntent after a verified pending/success attempt.
+    if (this.uiState() === 'pending' || this.uiState() === 'success') {
+      return;
+    }
+
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
       const paymentError = new PaymentError({

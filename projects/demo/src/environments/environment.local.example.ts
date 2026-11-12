@@ -15,12 +15,13 @@ export const environment = {
   production: false,
   stripePublishableKey: 'YOUR_STRIPE_PUBLISHABLE_KEY',
   paypalClientId: 'YOUR_PAYPAL_CLIENT_ID',
-  backendBaseUrl: 'http://localhost:3001',
+  // Prefer 127.0.0.1 on Windows — `localhost` can resolve to ::1 and miss Nest on IPv4.
+  backendBaseUrl: 'http://127.0.0.1:3001',
   createPaymentUrl: '/api/payments/create',
   paypalCreateOrderUrl: '/api/payments/paypal/create',
   paypalCaptureOrderUrl: '/api/payments/paypal/capture',
   klarnaCreatePaymentUrl: '/api/payments/klarna/create',
   affirmCreatePaymentUrl: '/api/payments/affirm/create',
   createUsBankAccountPaymentUrl: '/api/payments/us-bank-account/create',
-  catalogProductUrl: 'http://localhost:3001/api/catalog/products',
+  catalogProductUrl: 'http://127.0.0.1:3001/api/catalog/products',
 };

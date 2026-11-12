@@ -19,6 +19,7 @@ import type { EasyPaymentsConfigService } from '../config/easy-payments-config.s
 import type { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import type { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import type { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
+import type { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
 import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
 import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
@@ -39,6 +40,12 @@ import {
   markHeadlessPendingReturn,
   type StripeRedirectMethod,
 } from '../adapters/stripe/stripe-redirect-return';
+import {
+  buildAchReturnUrl,
+  clearAchReturnParamsFromUrl,
+  isAchReturnAttempt,
+  readAchReturnParams,
+} from '../adapters/us-bank-account/us-bank-account-return';
 import {
   resolveEffectiveLocale,
   toAffirmPreferredLocale,
@@ -66,10 +73,10 @@ import type {
   HeadlessSessionState,
 } from './headless.types';
 
-/** Methods that mount a Stripe Payment Element through existing adapters (H3.1–H3.2). */
-type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm';
+/** Methods that mount a Stripe Payment Element through existing adapters. */
+type HeadlessStripeElementMethod = 'card' | 'klarna' | 'affirm' | 'us-bank-account';
 
-/** All Headless-mountable methods through H3.5. */
+/** All Headless-mountable methods. */
 type HeadlessMountableMethod =
   | HeadlessStripeElementMethod
   | 'paypal'
@@ -77,7 +84,12 @@ type HeadlessMountableMethod =
   | 'apple-pay';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
-  return method === 'card' || method === 'klarna' || method === 'affirm';
+  return (
+    method === 'card' ||
+    method === 'klarna' ||
+    method === 'affirm' ||
+    method === 'us-bank-account'
+  );
 }
 
 function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMethod {
@@ -129,6 +141,7 @@ export interface HeadlessCheckoutSessionDeps {
   stripeCard: StripeCardAdapter;
   klarna: KlarnaAdapter;
   affirm: AffirmAdapter;
+  usBankAccount: UsBankAccountAdapter;
   paypal: PayPalAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
@@ -140,6 +153,7 @@ export interface HeadlessCheckoutSessionDeps {
  * H3.1: Stripe Card. H3.2: Klarna + Affirm. H3.3: PayPal Buttons.
  * H3.4: Google Pay button. H3.5: Apple Pay Express Checkout Element.
  * H4.3: Klarna/Affirm redirect recovery via {@link StripeRedirectRecoveryService}.
+ * 1.3.0: US bank account (ACH) Payment Element mount/confirm + retrieve-only return recovery.
  */
 export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, StripeReturnHost {
   readonly id: string;
@@ -161,6 +175,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly stripeCard: StripeCardAdapter;
   private readonly klarna: KlarnaAdapter;
   private readonly affirm: AffirmAdapter;
+  private readonly usBankAccount: UsBankAccountAdapter;
   private readonly paypal: PayPalAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
@@ -268,6 +283,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.stripeCard = deps.stripeCard;
     this.klarna = deps.klarna;
     this.affirm = deps.affirm;
+    this.usBankAccount = deps.usBankAccount;
     this.paypal = deps.paypal;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
@@ -1095,7 +1111,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'CONFIG_INVALID',
         message:
-          'confirm() requires selectedMethod() to be "card", "klarna", or "affirm" with an active Stripe Payment Element mount.',
+          'confirm() requires selectedMethod() to be "card", "klarna", "affirm", or "us-bank-account" with an active Stripe Payment Element mount.',
         ...selectedMeta,
       });
     }
@@ -1208,8 +1224,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   }
 
   /**
-   * Recover Klarna/Affirm Stripe redirect returns for this stable checkout identity.
-   * No Payment Element mount or confirmPayment — uses {@link StripeRedirectRecoveryService}.
+   * Recover Klarna/Affirm Stripe redirect returns for this stable checkout identity,
+   * or ACH returns via retrievePaymentIntent only (never a second confirm).
    */
   async recoverReturn(): Promise<PaymentResult | null> {
     this.assertNotDestroyed('recoverReturn');
@@ -1218,14 +1234,6 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'CONFIG_INVALID',
         message: 'Call initialize() before recoverReturn().',
-      });
-    }
-
-    if (!this.stableCheckoutIdentity) {
-      throw new PaymentError({
-        code: 'CONFIG_INVALID',
-        message:
-          'Klarna/Affirm Headless return recovery requires a stable merchant checkoutInstanceId that matches the identity used before the redirect.',
       });
     }
 
@@ -1253,10 +1261,71 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       });
     }
 
+    if (this.browser.isBrowser && isAchReturnAttempt()) {
+      this.recoverPromise = this.doAchRecoverReturn().finally(() => {
+        this.recoverPromise = null;
+      });
+      return this.recoverPromise;
+    }
+
+    if (!this.stableCheckoutIdentity) {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Klarna/Affirm Headless return recovery requires a stable merchant checkoutInstanceId that matches the identity used before the redirect.',
+      });
+    }
+
     this.recoverPromise = this.doRecoverReturn().finally(() => {
       this.recoverPromise = null;
     });
     return this.recoverPromise;
+  }
+
+  /**
+   * ACH leave-page return: retrieve the same PaymentIntent only — never create or confirm again.
+   * Microdeposit verification edge cases remain a separate verification track.
+   */
+  private async doAchRecoverReturn(): Promise<PaymentResult | null> {
+    if (!this.methods.includes('us-bank-account')) {
+      return null;
+    }
+
+    const { clientSecret } = readAchReturnParams();
+    clearAchReturnParamsFromUrl();
+    if (!clientSecret) {
+      return null;
+    }
+
+    const recoverGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this._lastError.set(null);
+    this.applySelection('us-bank-account');
+    this._state.set('processing');
+    this.emitStarted('us-bank-account');
+
+    try {
+      const result = await this.usBankAccount.recoverReturningPayment(clientSecret);
+      if (this._state() === 'destroyed' || recoverGen !== this.confirmGeneration) {
+        return null;
+      }
+      this.recoverSettled = true;
+      this.applyPaymentResult(result, recoverGen, 'us-bank-account');
+      return result;
+    } catch (error) {
+      if (this._state() === 'destroyed' || recoverGen !== this.confirmGeneration) {
+        return null;
+      }
+      const paymentError = normalizeError(error, {
+        method: 'us-bank-account',
+        provider: 'usBankAccount',
+      });
+      this.recoverSettled = true;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, recoverGen);
+      throw paymentError;
+    }
   }
 
   private async doRecoverReturn(): Promise<PaymentResult | null> {
@@ -1387,6 +1456,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this.stripeCard.destroy(this.stripeOwnerId),
         this.klarna.destroy(this.stripeOwnerId),
         this.affirm.destroy(this.stripeOwnerId),
+        this.usBankAccount.destroy(this.stripeOwnerId),
         this.destroyPayPalButtonsOnly(),
         Promise.resolve(this.destroyGooglePayButtonOnly()),
         Promise.resolve(this.destroyApplePayEceOnly()),
@@ -1995,6 +2065,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       );
     }
 
+    if (method === 'us-bank-account') {
+      return this.usBankAccount.createPaymentSession(
+        this.product,
+        this.checkout,
+        this.stripeOwnerId,
+      );
+    }
+
     const snapshot = this.config.getSnapshot();
     if (method === 'klarna') {
       const configured = snapshot.providers?.klarna?.locale?.trim();
@@ -2029,6 +2107,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
   /**
    * Card: optional successUrl only.
+   * ACH: stamp `ep_method=us-bank-account` on return_url (retrieve-only recovery).
    * Klarna/Affirm: require merchant-stable identity, write `hostKind: 'headless'`
    * pending marker, stamp `ep_method` + `ep_attempt` on return_url before confirm.
    */
@@ -2039,6 +2118,18 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     const base = this.checkout?.successUrl;
     if (method === 'card') {
       return { returnUrl: base, attemptId: null };
+    }
+
+    if (method === 'us-bank-account') {
+      if (!this.browser.isBrowser) {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'US bank account Headless confirmation requires a browser context.',
+          method,
+          provider: this.providerOf(method),
+        });
+      }
+      return { returnUrl: buildAchReturnUrl(base), attemptId: null };
     }
 
     if (!this.stableCheckoutIdentity) {
@@ -2078,6 +2169,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         return this.klarna;
       case 'affirm':
         return this.affirm;
+      case 'us-bank-account':
+        return this.usBankAccount;
     }
   }
 
@@ -2085,6 +2178,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.stripeCard.unmountPaymentElement(this.stripeOwnerId);
     this.klarna.unmountPaymentElement(this.stripeOwnerId);
     this.affirm.unmountPaymentElement(this.stripeOwnerId);
+    this.usBankAccount.unmountPaymentElement(this.stripeOwnerId);
   }
 
   private providerOf(method: HeadlessMountableMethod): PaymentProviderName {
@@ -2347,6 +2441,8 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'Klarna';
     case 'affirm':
       return 'Affirm';
+    case 'us-bank-account':
+      return 'US bank account';
     case 'paypal':
       return 'PayPal';
     case 'google-pay':

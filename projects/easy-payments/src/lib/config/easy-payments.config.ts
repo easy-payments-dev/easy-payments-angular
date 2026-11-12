@@ -63,7 +63,7 @@ export interface AffirmProviderConfig {
  * ACH Direct Debit (US bank account) via Stripe Payment Element.
  * Opt in with `providers.usBankAccount: {}`.
  * Requires Stripe publishableKey + backend.createUsBankAccountPaymentUrl.
- * Full Checkout only in 1.3.0 — not offered by Buttons Only or Headless.
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
  */
 export interface UsBankAccountProviderConfig {
   /** ISO country for ACH purchase context (default US). */

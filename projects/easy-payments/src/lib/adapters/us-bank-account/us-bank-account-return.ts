@@ -16,6 +16,8 @@ export const ACH_CONFIRM_HANG_MS = 4_000;
 /** Bounded retrieve attempts for the same client secret. */
 export const ACH_RECONCILE_MAX_ATTEMPTS = 8;
 export const ACH_RECONCILE_DELAY_MS = 750;
+/** Cap a single retrievePaymentIntent so a hung retrieve cannot stall reconcile forever. */
+export const ACH_RETRIEVE_TIMEOUT_MS = 8_000;
 
 export interface AchReturnParams {
   paymentIntentId: string | null;

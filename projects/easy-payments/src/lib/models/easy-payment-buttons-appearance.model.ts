@@ -37,7 +37,7 @@ export interface EasyPaymentButtonsAppearance {
   background?: 'transparent' | string;
 
   /**
-   * Border treatment for library-owned Card / Klarna / Affirm selectors and placeholders.
+   * Border treatment for library-owned Card / Klarna / Affirm / ACH selectors and placeholders.
    * Default: `'default'` (1px theme border). `'none'` removes the border.
    */
   border?: 'default' | 'none';
@@ -67,7 +67,7 @@ export interface EasyPaymentButtonsAppearance {
   buttonMinWidth?: string;
 
   /**
-   * Library-owned Card / Klarna / Affirm selector chrome.
+   * Library-owned Card / Klarna / Affirm / ACH selector chrome.
    * Omitted values keep the current default appearance.
    * These fields do not restyle PayPal, Google Pay, or Apple Pay SDK buttons.
    */
@@ -109,7 +109,9 @@ export interface EasyPaymentButtonsSelectorLabels {
   card?: string;
   klarna?: string;
   affirm?: string;
+  /** Override for the US bank account (ACH) selector label. */
+  usBankAccount?: string;
 }
 
-/** Who renders the Card / Klarna / Affirm triggers. Wallets stay official SDK buttons. */
+/** Who renders the Card / Klarna / Affirm / ACH triggers. Wallets stay official SDK buttons. */
 export type EasyPaymentButtonsSelectorVisibility = 'library' | 'merchant';

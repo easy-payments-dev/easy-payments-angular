@@ -7,6 +7,8 @@ export type UsBankAccountUiState =
   | 'loading-session'
   | 'ready'
   | 'processing'
+  /** Verified async debit — loading exited; retry locked until a new attempt. */
+  | 'pending'
   | 'success'
   | 'error';
 

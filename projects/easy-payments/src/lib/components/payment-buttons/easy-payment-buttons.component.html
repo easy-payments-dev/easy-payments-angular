@@ -48,7 +48,8 @@
           selectorVisibility() === 'library' &&
           (slot.kind === 'card-selector' ||
             slot.kind === 'klarna-selector' ||
-            slot.kind === 'affirm-selector')
+            slot.kind === 'affirm-selector' ||
+            slot.kind === 'us-bank-account-selector')
         ) {
           <button
             type="button"
@@ -308,6 +309,45 @@
         [isMock]="true"
         [loading]="processingMethod() === 'affirm'"
         (pay)="onMockAffirmPay()"
+      />
+    </section>
+  }
+
+  @if (showUsBankAccountPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-us-bank-account-panel"
+      [attr.aria-label]="msgs().usBankAccountPaymentRegionAria"
+    >
+      <easy-us-bank-account-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        [cardButtonAppearance]="cardButtonAppearance()"
+        chrome="minimal"
+        (started)="onUsBankAccountStarted()"
+        (busyChange)="onUsBankAccountBusy($event)"
+        (success)="onUsBankAccountSuccess($event)"
+        (cancel)="onUsBankAccountCancel($event)"
+        (error)="onUsBankAccountError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockUsBankAccountPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-us-bank-account-mock-panel"
+      [attr.aria-label]="msgs().usBankAccountPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="us-bank-account"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'us-bank-account'"
+        (pay)="onMockUsBankAccountPay()"
       />
     </section>
   }

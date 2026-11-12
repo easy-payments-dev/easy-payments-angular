@@ -116,7 +116,7 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'google-pay', enabled: true },
   { method: 'klarna', enabled: true },
   { method: 'affirm', enabled: true },
-  // Full Checkout only — Buttons Only filters this out; Headless rejects it.
+  // Opt-in ACH for Full Checkout, Buttons Only, and Headless.
   { method: 'us-bank-account', enabled: true },
 ];
 

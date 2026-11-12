@@ -14,6 +14,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'klarna',
   'affirm',
   'card',
+  'us-bank-account',
 ]);
 
 export function isKnownPaymentMethod(value: string): value is PaymentMethod {
@@ -36,9 +37,7 @@ export function interactionForMethod(
     case 'card':
     case 'klarna':
     case 'affirm':
-      return 'confirm';
     case 'us-bank-account':
-      // ACH is Full Checkout only in 1.3.0 — Headless rejects this method at session create.
       return 'confirm';
     default: {
       const _exhaustive: never = method;

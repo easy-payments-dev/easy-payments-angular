@@ -12,6 +12,7 @@ import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
+import { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
 import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import type { PaymentMethod } from '../models/payment-method.model';
 import { isKnownPaymentMethod } from './headless-method-meta';
@@ -23,7 +24,7 @@ import type {
 } from './headless.types';
 
 /**
- * Public factory for Headless Checkout sessions (v1.2.0).
+ * Public factory for Headless Checkout sessions (v1.2.0+).
  *
  * H3.1: Stripe Card mount/confirm.
  * H3.2: Klarna + Affirm mount/confirm via existing Stripe Payment Element adapters.
@@ -32,6 +33,7 @@ import type {
  * H3.5: Apple Pay via Stripe Express Checkout Element (no session.confirm()).
  * H4.2: Headless Klarna/Affirm pending ownership markers.
  * H4.3: {@link HeadlessCheckoutSession.recoverReturn} via shared StripeRedirectRecoveryService.
+ * 1.3.0: US bank account (ACH) mount/confirm via {@link UsBankAccountAdapter}.
  */
 @Injectable({ providedIn: 'root' })
 export class EasyPaymentsHeadless {
@@ -42,6 +44,7 @@ export class EasyPaymentsHeadless {
   private readonly stripeCard = inject(StripeCardAdapter);
   private readonly klarna = inject(KlarnaAdapter);
   private readonly affirm = inject(AffirmAdapter);
+  private readonly usBankAccount = inject(UsBankAccountAdapter);
   private readonly paypal = inject(PayPalAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
@@ -85,6 +88,7 @@ export class EasyPaymentsHeadless {
         stripeCard: this.stripeCard,
         klarna: this.klarna,
         affirm: this.affirm,
+        usBankAccount: this.usBankAccount,
         paypal: this.paypal,
         googlePay: this.googlePay,
         applePay: this.applePay,
@@ -131,14 +135,6 @@ function normalizeSessionMethods(methods: PaymentMethod[] | undefined): PaymentM
   const normalized: PaymentMethod[] = [];
 
   for (const method of methods) {
-    if (method === 'us-bank-account') {
-      throw new PaymentError({
-        code: 'CONFIG_INVALID',
-        message:
-          'US bank account (ACH) is available in Full Checkout only. It is not supported by Headless in this release.',
-        method: 'us-bank-account',
-      });
-    }
     if (typeof method !== 'string' || !isKnownPaymentMethod(method)) {
       throw new PaymentError({
         code: 'CONFIG_INVALID',
