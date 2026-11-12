@@ -32,8 +32,9 @@ Start here when wiring real providers:
 3. [Google Pay](./providers/google-pay.md) — official button + Stripe confirm  
 4. [Klarna](./providers/klarna.md) — Stripe-backed BNPL  
 5. [Affirm](./providers/affirm.md) — Stripe-backed BNPL  
-6. [US bank account (ACH)](./providers/us-bank-account.md) — Full Checkout opt-in Direct Debit
-7. [PayPal](./providers/paypal.md) — JS SDK + Orders API
+6. [US bank account (ACH)](./providers/us-bank-account.md) — opt-in Direct Debit (FC / Buttons / Headless)
+7. [Cash App Pay](./providers/cash-app-pay.md) — opt-in Stripe wallet (FC / Buttons / Headless)
+8. [PayPal](./providers/paypal.md) — JS SDK + Orders API
 
 ## Screenshots
 

@@ -55,6 +55,7 @@ import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.c
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
+import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
 import { PaymentMethodSelectorComponent } from '../checkout/payment-method-selector.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -92,6 +93,7 @@ import {
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
+    CashAppPayPaymentComponent,
     CheckoutOutcomeComponent,
   ],
   templateUrl: './easy-payments.component.html',
@@ -159,7 +161,7 @@ export class EasyPaymentsComponent {
   readonly checkout = input<CheckoutOptions>();
   /**
    * Optional stable id for this checkout host on pages with several instances.
-   * Used to attribute Stripe Klarna/Affirm redirect returns after reload or reorder.
+   * Used to attribute Stripe Klarna/Affirm/Cash App Pay redirect returns after reload or reorder.
    * Omit on single-host pages. Values: 1–64 chars `[a-zA-Z0-9_.:-]`.
    */
   readonly checkoutInstanceId = input<string | null>(null);
@@ -350,6 +352,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'us-bank-account' && !entry.isMock),
   );
 
+  readonly hasRealCashAppPayMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'cash-app-pay' && !entry.isMock),
+  );
+
   readonly showMockPanel = computed(() => {
     if (!this.showCheckoutForm()) {
       return false;
@@ -377,6 +383,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'us-bank-account' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'cash-app-pay' && !entry.isMock) {
       return false;
     }
     return true;
@@ -433,6 +442,7 @@ export class EasyPaymentsComponent {
   readonly showKlarnaPanel = computed(() => this.hasRealKlarnaMethod());
   readonly showAffirmPanel = computed(() => this.hasRealAffirmMethod());
   readonly showUsBankAccountPanel = computed(() => this.hasRealUsBankAccountMethod());
+  readonly showCashAppPayPanel = computed(() => this.hasRealCashAppPayMethod());
 
   /**
    * Keep the active real-provider panel interactive while its own UI is needed
@@ -488,6 +498,13 @@ export class EasyPaymentsComponent {
       this.hasRealUsBankAccountMethod(),
   );
 
+  readonly cashAppPayPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'cash-app-pay' &&
+      this.hasRealCashAppPayMethod(),
+  );
+
   constructor() {
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
     // One listener per host, so concurrent checkouts each refresh their own tiles.
@@ -515,7 +532,7 @@ export class EasyPaymentsComponent {
       removeApplePayListener();
     });
 
-    // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm.
+    // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm/Cash App Pay.
     // Recovery is owned by exactly one host on the page (decided by the recovery
     // service), so Processing always resolves even if the panel has not mounted yet.
     if (typeof window !== 'undefined' && isStripeReturnAttempt()) {
@@ -785,7 +802,7 @@ export class EasyPaymentsComponent {
   }
 
   /**
-   * Library-owned Stripe BNPL redirect recovery (Klarna / Affirm). Always leaves
+   * Library-owned Stripe redirect recovery (Klarna / Affirm / Cash App Pay). Always leaves
    * processing for a terminal state (success / error / cancelled). Idempotent per page load.
    */
   private async recoverStripeReturn(method: StripeRedirectMethod): Promise<void> {
@@ -798,7 +815,9 @@ export class EasyPaymentsComponent {
     this.updateSelectedMethod(method);
     this.providerBusy.set(true);
 
-    const label = method === 'affirm' ? 'Affirm' : 'Klarna';
+    const label =
+      method === 'affirm' ? 'Affirm' : method === 'cash-app-pay' ? 'Cash App Pay' : 'Klarna';
+    const provider = PAYMENT_METHOD_PROVIDER_MAP[method];
 
     try {
       const result = await this.stripeRedirectRecovery.consumeReturn();
@@ -811,7 +830,7 @@ export class EasyPaymentsComponent {
             code: 'PAYMENT_FAILED',
             message: `${label} return could not be verified.`,
             method,
-            provider: method,
+            provider,
           }),
         );
         return;
@@ -827,7 +846,7 @@ export class EasyPaymentsComponent {
             code: 'PAYMENT_FAILED',
             message: result.message ?? `${label} payment failed.`,
             method,
-            provider: method,
+            provider,
           }),
         );
       }
@@ -835,12 +854,12 @@ export class EasyPaymentsComponent {
       if (this.destroyed) {
         return;
       }
-      const paymentError = normalizeError(err, { method, provider: method });
+      const paymentError = normalizeError(err, { method, provider });
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.handleCancelled({
           status: 'cancelled',
           method,
-          provider: method,
+          provider,
           message: paymentError.message,
         });
       } else {
@@ -989,6 +1008,38 @@ export class EasyPaymentsComponent {
 
   onUsBankAccountError(error: PaymentError): void {
     this.handlePaymentError(error);
+  }
+
+  onCashAppPaySuccess(result: PaymentResult): void {
+    // Parent owns redirect recovery; ignore duplicate panel success for the same load.
+    if (this.stripeRedirectRecovery.wasReturnConsumed() && this.terminalSuccessEmitted) {
+      return;
+    }
+    this.handleSuccess(result);
+  }
+
+  onCashAppPayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onCashAppPayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  /**
+   * Cash App Pay panel busy/returning signals (in-page confirm). Redirect recovery is
+   * owned by recoverStripeReturn() so Processing cannot hang without a panel.
+   */
+  onCashAppPayReturning(active: boolean): void {
+    if (active) {
+      this.updateSelectedMethod('cash-app-pay');
+      if (this.viewState() === 'checkout') {
+        this.viewState.set('processing');
+      }
+      this.providerBusy.set(true);
+      return;
+    }
+    this.providerBusy.set(false);
   }
 
   onAffirmReturning(active: boolean): void {
@@ -1140,7 +1191,8 @@ export class EasyPaymentsComponent {
       this.terminalSuccessEmitted &&
       (result.method === 'klarna' ||
         result.method === 'affirm' ||
-        result.method === 'us-bank-account')
+        result.method === 'us-bank-account' ||
+        result.method === 'cash-app-pay')
     ) {
       return;
     }
@@ -1150,7 +1202,8 @@ export class EasyPaymentsComponent {
     if (
       result.method === 'klarna' ||
       result.method === 'affirm' ||
-      result.method === 'us-bank-account'
+      result.method === 'us-bank-account' ||
+      result.method === 'cash-app-pay'
     ) {
       this.terminalSuccessEmitted = true;
     }

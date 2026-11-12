@@ -232,6 +232,29 @@
       }
     }
 
+    @if (showCashAppPayPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!cashAppPayPanelActive()"
+          [attr.aria-hidden]="!cashAppPayPanelActive()"
+          [inert]="!cashAppPayPanelActive()"
+        >
+          <easy-cash-app-pay-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onCashAppPaySuccess($event)"
+            (cancel)="onCashAppPayCancel($event)"
+            (error)="onCashAppPayError($event)"
+            (started)="onPaymentStarted('cash-app-pay')"
+            (busyChange)="onProviderBusy($event)"
+            (returning)="onCashAppPayReturning($event)"
+          />
+        </div>
+      }
+    }
+
     @if (showMockPanel()) {
       @if (selectedEntry(); as entry) {
         <div class="ep-checkout__panel">

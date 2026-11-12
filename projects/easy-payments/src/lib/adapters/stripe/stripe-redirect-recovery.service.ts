@@ -20,6 +20,7 @@ import {
   STRIPE_RETRIEVE_RETRY_ATTEMPTS,
   STRIPE_RETRIEVE_RETRY_DELAY_MS,
   type StripePendingReturn,
+  stripeRedirectProvider,
   type StripeRedirectMethod,
   type StripeReturnHostKind,
   type StripeReturnOrigin,
@@ -226,7 +227,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Shared Stripe redirect recovery for Klarna / Affirm (and future BNPL methods).
+ * Shared Stripe redirect recovery for Klarna / Affirm / Cash App Pay (and future BNPL methods).
  * Single source of truth so Easy Payments does not duplicate retrieve flows.
  */
 @Injectable({ providedIn: 'root' })
@@ -564,7 +565,7 @@ export class StripeRedirectRecoveryService {
           code: 'PAYMENT_FAILED',
           message: `${methodLabel(method)} payment was not completed.`,
           method,
-          provider: method,
+          provider: stripeRedirectProvider(method),
         });
       }
 
@@ -573,7 +574,7 @@ export class StripeRedirectRecoveryService {
           code: 'PAYMENT_FAILED',
           message: `${methodLabel(method)} return is missing payment details. Please try the payment again.`,
           method,
-          provider: method,
+          provider: stripeRedirectProvider(method),
         });
       }
 
@@ -640,7 +641,7 @@ export class StripeRedirectRecoveryService {
         code: 'PAYMENT_FAILED',
         message: `Missing payment_intent_client_secret after ${methodLabel(method)} return.`,
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
       });
     }
 
@@ -740,7 +741,7 @@ export class StripeRedirectRecoveryService {
         code: 'NETWORK_ERROR',
         message: `Unable to verify ${methodLabel(method)} payment status.`,
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
       })
     );
   }
@@ -755,7 +756,7 @@ export class StripeRedirectRecoveryService {
       return normalizePaymentResult({
         status: 'success',
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         transactionId: paymentIntent?.id,
         message: `${methodLabel(method)} payment completed successfully.`,
         metadata: {
@@ -770,7 +771,7 @@ export class StripeRedirectRecoveryService {
       return normalizePaymentResult({
         status: 'success',
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         transactionId: paymentIntent?.id,
         message: `${methodLabel(method)} payment is authorized and requires capture. Confirm capture and fulfillment on your backend — this is not proof of captured funds.`,
         metadata: {
@@ -785,7 +786,7 @@ export class StripeRedirectRecoveryService {
       return normalizePaymentResult({
         status: 'cancelled',
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         transactionId: paymentIntent?.id,
         message: `${methodLabel(method)} payment was cancelled.`,
         metadata: { gateway: 'stripe' },
@@ -797,7 +798,7 @@ export class StripeRedirectRecoveryService {
         code: 'PAYMENT_FAILED',
         message: `${methodLabel(method)} payment was not completed. Please try again.`,
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         originalError: paymentIntent,
       });
     }
@@ -807,7 +808,7 @@ export class StripeRedirectRecoveryService {
         code: 'AUTHENTICATION_REQUIRED',
         message: `${methodLabel(method)} payment still requires additional customer action.`,
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         originalError: paymentIntent,
       });
     }
@@ -816,7 +817,7 @@ export class StripeRedirectRecoveryService {
       return normalizePaymentResult({
         status: 'processing',
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
         transactionId: paymentIntent?.id,
         message: `${methodLabel(method)} payment is still processing. Do not retry — confirm the final status on your backend.`,
         metadata: { stripeStatus: status, gateway: 'stripe' },
@@ -827,7 +828,7 @@ export class StripeRedirectRecoveryService {
       code: 'PAYMENT_FAILED',
       message: `Unexpected PaymentIntent status: ${status ?? 'unknown'}.`,
       method,
-      provider: method,
+      provider: stripeRedirectProvider(method),
       originalError: paymentIntent,
     });
   }
@@ -889,7 +890,14 @@ function warnReturnDiagnostic(code: string): void {
 }
 
 function methodLabel(method: StripeRedirectMethod): string {
-  return method === 'affirm' ? 'Affirm' : 'Klarna';
+  switch (method) {
+    case 'affirm':
+      return 'Affirm';
+    case 'cash-app-pay':
+      return 'Cash App Pay';
+    default:
+      return 'Klarna';
+  }
 }
 
 function mapMethodError(method: StripeRedirectMethod, error: unknown): PaymentError {
@@ -898,7 +906,7 @@ function mapMethodError(method: StripeRedirectMethod, error: unknown): PaymentEr
     code: mapped.code,
     message: mapped.message,
     method,
-    provider: method,
+    provider: stripeRedirectProvider(method),
     originalError: mapped.originalError ?? error,
   });
 }

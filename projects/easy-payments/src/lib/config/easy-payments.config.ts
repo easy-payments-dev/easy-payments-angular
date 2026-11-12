@@ -70,6 +70,16 @@ export interface UsBankAccountProviderConfig {
   purchaseCountry?: string;
 }
 
+/**
+ * Cash App Pay via Stripe Payment Element (`cashapp` PaymentIntent).
+ * Opt in with `providers.cashAppPay: {}`.
+ * Requires Stripe publishableKey + backend.cashAppPayCreatePaymentUrl.
+ * US businesses, US customers, USD only, minimum $0.50. Stripe does not support
+ * Cash App Pay in the Express Checkout Element.
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ */
+export type CashAppPayProviderConfig = Record<string, never>;
+
 export interface EasyPaymentsBackendConfig {
   /**
    * Optional origin or origin + path prefix for relative backend endpoints.
@@ -102,6 +112,11 @@ export interface EasyPaymentsBackendConfig {
    */
   createUsBankAccountPaymentUrl?: string;
   /**
+   * Creates a Cash App Pay Stripe PaymentIntent (`cashapp` only, USD, min $0.50).
+   * Returns clientSecret. Required for real Cash App Pay.
+   */
+  cashAppPayCreatePaymentUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -116,6 +131,7 @@ export interface EasyPaymentsProviderConfig {
   klarna?: KlarnaProviderConfig;
   affirm?: AffirmProviderConfig;
   usBankAccount?: UsBankAccountProviderConfig;
+  cashAppPay?: CashAppPayProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -136,6 +152,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   klarna: 'Klarna',
   affirm: 'Affirm',
   usBankAccount: 'US bank account',
+  cashAppPay: 'Cash App Pay',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -147,6 +164,8 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
   affirm: 'configuration missing (requires Stripe publishableKey + affirmCreatePaymentUrl)',
   usBankAccount:
     'configuration missing (requires Stripe publishableKey + createUsBankAccountPaymentUrl)',
+  cashAppPay:
+    'configuration missing (requires Stripe publishableKey + cashAppPayCreatePaymentUrl)',
 };
 
 export type ProviderConfigStatus =

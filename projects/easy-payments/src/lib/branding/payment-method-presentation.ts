@@ -48,6 +48,15 @@ const AFFIRM_MARK_DARK =
   'https://cdn-assets.affirm.com/images/white_logo-transparent_bg.png';
 
 /**
+ * Official Cash App Pay rounded payment badge (green / color).
+ * Partner Assets lists the same embed for “Green” and “Green On Dark”.
+ * SVG includes native rx corners — do not add CSS border-radius.
+ * @see https://developers.cash.app/cash-app-pay-partner-api/guides/resources/cash-app-pay-assets
+ */
+const CASH_APP_PAY_BADGE_COLOR =
+  'https://static.afterpaycdn.com/en-US/integration/logo/icon/color.svg';
+
+/**
  * Build presentation for a payment method + theme.
  * Uses only provider-approved assets or intentional fallbacks.
  */
@@ -135,6 +144,18 @@ export function getPaymentMethodPresentation(
           'Generic bank-building icon via currentColor (decorative; tile keeps a visible label). No official ACH mark in this release.',
       };
 
+    case 'cash-app-pay':
+      return {
+        method,
+        label,
+        // Rounded badge is the official $ plate (no wordmark); tile keeps "Cash App Pay".
+        markIncludesName: false,
+        source: 'official-cdn',
+        markUrl: CASH_APP_PAY_BADGE_COLOR,
+        notes:
+          'Official Cash App Pay rounded green payment badge from Cash App Pay Partner Assets (static.afterpaycdn.com). Same icon/color.svg embed for light and dark (“Green” / “Green On Dark”). Badge is decorative beside the visible Cash App Pay label; native SVG rx provides rounded corners.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -153,6 +174,7 @@ export function listPaymentMethodPresentations(
     'klarna',
     'affirm',
     'us-bank-account',
+    'cash-app-pay',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

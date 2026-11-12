@@ -31,11 +31,12 @@ describe('mock adapters', () => {
     await factory.initializeAdapters();
 
     const adapters = registry.getAll();
-    expect(adapters.length).toBe(7);
+    expect(adapters.length).toBe(8);
     expect(adapters.every((adapter) => adapter.isMock)).toBeTrue();
     expect(adapters.map((adapter) => adapter.provider).sort()).toEqual([
       'affirm',
       'applePay',
+      'cashAppPay',
       'googlePay',
       'klarna',
       'paypal',

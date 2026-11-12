@@ -13,6 +13,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
 
   methodCard: 'Tarjeta',
   methodUsBankAccount: 'Cuenta bancaria de EE. UU.',
+  methodCashAppPay: 'Cash App Pay',
 
   orderTotal: 'Total del pedido',
   quantityPrefix: 'Cant.',
@@ -70,6 +71,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   klarnaPaymentRegionAria: 'Pago con Klarna',
   affirmPaymentRegionAria: 'Pago con Affirm',
   usBankAccountPaymentRegionAria: 'Pago con cuenta bancaria de EE. UU.',
+  cashAppPayPaymentRegionAria: 'Pago con Cash App Pay',
   demoWalletButtonAria: '{{method}}, modo demo',
 
   payWithCard: 'Pagar con tarjeta',
@@ -123,4 +125,9 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutUsBankAccount: 'Débito directo ACH seguro impulsado por Stripe',
   preparingUsBankAccount: 'Preparando la cuenta bancaria de EE. UU.…',
   usBankAccountFormAria: 'Formulario seguro de cuenta bancaria de EE. UU.',
+
+  payWithCashAppPay: 'Pagar con Cash App Pay',
+  secureCheckoutCashAppPay: 'Checkout seguro impulsado por Cash App Pay a través de Stripe',
+  preparingCashAppPay: 'Preparando Cash App Pay…',
+  cashAppPayFormAria: 'Formulario seguro de pago de Cash App Pay',
 };

@@ -8,6 +8,7 @@ import { isValidCheckoutInstanceId } from '../adapters/stripe/stripe-redirect-re
 import { EasyPaymentsConfigService } from '../config/easy-payments-config.service';
 import { StripeCardAdapter } from '../adapters/stripe/stripe-card.adapter';
 import { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
+import { CashAppPayAdapter } from '../adapters/cash-app-pay/cash-app-pay.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
@@ -45,6 +46,7 @@ export class EasyPaymentsHeadless {
   private readonly klarna = inject(KlarnaAdapter);
   private readonly affirm = inject(AffirmAdapter);
   private readonly usBankAccount = inject(UsBankAccountAdapter);
+  private readonly cashAppPay = inject(CashAppPayAdapter);
   private readonly paypal = inject(PayPalAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
@@ -89,6 +91,7 @@ export class EasyPaymentsHeadless {
         klarna: this.klarna,
         affirm: this.affirm,
         usBankAccount: this.usBankAccount,
+        cashAppPay: this.cashAppPay,
         paypal: this.paypal,
         googlePay: this.googlePay,
         applePay: this.applePay,

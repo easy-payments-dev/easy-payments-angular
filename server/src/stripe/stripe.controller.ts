@@ -3,6 +3,7 @@ import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateKlarnaPaymentIntentDto } from './dto/create-klarna-payment-intent.dto';
 import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent.dto';
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
+import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
 import { StripeService } from './stripe.service';
 
 @Controller('api/payments')
@@ -47,5 +48,15 @@ export class StripeController {
   @HttpCode(201)
   createUsBankAccountPaymentIntent(@Body() body: CreateUsBankAccountPaymentIntentDto) {
     return this.stripeService.createUsBankAccountPaymentIntent(body);
+  }
+
+  /**
+   * Cash App Pay via Stripe PaymentIntent:
+   * POST http://localhost:3000/api/payments/cash-app-pay/create
+   */
+  @Post('cash-app-pay/create')
+  @HttpCode(201)
+  createCashAppPayPaymentIntent(@Body() body: CreateCashAppPayPaymentIntentDto) {
+    return this.stripeService.createCashAppPayPaymentIntent(body);
   }
 }

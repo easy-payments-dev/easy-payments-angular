@@ -29,5 +29,6 @@ export const environment = {
   klarnaCreatePaymentUrl: 'http://localhost:3001/api/payments/klarna/create',
   affirmCreatePaymentUrl: 'http://localhost:3001/api/payments/affirm/create',
   createUsBankAccountPaymentUrl: 'http://localhost:3001/api/payments/us-bank-account/create',
+  cashAppPayCreatePaymentUrl: 'http://localhost:3001/api/payments/cash-app-pay/create',
   catalogProductUrl: 'http://localhost:3001/api/catalog/products',
 };

@@ -5,7 +5,8 @@ export type PaymentMethod =
   | 'klarna'
   | 'affirm'
   | 'card'
-  | 'us-bank-account';
+  | 'us-bank-account'
+  | 'cash-app-pay';
 
 export type PaymentProviderName =
   | 'stripe'
@@ -14,7 +15,8 @@ export type PaymentProviderName =
   | 'googlePay'
   | 'klarna'
   | 'affirm'
-  | 'usBankAccount';
+  | 'usBankAccount'
+  | 'cashAppPay';
 
 export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderName> = {
   'apple-pay': 'applePay',
@@ -24,6 +26,7 @@ export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderN
   affirm: 'affirm',
   card: 'stripe',
   'us-bank-account': 'usBankAccount',
+  'cash-app-pay': 'cashAppPay',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -34,4 +37,5 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   affirm: 'Affirm',
   card: 'Card',
   'us-bank-account': 'US bank account',
+  'cash-app-pay': 'Cash App Pay',
 };

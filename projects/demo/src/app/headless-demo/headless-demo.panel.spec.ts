@@ -80,6 +80,7 @@ describe('headless-demo-mount-policy', () => {
     expect(isHeadlessDemoStripeElementMethod('card')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('klarna')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('us-bank-account')).toBeTrue();
+    expect(isHeadlessDemoStripeElementMethod('cash-app-pay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('paypal')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('google-pay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('apple-pay')).toBeTrue();

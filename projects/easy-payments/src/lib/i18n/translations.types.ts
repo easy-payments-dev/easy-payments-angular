@@ -14,6 +14,7 @@ export interface EasyPaymentsTranslations {
 
   methodCard: string;
   methodUsBankAccount: string;
+  methodCashAppPay: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -76,6 +77,7 @@ export interface EasyPaymentsTranslations {
   klarnaPaymentRegionAria: string;
   affirmPaymentRegionAria: string;
   usBankAccountPaymentRegionAria: string;
+  cashAppPayPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -127,6 +129,11 @@ export interface EasyPaymentsTranslations {
   secureCheckoutUsBankAccount: string;
   preparingUsBankAccount: string;
   usBankAccountFormAria: string;
+
+  payWithCashAppPay: string;
+  secureCheckoutCashAppPay: string;
+  preparingCashAppPay: string;
+  cashAppPayFormAria: string;
 }
 
 /** Partial overrides supplied by the consuming app. */

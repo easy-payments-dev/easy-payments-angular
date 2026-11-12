@@ -111,7 +111,9 @@ export interface EasyPaymentButtonsSelectorLabels {
   affirm?: string;
   /** Override for the US bank account (ACH) selector label. */
   usBankAccount?: string;
+  /** Override for the Cash App Pay selector label. */
+  cashAppPay?: string;
 }
 
-/** Who renders the Card / Klarna / Affirm / ACH triggers. Wallets stay official SDK buttons. */
+/** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay triggers. Wallets stay official SDK buttons. */
 export type EasyPaymentButtonsSelectorVisibility = 'library' | 'merchant';

@@ -240,9 +240,56 @@ export interface CreateUsBankAccountPaymentResponse {
   sessionId?: string;
 }
 
+/**
+ * Minimal wire contract for Cash App Pay via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface CashAppPayCreatePaymentRequest {
+  provider: 'cashAppPay';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the Cash App Pay create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toCashAppPayCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): CashAppPayCreatePaymentRequest {
+  const body: CashAppPayCreatePaymentRequest = {
+    provider: 'cashAppPay',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Cash App Pay create (cashapp-only Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateCashAppPayPaymentResponse {
+  provider: 'cashAppPay';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
 export type CreatePaymentResponse =
   | CreateStripePaymentResponse
   | CreatePayPalOrderResponse
   | CreateKlarnaPaymentResponse
   | CreateAffirmPaymentResponse
-  | CreateUsBankAccountPaymentResponse;
+  | CreateUsBankAccountPaymentResponse
+  | CreateCashAppPayPaymentResponse;
