@@ -50,7 +50,8 @@
             slot.kind === 'klarna-selector' ||
             slot.kind === 'affirm-selector' ||
             slot.kind === 'us-bank-account-selector' ||
-            slot.kind === 'cash-app-pay-selector')
+            slot.kind === 'cash-app-pay-selector' ||
+            slot.kind === 'afterpay-selector')
         ) {
           <button
             type="button"
@@ -387,6 +388,44 @@
         [isMock]="true"
         [loading]="processingMethod() === 'cash-app-pay'"
         (pay)="onMockCashAppPayPay()"
+      />
+    </section>
+  }
+
+  @if (showAfterpayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-afterpay-panel"
+      [attr.aria-label]="msgs().afterpayPaymentRegionAria"
+    >
+      <easy-afterpay-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onAfterpayStarted()"
+        (busyChange)="onAfterpayBusy($event)"
+        (success)="onAfterpaySuccess($event)"
+        (cancel)="onAfterpayCancel($event)"
+        (error)="onAfterpayError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockAfterpayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-afterpay-mock-panel"
+      [attr.aria-label]="msgs().afterpayPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="afterpay"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'afterpay'"
+        (pay)="onMockAfterpayPay()"
       />
     </section>
   }

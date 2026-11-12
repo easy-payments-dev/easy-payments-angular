@@ -16,6 +16,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'card',
   'us-bank-account',
   'cash-app-pay',
+  'afterpay',
 ]);
 
 export function isKnownPaymentMethod(value: string): value is PaymentMethod {
@@ -40,6 +41,7 @@ export function interactionForMethod(
     case 'affirm':
     case 'us-bank-account':
     case 'cash-app-pay':
+    case 'afterpay':
       return 'confirm';
     default: {
       const _exhaustive: never = method;

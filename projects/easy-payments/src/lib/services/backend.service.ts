@@ -16,8 +16,10 @@ import { PaymentMethod, PaymentProviderName } from '../models';
 import {
   AffirmCreatePaymentRequest,
   CapturePayPalOrderResponse,
+  AfterpayCreatePaymentRequest,
   CashAppPayCreatePaymentRequest,
   CreateAffirmPaymentResponse,
+  CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
   CreatePaymentRequest,
@@ -28,6 +30,7 @@ import {
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
   toAffirmCreatePaymentRequest,
+  toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
@@ -367,6 +370,47 @@ export class BackendService {
     );
   }
 
+  /**
+   * Posts the Afterpay/Clearpay create-payment wire contract.
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createAfterpayPayment(
+    payload:
+      | AfterpayCreatePaymentRequest
+      | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateAfterpayPaymentResponse> {
+    const url = this.requireEndpoint(
+      'afterpayCreatePaymentUrl',
+      'Backend afterpayCreatePaymentUrl is not configured.',
+      'afterpay',
+      'afterpay',
+    );
+
+    const body = toAfterpayCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'afterpay', 'afterpay');
+    }
+
+    return this.postJson<CreateAfterpayPaymentResponse>(url, body, 'afterpay', 'afterpay', {
+      successMessage: 'Failed to create Afterpay payment on backend.',
+      networkMessage: 'A network error occurred while creating the Afterpay payment session.',
+      validate: (response) => {
+        if (
+          response?.provider !== 'afterpay' ||
+          typeof response.clientSecret !== 'string' ||
+          !response.clientSecret.trim()
+        ) {
+          throw new PaymentError({
+            code: 'BACKEND_ERROR',
+            message: 'Invalid Afterpay create-payment response from backend.',
+            method: 'afterpay',
+            provider: 'afterpay',
+          });
+        }
+      },
+    });
+  }
+
   private endpointUrl(
     key:
       | 'createPaymentUrl'
@@ -376,6 +420,7 @@ export class BackendService {
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
+      | 'afterpayCreatePaymentUrl'
       | 'confirmPaymentUrl',
   ): string | undefined {
     const backend = this.configService.getSnapshot().backend;
@@ -391,6 +436,7 @@ export class BackendService {
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
+      | 'afterpayCreatePaymentUrl'
       | 'confirmPaymentUrl',
     missingMessage: string,
     method: PaymentMethod,

@@ -56,6 +56,14 @@ const AFFIRM_MARK_DARK =
 const CASH_APP_PAY_BADGE_COLOR =
   'https://static.afterpaycdn.com/en-US/integration/logo/icon/color.svg';
 
+/** Official Afterpay lockup (includes wordmark) for light surfaces. */
+const AFTERPAY_MARK_LIGHT =
+  'https://static.afterpaycdn.com/en-US/integration/logo/lockup/new-color-black-32.svg';
+
+/** Official Afterpay lockup (includes wordmark) for dark surfaces. */
+const AFTERPAY_MARK_DARK =
+  'https://static.afterpaycdn.com/en-US/integration/logo/lockup/new-color-white-32.svg';
+
 /**
  * Build presentation for a payment method + theme.
  * Uses only provider-approved assets or intentional fallbacks.
@@ -156,6 +164,17 @@ export function getPaymentMethodPresentation(
           'Official Cash App Pay rounded green payment badge from Cash App Pay Partner Assets (static.afterpaycdn.com). Same icon/color.svg embed for light and dark (“Green” / “Green On Dark”). Badge is decorative beside the visible Cash App Pay label; native SVG rx provides rounded corners.',
       };
 
+    case 'afterpay':
+      return {
+        method,
+        label,
+        markIncludesName: true,
+        source: 'official-cdn',
+        markUrl: dark ? AFTERPAY_MARK_DARK : AFTERPAY_MARK_LIGHT,
+        notes:
+          'Official Afterpay lockup from Afterpay brand assets (static.afterpaycdn.com). Black lockup on light themes, white on dark. UK Clearpay naming is shown by Stripe Payment Element; selector uses Afterpay lockup.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -175,6 +194,7 @@ export function listPaymentMethodPresentations(
     'affirm',
     'us-bank-account',
     'cash-app-pay',
+    'afterpay',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

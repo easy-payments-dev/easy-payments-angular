@@ -14,6 +14,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   methodCard: 'Tarjeta',
   methodUsBankAccount: 'Cuenta bancaria de EE. UU.',
   methodCashAppPay: 'Cash App Pay',
+  methodAfterpay: 'Afterpay',
 
   orderTotal: 'Total del pedido',
   quantityPrefix: 'Cant.',
@@ -72,6 +73,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   affirmPaymentRegionAria: 'Pago con Affirm',
   usBankAccountPaymentRegionAria: 'Pago con cuenta bancaria de EE. UU.',
   cashAppPayPaymentRegionAria: 'Pago con Cash App Pay',
+  afterpayPaymentRegionAria: 'Pago con Afterpay',
   demoWalletButtonAria: '{{method}}, modo demo',
 
   payWithCard: 'Pagar con tarjeta',
@@ -130,4 +132,9 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutCashAppPay: 'Checkout seguro impulsado por Cash App Pay a través de Stripe',
   preparingCashAppPay: 'Preparando Cash App Pay…',
   cashAppPayFormAria: 'Formulario seguro de pago de Cash App Pay',
+
+  payWithAfterpay: 'Pagar con Afterpay',
+  secureCheckoutAfterpay: 'Checkout seguro impulsado por Afterpay a través de Stripe',
+  preparingAfterpay: 'Preparando Afterpay…',
+  afterpayFormAria: 'Formulario seguro de pago de Afterpay',
 };

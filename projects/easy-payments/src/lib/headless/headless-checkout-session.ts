@@ -21,6 +21,7 @@ import type { KlarnaAdapter } from '../adapters/klarna/klarna.adapter';
 import type { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import type { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
 import type { CashAppPayAdapter } from '../adapters/cash-app-pay/cash-app-pay.adapter';
+import type { AfterpayAdapter } from '../adapters/afterpay/afterpay.adapter';
 import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
 import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
@@ -80,7 +81,8 @@ type HeadlessStripeElementMethod =
   | 'klarna'
   | 'affirm'
   | 'us-bank-account'
-  | 'cash-app-pay';
+  | 'cash-app-pay'
+  | 'afterpay';
 
 /** All Headless-mountable methods. */
 type HeadlessMountableMethod =
@@ -95,7 +97,8 @@ function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeE
     method === 'klarna' ||
     method === 'affirm' ||
     method === 'us-bank-account' ||
-    method === 'cash-app-pay'
+    method === 'cash-app-pay' ||
+    method === 'afterpay'
   );
 }
 
@@ -150,6 +153,7 @@ export interface HeadlessCheckoutSessionDeps {
   affirm: AffirmAdapter;
   usBankAccount: UsBankAccountAdapter;
   cashAppPay: CashAppPayAdapter;
+  afterpay: AfterpayAdapter;
   paypal: PayPalAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
@@ -185,6 +189,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly affirm: AffirmAdapter;
   private readonly usBankAccount: UsBankAccountAdapter;
   private readonly cashAppPay: CashAppPayAdapter;
+  private readonly afterpay: AfterpayAdapter;
   private readonly paypal: PayPalAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
@@ -294,6 +299,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.affirm = deps.affirm;
     this.usBankAccount = deps.usBankAccount;
     this.cashAppPay = deps.cashAppPay;
+    this.afterpay = deps.afterpay;
     this.paypal = deps.paypal;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
@@ -1121,7 +1127,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'CONFIG_INVALID',
         message:
-          'confirm() requires selectedMethod() to be "card", "klarna", "affirm", "us-bank-account", or "cash-app-pay" with an active Stripe Payment Element mount.',
+          'confirm() requires selectedMethod() to be "card", "klarna", "affirm", "us-bank-account", "cash-app-pay", or "afterpay" with an active Stripe Payment Element mount.',
         ...selectedMeta,
       });
     }
@@ -1361,7 +1367,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           ? 'affirm'
           : this.methods.includes('cash-app-pay')
             ? 'cash-app-pay'
-            : 'klarna');
+            : this.methods.includes('afterpay')
+              ? 'afterpay'
+              : 'klarna');
     const recoverGen = ++this.confirmGeneration;
     this.terminalEmittedForConfirm = 0;
 
@@ -1477,6 +1485,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this.affirm.destroy(this.stripeOwnerId),
         this.usBankAccount.destroy(this.stripeOwnerId),
         this.cashAppPay.destroy(this.stripeOwnerId),
+        this.afterpay.destroy(this.stripeOwnerId),
         this.destroyPayPalButtonsOnly(),
         Promise.resolve(this.destroyGooglePayButtonOnly()),
         Promise.resolve(this.destroyApplePayEceOnly()),
@@ -2101,6 +2110,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       );
     }
 
+    if (method === 'afterpay') {
+      return this.afterpay.createPaymentSession(
+        this.product,
+        this.checkout,
+        this.stripeOwnerId,
+      );
+    }
+
     const snapshot = this.config.getSnapshot();
     if (method === 'klarna') {
       const configured = snapshot.providers?.klarna?.locale?.trim();
@@ -2201,6 +2218,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         return this.usBankAccount;
       case 'cash-app-pay':
         return this.cashAppPay;
+      case 'afterpay':
+        return this.afterpay;
     }
   }
 
@@ -2210,6 +2229,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.affirm.unmountPaymentElement(this.stripeOwnerId);
     this.usBankAccount.unmountPaymentElement(this.stripeOwnerId);
     this.cashAppPay.unmountPaymentElement(this.stripeOwnerId);
+    this.afterpay.unmountPaymentElement(this.stripeOwnerId);
   }
 
   private providerOf(method: HeadlessMountableMethod): PaymentProviderName {
@@ -2476,6 +2496,8 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'US bank account';
     case 'cash-app-pay':
       return 'Cash App Pay';
+    case 'afterpay':
+      return 'Afterpay';
     case 'paypal':
       return 'PayPal';
     case 'google-pay':

@@ -14,6 +14,7 @@ import { CreateKlarnaPaymentIntentDto } from './dto/create-klarna-payment-intent
 import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent.dto';
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
+import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
 
 export interface CreatePaymentIntentResult {
   provider: 'stripe';
@@ -44,6 +45,21 @@ export interface CreateCashAppPayPaymentIntentResult {
   clientSecret: string;
   paymentIntentId: string;
 }
+
+export interface CreateAfterpayPaymentIntentResult {
+  provider: 'afterpay';
+  clientSecret: string;
+  paymentIntentId: string;
+}
+
+/** Stripe Afterpay/Clearpay presentment limits (major units). */
+const AFTERPAY_LIMITS: Readonly<Record<string, { min: number; max: number }>> = {
+  USD: { min: 1, max: 4000 },
+  CAD: { min: 1, max: 2000 },
+  AUD: { min: 1, max: 4000 },
+  NZD: { min: 1, max: 4000 },
+  GBP: { min: 1, max: 1200 },
+};
 
 @Injectable()
 export class StripeService {
@@ -585,6 +601,111 @@ export class StripeService {
       }
 
       throw new InternalServerErrorException('Failed to create Cash App Pay PaymentIntent.');
+    }
+  }
+
+  /**
+   * Afterpay/Clearpay via Stripe PaymentIntent (payment_method_types: afterpay_clearpay).
+   * Trusted catalog pricing — never trusts a client amount.
+   * Domestic presentment: USD 1–4000, CAD 1–2000, AUD 1–4000, NZD 1–4000, GBP 1–1200.
+   */
+  async createAfterpayPaymentIntent(
+    dto: CreateAfterpayPaymentIntentDto,
+  ): Promise<CreateAfterpayPaymentIntentResult> {
+    if (!this.stripe) {
+      throw new ServiceUnavailableException(
+        'Stripe is not configured. Set STRIPE_SECRET_KEY=sk_test_... in server/.env',
+      );
+    }
+
+    const catalogProduct = getCatalogProduct(dto.productId);
+    if (!catalogProduct) {
+      throw new BadRequestException(
+        `Unknown productId "${dto.productId}". Use a catalog product (e.g. premium-plan).`,
+      );
+    }
+
+    const currency = dto.currency.toUpperCase();
+    if (currency !== catalogProduct.currency) {
+      throw new BadRequestException(
+        `Currency mismatch: catalog product uses ${catalogProduct.currency}, got ${dto.currency}.`,
+      );
+    }
+
+    const limits = AFTERPAY_LIMITS[currency];
+    if (!limits) {
+      throw new BadRequestException(
+        `Afterpay supports USD, CAD, AUD, NZD, and GBP presentment only (got ${currency}).`,
+      );
+    }
+
+    const unitAmount = catalogProduct.unitAmount;
+    const totalMajor = unitAmount * dto.quantity;
+    if (!Number.isFinite(totalMajor) || totalMajor < limits.min || totalMajor > limits.max) {
+      throw new BadRequestException(
+        `Afterpay ${currency} amount must be between ${limits.min} and ${limits.max} (got ${totalMajor}).`,
+      );
+    }
+
+    const unitAmountCents = Math.round(unitAmount * 100);
+    const totalAmount = unitAmountCents * dto.quantity;
+    if (totalAmount > 99_999_999) {
+      throw new BadRequestException('Total charge amount is too large.');
+    }
+
+    const description =
+      dto.description?.trim() ||
+      catalogProduct.name ||
+      `Easy Payments Afterpay: ${dto.productId}`;
+
+    const safeMetadata = mergePaymentIntentMetadata(dto.metadata, {
+      productId: dto.productId,
+      quantity: String(dto.quantity),
+      source: 'easy-payments-demo',
+      paymentMethod: 'afterpay',
+      trustedUnitAmount: String(catalogProduct.unitAmount),
+    });
+
+    try {
+      const intent = await this.stripe.paymentIntents.create({
+        amount: totalAmount,
+        currency: catalogProduct.currency.toLowerCase(),
+        description,
+        metadata: safeMetadata,
+        // Afterpay/Clearpay-only PaymentIntent — keeps Card / Klarna / Affirm / ACH / Cash App isolated.
+        payment_method_types: ['afterpay_clearpay'],
+      });
+
+      if (!intent.client_secret) {
+        throw new InternalServerErrorException('Stripe did not return a client_secret.');
+      }
+
+      return {
+        provider: 'afterpay',
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      const stripeMessage =
+        error instanceof Stripe.errors.StripeError
+          ? error.message
+          : 'Failed to create Afterpay PaymentIntent.';
+
+      this.logger.error(`Afterpay PaymentIntent creation failed: ${stripeMessage}`);
+
+      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+        throw new BadRequestException(stripeMessage);
+      }
+
+      throw new InternalServerErrorException('Failed to create Afterpay PaymentIntent.');
     }
   }
 }

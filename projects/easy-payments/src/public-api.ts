@@ -27,6 +27,7 @@ export { EasyPaymentsConfigService } from './lib/config/easy-payments-config.ser
 export type {
   AffirmProviderConfig,
   ApplePayProviderConfig,
+  AfterpayProviderConfig,
   CashAppPayProviderConfig,
   EasyPaymentsBackendConfig,
   EasyPaymentsConfig,
@@ -80,9 +81,11 @@ export {
 } from './lib/layout/checkout-layout';
 export type {
   AffirmCreatePaymentRequest,
+  AfterpayCreatePaymentRequest,
   CapturePayPalOrderResponse,
   CashAppPayCreatePaymentRequest,
   CreateAffirmPaymentResponse,
+  CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
   CreatePaymentRequest,
@@ -96,6 +99,7 @@ export type {
 } from './lib/models/create-payment.model';
 export {
   toAffirmCreatePaymentRequest,
+  toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,

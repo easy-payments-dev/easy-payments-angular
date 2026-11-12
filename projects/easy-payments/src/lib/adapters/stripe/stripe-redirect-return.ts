@@ -1,5 +1,5 @@
 /**
- * Generic Stripe BNPL / redirect return helpers (Klarna, Affirm, Cash App Pay, …).
+ * Generic Stripe BNPL / redirect return helpers (Klarna, Affirm, Cash App Pay, Afterpay, …).
  *
  * Stripe appends `payment_intent` and `payment_intent_client_secret` to return_url.
  * We stamp `ep_method=<method>` and a light sessionStorage marker (no secrets)
@@ -7,13 +7,13 @@
  *
  * Host kinds:
  * - `checkout` / `buttons` — Full Checkout and Buttons Only (existing)
- * - `headless` — Headless Klarna/Affirm/Cash App Pay (H4.2 ownership; public recovery is H4.3)
+ * - `headless` — Headless Klarna/Affirm/Cash App Pay/Afterpay (H4.2 ownership; public recovery is H4.3)
  */
 
 import { PaymentError } from '../../errors/payment-error';
 import type { PaymentMethod, PaymentProviderName } from '../../models';
 
-export type StripeRedirectMethod = 'klarna' | 'affirm' | 'cash-app-pay';
+export type StripeRedirectMethod = 'klarna' | 'affirm' | 'cash-app-pay' | 'afterpay';
 
 /** Provider name for a Stripe redirect method (`cash-app-pay` → `cashAppPay`). */
 export function stripeRedirectProvider(method: StripeRedirectMethod): PaymentProviderName {
@@ -101,7 +101,12 @@ function currentSearch(search?: string): string {
 }
 
 function isRedirectMethod(value: string | null | undefined): value is StripeRedirectMethod {
-  return value === 'klarna' || value === 'affirm' || value === 'cash-app-pay';
+  return (
+    value === 'klarna' ||
+    value === 'affirm' ||
+    value === 'cash-app-pay' ||
+    value === 'afterpay'
+  );
 }
 
 function isHostKind(value: unknown): value is StripeReturnHostKind {

@@ -56,6 +56,7 @@ import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.compon
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
+import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
 import { PaymentMethodSelectorComponent } from '../checkout/payment-method-selector.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -94,6 +95,7 @@ import {
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
+    AfterpayPaymentComponent,
     CheckoutOutcomeComponent,
   ],
   templateUrl: './easy-payments.component.html',
@@ -356,6 +358,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'cash-app-pay' && !entry.isMock),
   );
 
+  readonly hasRealAfterpayMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'afterpay' && !entry.isMock),
+  );
+
   readonly showMockPanel = computed(() => {
     if (!this.showCheckoutForm()) {
       return false;
@@ -386,6 +392,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'cash-app-pay' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'afterpay' && !entry.isMock) {
       return false;
     }
     return true;
@@ -443,6 +452,7 @@ export class EasyPaymentsComponent {
   readonly showAffirmPanel = computed(() => this.hasRealAffirmMethod());
   readonly showUsBankAccountPanel = computed(() => this.hasRealUsBankAccountMethod());
   readonly showCashAppPayPanel = computed(() => this.hasRealCashAppPayMethod());
+  readonly showAfterpayPanel = computed(() => this.hasRealAfterpayMethod());
 
   /**
    * Keep the active real-provider panel interactive while its own UI is needed
@@ -503,6 +513,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'cash-app-pay' &&
       this.hasRealCashAppPayMethod(),
+  );
+
+  readonly afterpayPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'afterpay' &&
+      this.hasRealAfterpayMethod(),
   );
 
   constructor() {
@@ -802,7 +819,7 @@ export class EasyPaymentsComponent {
   }
 
   /**
-   * Library-owned Stripe redirect recovery (Klarna / Affirm / Cash App Pay). Always leaves
+   * Library-owned Stripe redirect recovery (Klarna / Affirm / Cash App Pay / Afterpay). Always leaves
    * processing for a terminal state (success / error / cancelled). Idempotent per page load.
    */
   private async recoverStripeReturn(method: StripeRedirectMethod): Promise<void> {
@@ -816,7 +833,13 @@ export class EasyPaymentsComponent {
     this.providerBusy.set(true);
 
     const label =
-      method === 'affirm' ? 'Affirm' : method === 'cash-app-pay' ? 'Cash App Pay' : 'Klarna';
+      method === 'affirm'
+        ? 'Affirm'
+        : method === 'cash-app-pay'
+          ? 'Cash App Pay'
+          : method === 'afterpay'
+            ? 'Afterpay'
+            : 'Klarna';
     const provider = PAYMENT_METHOD_PROVIDER_MAP[method];
 
     try {
@@ -1042,6 +1065,37 @@ export class EasyPaymentsComponent {
     this.providerBusy.set(false);
   }
 
+  onAfterpaySuccess(result: PaymentResult): void {
+    if (this.stripeRedirectRecovery.wasReturnConsumed() && this.terminalSuccessEmitted) {
+      return;
+    }
+    this.handleSuccess(result);
+  }
+
+  onAfterpayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAfterpayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  /**
+   * Afterpay panel busy/returning signals (in-page confirm). Redirect recovery is
+   * owned by recoverStripeReturn() so Processing cannot hang without a panel.
+   */
+  onAfterpayReturning(active: boolean): void {
+    if (active) {
+      this.updateSelectedMethod('afterpay');
+      if (this.viewState() === 'checkout') {
+        this.viewState.set('processing');
+      }
+      this.providerBusy.set(true);
+      return;
+    }
+    this.providerBusy.set(false);
+  }
+
   onAffirmReturning(active: boolean): void {
     if (active) {
       this.updateSelectedMethod('affirm');
@@ -1192,7 +1246,8 @@ export class EasyPaymentsComponent {
       (result.method === 'klarna' ||
         result.method === 'affirm' ||
         result.method === 'us-bank-account' ||
-        result.method === 'cash-app-pay')
+        result.method === 'cash-app-pay' ||
+        result.method === 'afterpay')
     ) {
       return;
     }
@@ -1203,7 +1258,8 @@ export class EasyPaymentsComponent {
       result.method === 'klarna' ||
       result.method === 'affirm' ||
       result.method === 'us-bank-account' ||
-      result.method === 'cash-app-pay'
+      result.method === 'cash-app-pay' ||
+      result.method === 'afterpay'
     ) {
       this.terminalSuccessEmitted = true;
     }

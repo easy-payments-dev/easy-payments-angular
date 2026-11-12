@@ -255,6 +255,29 @@
       }
     }
 
+    @if (showAfterpayPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!afterpayPanelActive()"
+          [attr.aria-hidden]="!afterpayPanelActive()"
+          [inert]="!afterpayPanelActive()"
+        >
+          <easy-afterpay-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onAfterpaySuccess($event)"
+            (cancel)="onAfterpayCancel($event)"
+            (error)="onAfterpayError($event)"
+            (started)="onPaymentStarted('afterpay')"
+            (busyChange)="onProviderBusy($event)"
+            (returning)="onAfterpayReturning($event)"
+          />
+        </div>
+      }
+    }
+
     @if (showMockPanel()) {
       @if (selectedEntry(); as entry) {
         <div class="ep-checkout__panel">

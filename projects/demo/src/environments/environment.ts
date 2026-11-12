@@ -30,5 +30,6 @@ export const environment = {
   affirmCreatePaymentUrl: 'http://localhost:3001/api/payments/affirm/create',
   createUsBankAccountPaymentUrl: 'http://localhost:3001/api/payments/us-bank-account/create',
   cashAppPayCreatePaymentUrl: 'http://localhost:3001/api/payments/cash-app-pay/create',
+  afterpayCreatePaymentUrl: 'http://localhost:3001/api/payments/afterpay/create',
   catalogProductUrl: 'http://localhost:3001/api/catalog/products',
 };

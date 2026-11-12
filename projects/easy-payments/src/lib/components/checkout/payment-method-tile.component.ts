@@ -223,6 +223,9 @@ export class PaymentMethodTileComponent {
     if (method === 'cash-app-pay') {
       return this.msgs().methodCashAppPay;
     }
+    if (method === 'afterpay') {
+      return this.msgs().methodAfterpay;
+    }
     return this.presentation().label;
   });
 
@@ -235,7 +238,9 @@ export class PaymentMethodTileComponent {
           ? this.msgs().methodUsBankAccount
           : method === 'cash-app-pay'
             ? this.msgs().methodCashAppPay
-            : PAYMENT_METHOD_LABELS[method];
+            : method === 'afterpay'
+              ? this.msgs().methodAfterpay
+              : PAYMENT_METHOD_LABELS[method];
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;

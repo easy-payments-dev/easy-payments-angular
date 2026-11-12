@@ -44,6 +44,7 @@ const STRIPE_DEPENDENT_METHODS = new Set<PaymentMethod>([
   'affirm',
   'us-bank-account',
   'cash-app-pay',
+  'afterpay',
 ]);
 
 @Injectable({ providedIn: 'root' })

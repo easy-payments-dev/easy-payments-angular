@@ -74,6 +74,28 @@ describe('payment method presentation', () => {
     expect(dark.markUrl).toBe(light.markUrl);
   });
 
+  it('uses official Afterpay lockups with light/dark variants', () => {
+    const light = getPaymentMethodPresentation('afterpay', 'light');
+    const dark = getPaymentMethodPresentation('afterpay', 'dark');
+    expect(light.source).toBe('official-cdn');
+    expect(light.markIncludesName).toBeTrue();
+    expect(light.label).toBe('Afterpay');
+    expect(light.markUrl).toContain('lockup/new-color-black-32.svg');
+    expect(dark.markUrl).toContain('lockup/new-color-white-32.svg');
+    expect(dark.markUrl).not.toBe(light.markUrl);
+  });
+
+  it('uses official Afterpay lockups with light/dark variants', () => {
+    const light = getPaymentMethodPresentation('afterpay', 'light');
+    const dark = getPaymentMethodPresentation('afterpay', 'dark');
+    expect(light.source).toBe('official-cdn');
+    expect(light.markIncludesName).toBeTrue();
+    expect(light.label).toBe('Afterpay');
+    expect(light.markUrl).toContain('lockup/new-color-black-32.svg');
+    expect(dark.markUrl).toContain('lockup/new-color-white-32.svg');
+    expect(dark.markUrl).not.toBe(light.markUrl);
+  });
+
   it('lists presentations for every supported method', () => {
     const list = listPaymentMethodPresentations('light');
     expect(list.map((entry) => entry.method)).toEqual([
@@ -85,6 +107,7 @@ describe('payment method presentation', () => {
       'affirm',
       'us-bank-account',
       'cash-app-pay',
+      'afterpay',
     ]);
   });
 });
