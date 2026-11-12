@@ -1,7 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 import { PaymentMethod } from '../../models';
 
-export type MockPaymentOutcome = 'success' | 'cancelled' | 'failed';
+/**
+ * Demo outcomes for mock adapters.
+ * `processing` is opt-in (ACH-style pending). Existing demos that never call
+ * `setOutcome('processing')` keep success / cancelled / failed behavior.
+ */
+export type MockPaymentOutcome = 'success' | 'cancelled' | 'failed' | 'processing';
 
 /**
  * Controls mock/demo payment behavior.

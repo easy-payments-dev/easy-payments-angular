@@ -79,6 +79,7 @@ describe('headless-demo-mount-policy', () => {
   it('classifies Stripe element vs official-button methods', () => {
     expect(isHeadlessDemoStripeElementMethod('card')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('klarna')).toBeTrue();
+    expect(isHeadlessDemoStripeElementMethod('us-bank-account')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('paypal')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('google-pay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('apple-pay')).toBeTrue();
@@ -827,7 +828,7 @@ describe('HeadlessDemoPanel', () => {
   });
 
   it('exposes accessible names for pay and unavailable method reasons', async () => {
-    const fixture = await createPanel();
+    const fixture = await createPanel({ locale: 'en' });
     availableMethods.set([
       methodStatus('card'),
       methodStatus('google-pay', 'unavailable', false, {
@@ -849,7 +850,39 @@ describe('HeadlessDemoPanel', () => {
     const pay = (fixture.nativeElement as HTMLElement).querySelector(
       '[data-testid="headless-demo-pay"]',
     );
-    expect(pay?.textContent).toContain('Pay with card');
+    expect(pay?.textContent?.trim()).toBe('Pay $99.00');
     expect(pay?.hasAttribute('disabled')).toBeFalse();
+  });
+
+  it('labels Card and US bank account confirm with Pay {amount}', async () => {
+    const fixture = await createPanel({ locale: 'en' });
+    availableMethods.set([methodStatus('card'), methodStatus('us-bank-account')]);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.onSelectMethod('card');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('[data-testid="headless-demo-pay"]')
+        ?.textContent?.trim(),
+    ).toBe('Pay $99.00');
+
+    await fixture.componentInstance.onSelectMethod('us-bank-account');
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('[data-testid="headless-demo-pay"]')
+        ?.textContent?.trim(),
+    ).toBe('Pay $99.00');
+
+    expect(fixture.componentInstance.elementConfirmPayLabel()).toBe('Pay $99.00');
+    fixture.componentRef.setInput('product', {
+      ...PRODUCT,
+      amount: 25,
+      quantity: 2,
+      currency: 'USD',
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.elementConfirmPayLabel()).toBe('Pay $50.00');
   });
 });

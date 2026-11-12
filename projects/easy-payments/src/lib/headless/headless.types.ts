@@ -120,9 +120,10 @@ export interface HeadlessCheckoutEvents {
 /**
  * Public Headless Checkout session.
  *
- * Supports Card / Klarna / Affirm (Payment Element + `confirm()`), PayPal Buttons,
- * Google Pay, and Apple Pay Express Checkout. Klarna/Affirm leave-page returns use
- * {@link HeadlessCheckoutSession.recoverReturn} with a stable `checkoutInstanceId`.
+ * Supports Card / Klarna / Affirm / US bank account (Payment Element + `confirm()`),
+ * PayPal Buttons, Google Pay, and Apple Pay Express Checkout. Klarna/Affirm leave-page
+ * returns use {@link HeadlessCheckoutSession.recoverReturn} with a stable
+ * `checkoutInstanceId`. ACH returns recover via retrievePaymentIntent only.
  */
 export interface HeadlessCheckoutSession {
   readonly id: string;
@@ -142,19 +143,21 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * Supports `card`, `klarna`, `affirm`, `paypal`, `google-pay`, and `apple-pay`.
+   * Supports `card`, `klarna`, `affirm`, `us-bank-account`, `paypal`, `google-pay`, and `apple-pay`.
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 
   /**
-   * Confirm the selected Stripe method (`card` | `klarna` | `affirm`) with an active mount.
-   * Rejects for PayPal, Google Pay, and Apple Pay — their official controls own the payment gesture.
+   * Confirm the selected Stripe method (`card` | `klarna` | `affirm` | `us-bank-account`)
+   * with an active mount. Rejects for PayPal, Google Pay, and Apple Pay — their official
+   * controls own the payment gesture.
    */
   confirm(): Promise<void>;
 
   /**
    * Recover a Klarna/Affirm Stripe redirect return for this session's stable
-   * `checkoutInstanceId` via the shared recovery service (no remount / no reconfirm).
+   * `checkoutInstanceId` via the shared recovery service (no remount / no reconfirm),
+   * or an ACH return via retrievePaymentIntent only.
    *
    * @returns Normalized {@link PaymentResult} when this session owns the return;
    * `null` when there is no applicable return for this session (unrelated / absent).

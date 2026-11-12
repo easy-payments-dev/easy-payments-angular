@@ -50,6 +50,17 @@ describe('payment method presentation', () => {
     expect(dark.markUrl).not.toBe(light.markUrl);
   });
 
+  it('uses a generic bank-building icon for US bank account (not a card mark)', () => {
+    const ach = getPaymentMethodPresentation('us-bank-account', 'light');
+    const achDark = getPaymentMethodPresentation('us-bank-account', 'dark');
+    expect(ach.source).toBe('generic');
+    expect(ach.markUrl).toBeNull();
+    expect(ach.markIncludesName).toBeFalse();
+    expect(ach.label).toBe('US bank account');
+    expect(achDark.source).toBe('generic');
+    expect(achDark.markUrl).toBeNull();
+  });
+
   it('lists presentations for every supported method', () => {
     const list = listPaymentMethodPresentations('light');
     expect(list.map((entry) => entry.method)).toEqual([
@@ -59,6 +70,7 @@ describe('payment method presentation', () => {
       'paypal',
       'klarna',
       'affirm',
+      'us-bank-account',
     ]);
   });
 });

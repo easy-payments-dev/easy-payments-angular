@@ -43,7 +43,7 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
         <easy-payment-method-icon [method]="method()" [theme]="theme()" />
       </span>
       @if (showVisibleLabel()) {
-        <span class="ep-tile__label">{{ presentation().label }}</span>
+        <span class="ep-tile__label">{{ visibleLabel() }}</span>
       } @else {
         <!-- Reserve label row so mark-only tiles align with Card (icon + label). -->
         <span class="ep-tile__label ep-tile__label--spacer" aria-hidden="true"></span>
@@ -211,9 +211,26 @@ export class PaymentMethodTileComponent {
     return !p.markIncludesName;
   });
 
+  /** Localized label for generic methods; brand marks keep presentation.label. */
+  readonly visibleLabel = computed(() => {
+    const method = this.method();
+    if (method === 'card') {
+      return this.msgs().methodCard;
+    }
+    if (method === 'us-bank-account') {
+      return this.msgs().methodUsBankAccount;
+    }
+    return this.presentation().label;
+  });
+
   ariaLabel(): string {
     const method = this.method();
-    const base = method === 'card' ? this.msgs().methodCard : PAYMENT_METHOD_LABELS[method];
+    const base =
+      method === 'card'
+        ? this.msgs().methodCard
+        : method === 'us-bank-account'
+          ? this.msgs().methodUsBankAccount
+          : PAYMENT_METHOD_LABELS[method];
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;

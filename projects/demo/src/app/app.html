@@ -1413,7 +1413,7 @@
             <h3 class="subheading">Next mock payment</h3>
             <fieldset class="choice-group">
               <legend class="visually-hidden">Mock payment outcome</legend>
-              @for (option of ['success', 'cancelled', 'failed']; track option) {
+              @for (option of ['success', 'cancelled', 'failed', 'processing']; track option) {
                 <label class="choice">
                   <input
                     type="radio"
@@ -1516,6 +1516,7 @@
               (success)="onPaymentSuccess($event)"
               (cancel)="onPaymentCancel($event)"
               (error)="onPaymentError($event)"
+              (pending)="onPaymentPending($event)"
               (methodChange)="onPaymentMethodChange($event)"
               (successContinue)="onSuccessContinue($event)"
             />

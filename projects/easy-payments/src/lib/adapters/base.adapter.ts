@@ -69,6 +69,22 @@ export abstract class BaseMockAdapter implements PaymentProviderAdapter {
       });
     }
 
+    if (outcome === 'processing') {
+      return normalizePaymentResult({
+        status: 'processing',
+        method: request.method,
+        provider: this.provider,
+        transactionId: `mock_${this.provider}_${Date.now()}`,
+        message: `[DEMO] Mock ${this.method} payment is still processing. Do not treat this as success — confirm the final status on your backend. ${demoNotice}`,
+        metadata: {
+          mock: true,
+          productId: request.context.product.id,
+          amount: request.context.product.amount,
+          currency: request.context.product.currency,
+        },
+      });
+    }
+
     return normalizePaymentResult({
       status: 'success',
       method: request.method,

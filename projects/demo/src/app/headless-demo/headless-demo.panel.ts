@@ -16,7 +16,10 @@ import {
   EasyPaymentsHeadless,
   PAYMENT_METHOD_LABELS,
   PaymentError,
+  interpolate,
   isAnyStripeBnplReturnAttempt,
+  resolveEffectiveLocale,
+  resolveMessages,
   type EasyPaymentsLocale,
   type EasyPaymentsTranslationOverrides,
   type HeadlessCheckoutSession,
@@ -27,6 +30,7 @@ import {
   type PaymentResult,
   type PaymentTheme,
 } from '@easy-payments/angular';
+import { formatMoney } from '../../../../easy-payments/src/lib/utils/format-money';
 import { DEMO_HEADLESS_CHECKOUT_INSTANCE_ID } from './demo-headless-checkout-id';
 import {
   isHeadlessDemoOfficialButtonMethod,
@@ -113,6 +117,19 @@ export class HeadlessDemoPanel {
     const quantity = product.quantity ?? 1;
     const total = Number(product.amount) * (Number.isFinite(quantity) ? quantity : 1);
     return `${total.toFixed(2)} ${product.currency}`;
+  });
+
+  /** Card / US bank account confirm CTA — `Pay $99.00` style via library formatter. */
+  readonly elementConfirmPayLabel = computed(() => {
+    const product = this.product();
+    const locale = resolveEffectiveLocale(this.locale());
+    const amount = formatMoney(
+      product.amount,
+      product.currency,
+      product.quantity ?? 1,
+      locale,
+    );
+    return interpolate(resolveMessages(locale, this.translations()).payAmount, { amount });
   });
 
   readonly paymentLocked = computed(() => {

@@ -12,6 +12,7 @@ import { mergePaymentIntentMetadata } from '../metadata/merchant-metadata';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateKlarnaPaymentIntentDto } from './dto/create-klarna-payment-intent.dto';
 import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent.dto';
+import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 
 export interface CreatePaymentIntentResult {
   provider: 'stripe';
@@ -27,6 +28,12 @@ export interface CreateKlarnaPaymentIntentResult {
 
 export interface CreateAffirmPaymentIntentResult {
   provider: 'affirm';
+  clientSecret: string;
+  paymentIntentId: string;
+}
+
+export interface CreateUsBankAccountPaymentIntentResult {
+  provider: 'usBankAccount';
   clientSecret: string;
   paymentIntentId: string;
 }
@@ -363,6 +370,114 @@ export class StripeService {
       }
 
       throw new InternalServerErrorException('Failed to create Affirm PaymentIntent.');
+    }
+  }
+
+  /**
+   * ACH Direct Debit (US bank account) via Stripe PaymentIntent.
+   * Trusted catalog pricing — never trusts a client amount.
+   * USD presentment only for this demo milestone.
+   */
+  async createUsBankAccountPaymentIntent(
+    dto: CreateUsBankAccountPaymentIntentDto,
+  ): Promise<CreateUsBankAccountPaymentIntentResult> {
+    if (!this.stripe) {
+      throw new ServiceUnavailableException(
+        'Stripe is not configured. Set STRIPE_SECRET_KEY=sk_test_... in server/.env',
+      );
+    }
+
+    const catalogProduct = getCatalogProduct(dto.productId);
+    if (!catalogProduct) {
+      throw new BadRequestException(
+        `Unknown productId "${dto.productId}". Use a catalog product (e.g. premium-plan).`,
+      );
+    }
+
+    const currency = dto.currency.toUpperCase();
+    if (currency !== catalogProduct.currency) {
+      throw new BadRequestException(
+        `Currency mismatch: catalog product uses ${catalogProduct.currency}, got ${dto.currency}.`,
+      );
+    }
+
+    if (currency !== 'USD') {
+      throw new BadRequestException(
+        `US bank account (ACH) supports USD presentment in this demo (got ${currency}).`,
+      );
+    }
+
+    const unitAmountCents = Math.round(catalogProduct.unitAmount * 100);
+    if (!Number.isFinite(unitAmountCents) || unitAmountCents < 50) {
+      throw new BadRequestException('Catalog amount is too small for Stripe (minimum ~0.50).');
+    }
+
+    const totalAmount = unitAmountCents * dto.quantity;
+    if (totalAmount > 99_999_999) {
+      throw new BadRequestException('Total charge amount is too large.');
+    }
+
+    const description =
+      dto.description?.trim() ||
+      catalogProduct.name ||
+      `Easy Payments US bank account: ${dto.productId}`;
+
+    const safeMetadata = mergePaymentIntentMetadata(dto.metadata, {
+      productId: dto.productId,
+      quantity: String(dto.quantity),
+      source: 'easy-payments-demo',
+      paymentMethod: 'us-bank-account',
+      trustedUnitAmount: String(catalogProduct.unitAmount),
+    });
+
+    try {
+      const intent = await this.stripe.paymentIntents.create({
+        amount: totalAmount,
+        currency: catalogProduct.currency.toLowerCase(),
+        description,
+        metadata: safeMetadata,
+        // ACH-only PaymentIntent — keeps Card / Klarna / Affirm flows isolated.
+        payment_method_types: ['us_bank_account'],
+        payment_method_options: {
+          us_bank_account: {
+            verification_method: 'automatic',
+            financial_connections: {
+              permissions: ['payment_method'],
+            },
+          },
+        },
+      });
+
+      if (!intent.client_secret) {
+        throw new InternalServerErrorException('Stripe did not return a client_secret.');
+      }
+
+      return {
+        provider: 'usBankAccount',
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      const stripeMessage =
+        error instanceof Stripe.errors.StripeError
+          ? error.message
+          : 'Failed to create US bank account PaymentIntent.';
+
+      this.logger.error(`US bank account PaymentIntent creation failed: ${stripeMessage}`);
+
+      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+        throw new BadRequestException(stripeMessage);
+      }
+
+      throw new InternalServerErrorException('Failed to create US bank account PaymentIntent.');
     }
   }
 }

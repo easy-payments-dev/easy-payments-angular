@@ -28,5 +28,6 @@ export const environment = {
   paypalCaptureOrderUrl: 'http://localhost:3001/api/payments/paypal/capture',
   klarnaCreatePaymentUrl: 'http://localhost:3001/api/payments/klarna/create',
   affirmCreatePaymentUrl: 'http://localhost:3001/api/payments/affirm/create',
+  createUsBankAccountPaymentUrl: 'http://localhost:3001/api/payments/us-bank-account/create',
   catalogProductUrl: 'http://localhost:3001/api/catalog/products',
 };

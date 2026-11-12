@@ -12,6 +12,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   demoModeAria: 'modo demo',
 
   methodCard: 'Tarjeta',
+  methodUsBankAccount: 'Cuenta bancaria de EE. UU.',
 
   orderTotal: 'Total del pedido',
   quantityPrefix: 'Cant.',
@@ -19,6 +20,13 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
 
   processingTitle: 'Procesando el pago...',
   processingHint: 'Por favor, no cierre esta ventana.',
+  pendingTitle: 'Pago enviado',
+  pendingBody: 'Tu pago está en proceso. No necesitas volver a pagar.',
+  pendingContinue: 'Volver al checkout',
+  statusCheckTitle: 'Confirma el estado del pago',
+  statusCheckBody:
+    'No pudimos verificar el estado final en este navegador. No vuelvas a pagar: revisa tu banco o el Dashboard de Stripe y confirma con los webhooks de tu backend.',
+  statusCheckReturn: 'Volver al checkout',
   successTitle: 'Pago realizado',
   successBody: 'Su pago se completó correctamente.',
   successContinue: 'Continuar',
@@ -61,6 +69,7 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   cardPaymentRegionAria: 'Pago con tarjeta',
   klarnaPaymentRegionAria: 'Pago con Klarna',
   affirmPaymentRegionAria: 'Pago con Affirm',
+  usBankAccountPaymentRegionAria: 'Pago con cuenta bancaria de EE. UU.',
   demoWalletButtonAria: '{{method}}, modo demo',
 
   payWithCard: 'Pagar con tarjeta',
@@ -109,4 +118,9 @@ export const ES_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutAffirm: 'Checkout seguro impulsado por Affirm a través de Stripe',
   preparingAffirm: 'Preparando Affirm…',
   affirmFormAria: 'Formulario seguro de pago de Affirm',
+
+  payWithUsBankAccount: 'Pagar con cuenta bancaria de EE. UU.',
+  secureCheckoutUsBankAccount: 'Débito directo ACH seguro impulsado por Stripe',
+  preparingUsBankAccount: 'Preparando la cuenta bancaria de EE. UU.…',
+  usBankAccountFormAria: 'Formulario seguro de cuenta bancaria de EE. UU.',
 };

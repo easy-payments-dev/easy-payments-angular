@@ -21,11 +21,14 @@ import {
   CreatePaymentRequest,
   CreatePayPalOrderResponse,
   CreateStripePaymentResponse,
+  CreateUsBankAccountPaymentResponse,
   KlarnaCreatePaymentRequest,
   PayPalCreateOrderRequest,
+  UsBankAccountCreatePaymentRequest,
   toAffirmCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
+  toUsBankAccountCreatePaymentRequest,
 } from '../models/create-payment.model';
 
 @Injectable({ providedIn: 'root' })
@@ -51,6 +54,10 @@ export class BackendService {
 
   get affirmCreatePaymentUrl(): string | undefined {
     return this.endpointUrl('affirmCreatePaymentUrl');
+  }
+
+  get createUsBankAccountPaymentUrl(): string | undefined {
+    return this.endpointUrl('createUsBankAccountPaymentUrl');
   }
 
   /** @deprecated Prefer createPaymentUrl. Kept optional for future provider flows. */
@@ -257,15 +264,77 @@ export class BackendService {
     });
   }
 
+  /**
+   * Posts the ACH (US bank account) create-payment wire contract.
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createUsBankAccountPayment(
+    payload:
+      | UsBankAccountCreatePaymentRequest
+      | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateUsBankAccountPaymentResponse> {
+    const url = this.requireEndpoint(
+      'createUsBankAccountPaymentUrl',
+      'Backend createUsBankAccountPaymentUrl is not configured.',
+      'us-bank-account',
+      'usBankAccount',
+    );
+
+    const body = toUsBankAccountCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'us-bank-account', 'usBankAccount');
+    }
+
+    return this.postJson<CreateUsBankAccountPaymentResponse>(
+      url,
+      body,
+      'us-bank-account',
+      'usBankAccount',
+      {
+        successMessage: 'Failed to create US bank account payment on backend.',
+        networkMessage:
+          'A network error occurred while creating the US bank account payment session.',
+        validate: (response) => {
+          if (
+            response?.provider !== 'usBankAccount' ||
+            typeof response.clientSecret !== 'string' ||
+            !response.clientSecret.trim()
+          ) {
+            throw new PaymentError({
+              code: 'BACKEND_ERROR',
+              message: 'Invalid US bank account create-payment response from backend.',
+              method: 'us-bank-account',
+              provider: 'usBankAccount',
+            });
+          }
+        },
+      },
+    );
+  }
+
   private endpointUrl(
-    key: 'createPaymentUrl' | 'paypalCreateOrderUrl' | 'paypalCaptureOrderUrl' | 'klarnaCreatePaymentUrl' | 'affirmCreatePaymentUrl' | 'confirmPaymentUrl',
+    key:
+      | 'createPaymentUrl'
+      | 'paypalCreateOrderUrl'
+      | 'paypalCaptureOrderUrl'
+      | 'klarnaCreatePaymentUrl'
+      | 'affirmCreatePaymentUrl'
+      | 'createUsBankAccountPaymentUrl'
+      | 'confirmPaymentUrl',
   ): string | undefined {
     const backend = this.configService.getSnapshot().backend;
     return backendEndpointUrl(backend, backend?.[key]);
   }
 
   private requireEndpoint(
-    key: 'createPaymentUrl' | 'paypalCreateOrderUrl' | 'paypalCaptureOrderUrl' | 'klarnaCreatePaymentUrl' | 'affirmCreatePaymentUrl' | 'confirmPaymentUrl',
+    key:
+      | 'createPaymentUrl'
+      | 'paypalCreateOrderUrl'
+      | 'paypalCaptureOrderUrl'
+      | 'klarnaCreatePaymentUrl'
+      | 'affirmCreatePaymentUrl'
+      | 'createUsBankAccountPaymentUrl'
+      | 'confirmPaymentUrl',
     missingMessage: string,
     method: PaymentMethod,
     provider: PaymentProviderName,

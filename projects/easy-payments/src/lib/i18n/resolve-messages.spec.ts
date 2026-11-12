@@ -40,6 +40,27 @@ describe('resolveMessages', () => {
     }
   });
 
+  it('keeps ACH pending copy customer-facing across locales (no Stripe/webhook jargon)', () => {
+    expect(resolveMessages('en').pendingTitle).toBe('Payment submitted');
+    expect(resolveMessages('en').pendingBody).toBe(
+      "Your payment is being processed. You don't need to pay again.",
+    );
+    expect(resolveMessages('es').pendingTitle).toBe('Pago enviado');
+    expect(resolveMessages('es').pendingBody).toBe(
+      'Tu pago está en proceso. No necesitas volver a pagar.',
+    );
+    expect(resolveMessages('pt').pendingTitle).toBe('Pagamento enviado');
+    expect(resolveMessages('pt').pendingBody).toBe(
+      'Seu pagamento está sendo processado. Você não precisa pagar novamente.',
+    );
+    for (const locale of ['en', 'es', 'pt'] as const) {
+      const body = resolveMessages(locale).pendingBody.toLowerCase();
+      expect(body).not.toContain('stripe');
+      expect(body).not.toContain('webhook');
+      expect(body).not.toContain('backend');
+    }
+  });
+
   it('applies partial custom overrides with locale fallback for remaining keys', () => {
     const messages = resolveMessages('es', {
       successTitle: '¡Pedido confirmado!',

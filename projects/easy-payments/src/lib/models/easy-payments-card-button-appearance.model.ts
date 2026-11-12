@@ -1,9 +1,10 @@
 /**
- * Optional presentation for the Easy Payments–owned Stripe Card confirmation CTA
- * (`.ep-stripe-card__pay`).
+ * Optional presentation for the Easy Payments–owned Card / ACH confirmation CTA
+ * (`.ep-stripe-card__pay` / `.ep-ach__pay`).
  *
  * Applies to the library button that confirms a Stripe Payment Element payment in
  * both `<easy-payments>` (Full Checkout) and `<easy-payment-buttons>` (Buttons Only).
+ * Buttons Only forwards the same input to Card and US bank account panels.
  * It does **not** restyle the Stripe Payment Element iframe or official
  * PayPal / Google Pay / Apple Pay SDK buttons.
  *
@@ -13,9 +14,11 @@
 export interface EasyPaymentsCardButtonAppearance {
   /**
    * Plain-text label override for the idle CTA.
-   * When set, replaces the localized default (`Pay {{amount}}` in Full Checkout,
-   * `Pay with card` in Buttons Only). Processing/loading copy still uses i18n
-   * (`processingPayment`) unless you also customize loading styles only.
+   * When set, replaces the localized default (`Pay {{amount}}` in Full Checkout;
+   * `Pay with card` / `Pay with US bank account` in Buttons Only).
+   * Processing/loading copy still uses i18n (`processingPayment`) unless you
+   * also customize loading styles only. Buttons Only closes the ACH panel after
+   * a verified pending/success; the host consumes `(pending)` / `(success)`.
    */
   label?: string;
 

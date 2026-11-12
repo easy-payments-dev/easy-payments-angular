@@ -30,6 +30,30 @@ import { CheckoutViewState, formatTransactionReference } from './checkout-view-s
           @case ('processing') {
             <span class="ep-outcome__spinner"></span>
           }
+          @case ('pending') {
+            <!-- ACH pending: static clock (decorative). Outer wrapper is aria-hidden. -->
+            <svg viewBox="0 0 48 48" width="48" height="48" fill="none" aria-hidden="true">
+              <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" />
+              <path
+                d="M24 16v9l6.5 4"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          }
+          @case ('status-check') {
+            <svg viewBox="0 0 48 48" width="48" height="48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" />
+              <path
+                d="M24 14v14M24 34h.01"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          }
           @case ('success') {
             <svg viewBox="0 0 48 48" width="48" height="48" fill="none">
               <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" />
@@ -135,6 +159,11 @@ import { CheckoutViewState, formatTransactionReference } from './checkout-view-s
       }
 
       .ep-outcome[data-state='cancelled'] .ep-outcome__icon {
+        color: var(--ep-text-secondary, #64748b);
+      }
+
+      /* ACH pending clock: secondary text token for light/dark contrast. */
+      .ep-outcome[data-state='pending'] .ep-outcome__icon {
         color: var(--ep-text-secondary, #64748b);
       }
 
@@ -310,6 +339,10 @@ export class CheckoutOutcomeComponent {
     switch (this.state()) {
       case 'processing':
         return copy.processingTitle;
+      case 'pending':
+        return copy.pendingTitle;
+      case 'status-check':
+        return copy.statusCheckTitle;
       case 'success':
         return copy.successTitle;
       case 'error':
@@ -324,6 +357,10 @@ export class CheckoutOutcomeComponent {
     switch (this.state()) {
       case 'processing':
         return copy.processingHint;
+      case 'pending':
+        return copy.pendingBody;
+      case 'status-check':
+        return copy.statusCheckBody;
       case 'success':
         return copy.successBody;
       case 'error':
@@ -342,6 +379,10 @@ export class CheckoutOutcomeComponent {
         return copy.errorTryAgain;
       case 'cancelled':
         return copy.cancelledReturn;
+      case 'pending':
+        return copy.pendingContinue;
+      case 'status-check':
+        return copy.statusCheckReturn;
       default:
         return '';
     }
@@ -354,6 +395,9 @@ export class CheckoutOutcomeComponent {
     }
     if (method === 'card') {
       return this.msgs().methodCard;
+    }
+    if (method === 'us-bank-account') {
+      return this.msgs().methodUsBankAccount;
     }
     return PAYMENT_METHOD_LABELS[method];
   });

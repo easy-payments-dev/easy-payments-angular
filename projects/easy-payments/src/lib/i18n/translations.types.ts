@@ -13,6 +13,7 @@ export interface EasyPaymentsTranslations {
   demoModeAria: string;
 
   methodCard: string;
+  methodUsBankAccount: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -20,6 +21,12 @@ export interface EasyPaymentsTranslations {
 
   processingTitle: string;
   processingHint: string;
+  pendingTitle: string;
+  pendingBody: string;
+  pendingContinue: string;
+  statusCheckTitle: string;
+  statusCheckBody: string;
+  statusCheckReturn: string;
   successTitle: string;
   successBody: string;
   successContinue: string;
@@ -68,6 +75,7 @@ export interface EasyPaymentsTranslations {
   cardPaymentRegionAria: string;
   klarnaPaymentRegionAria: string;
   affirmPaymentRegionAria: string;
+  usBankAccountPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -114,6 +122,11 @@ export interface EasyPaymentsTranslations {
   secureCheckoutAffirm: string;
   preparingAffirm: string;
   affirmFormAria: string;
+
+  payWithUsBankAccount: string;
+  secureCheckoutUsBankAccount: string;
+  preparingUsBankAccount: string;
+  usBankAccountFormAria: string;
 }
 
 /** Partial overrides supplied by the consuming app. */

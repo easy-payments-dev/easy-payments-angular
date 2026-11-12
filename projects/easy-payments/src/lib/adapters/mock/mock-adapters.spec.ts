@@ -31,7 +31,7 @@ describe('mock adapters', () => {
     await factory.initializeAdapters();
 
     const adapters = registry.getAll();
-    expect(adapters.length).toBe(6);
+    expect(adapters.length).toBe(7);
     expect(adapters.every((adapter) => adapter.isMock)).toBeTrue();
     expect(adapters.map((adapter) => adapter.provider).sort()).toEqual([
       'affirm',
@@ -40,7 +40,27 @@ describe('mock adapters', () => {
       'klarna',
       'paypal',
       'stripe',
+      'usBankAccount',
     ]);
+  });
+
+  it('simulates an opt-in processing mock payment without treating it as success', async () => {
+    const factory = TestBed.inject(AdapterFactory);
+    const controller = TestBed.inject(MockPaymentController);
+    await factory.initializeAdapters();
+    controller.setOutcome('processing');
+
+    const result = await factory.getAdapter('usBankAccount')!.createPayment({
+      method: 'us-bank-account',
+      context,
+    });
+
+    expect(result.status).toBe('processing');
+    expect(result.method).toBe('us-bank-account');
+    expect(result.provider).toBe('usBankAccount');
+    expect(result.message).toContain('processing');
+    expect(result.message).toContain('Do not treat this as success');
+    expect(result.metadata?.['mock']).toBeTrue();
   });
 
   it('simulates a successful mock payment', async () => {

@@ -1,6 +1,8 @@
 export type CheckoutViewState =
   | 'checkout'
   | 'processing'
+  | 'pending'
+  | 'status-check'
   | 'success'
   | 'error'
   | 'cancelled';

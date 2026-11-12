@@ -1,10 +1,15 @@
 import type { PaymentMethod } from '@easy-payments/angular';
 
 /**
- * Stripe Card / Klarna / Affirm use Payment Element + merchant `session.confirm()`.
+ * Stripe Card / Klarna / Affirm / US bank account use Payment Element + merchant `session.confirm()`.
  */
 export function isHeadlessDemoStripeElementMethod(method: PaymentMethod): boolean {
-  return method === 'card' || method === 'klarna' || method === 'affirm';
+  return (
+    method === 'card' ||
+    method === 'klarna' ||
+    method === 'affirm' ||
+    method === 'us-bank-account'
+  );
 }
 
 /**

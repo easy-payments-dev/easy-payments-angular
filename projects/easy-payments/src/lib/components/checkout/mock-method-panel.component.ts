@@ -282,7 +282,13 @@ export class MockMethodPanelComponent {
 
   readonly label = computed(() => {
     const method = this.method();
-    return method === 'card' ? this.msgs().methodCard : PAYMENT_METHOD_LABELS[method];
+    if (method === 'card') {
+      return this.msgs().methodCard;
+    }
+    if (method === 'us-bank-account') {
+      return this.msgs().methodUsBankAccount;
+    }
+    return PAYMENT_METHOD_LABELS[method];
   });
   readonly amountLabel = computed(() =>
     this.i18n

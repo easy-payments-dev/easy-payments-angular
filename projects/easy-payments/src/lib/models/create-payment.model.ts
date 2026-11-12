@@ -194,8 +194,55 @@ export interface CreateAffirmPaymentResponse {
   sessionId?: string;
 }
 
+/**
+ * Minimal wire contract for ACH (US bank account) via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface UsBankAccountCreatePaymentRequest {
+  provider: 'usBankAccount';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the ACH create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toUsBankAccountCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): UsBankAccountCreatePaymentRequest {
+  const body: UsBankAccountCreatePaymentRequest = {
+    provider: 'usBankAccount',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST ACH create (us_bank_account-only Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateUsBankAccountPaymentResponse {
+  provider: 'usBankAccount';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
 export type CreatePaymentResponse =
   | CreateStripePaymentResponse
   | CreatePayPalOrderResponse
   | CreateKlarnaPaymentResponse
-  | CreateAffirmPaymentResponse;
+  | CreateAffirmPaymentResponse
+  | CreateUsBankAccountPaymentResponse;
