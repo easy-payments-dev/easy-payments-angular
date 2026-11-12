@@ -16,7 +16,9 @@ import { PaymentMethod, PaymentProviderName } from '../models';
 import {
   AffirmCreatePaymentRequest,
   CapturePayPalOrderResponse,
+  CashAppPayCreatePaymentRequest,
   CreateAffirmPaymentResponse,
+  CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
   CreatePaymentRequest,
   CreatePayPalOrderResponse,
@@ -26,6 +28,7 @@ import {
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
   toAffirmCreatePaymentRequest,
+  toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
@@ -58,6 +61,10 @@ export class BackendService {
 
   get createUsBankAccountPaymentUrl(): string | undefined {
     return this.endpointUrl('createUsBankAccountPaymentUrl');
+  }
+
+  get cashAppPayCreatePaymentUrl(): string | undefined {
+    return this.endpointUrl('cashAppPayCreatePaymentUrl');
   }
 
   /** @deprecated Prefer createPaymentUrl. Kept optional for future provider flows. */
@@ -312,6 +319,54 @@ export class BackendService {
     );
   }
 
+  /**
+   * Posts the Cash App Pay create-payment wire contract.
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createCashAppPayPayment(
+    payload:
+      | CashAppPayCreatePaymentRequest
+      | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateCashAppPayPaymentResponse> {
+    const url = this.requireEndpoint(
+      'cashAppPayCreatePaymentUrl',
+      'Backend cashAppPayCreatePaymentUrl is not configured.',
+      'cash-app-pay',
+      'cashAppPay',
+    );
+
+    const body = toCashAppPayCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'cash-app-pay', 'cashAppPay');
+    }
+
+    return this.postJson<CreateCashAppPayPaymentResponse>(
+      url,
+      body,
+      'cash-app-pay',
+      'cashAppPay',
+      {
+        successMessage: 'Failed to create Cash App Pay payment on backend.',
+        networkMessage:
+          'A network error occurred while creating the Cash App Pay payment session.',
+        validate: (response) => {
+          if (
+            response?.provider !== 'cashAppPay' ||
+            typeof response.clientSecret !== 'string' ||
+            !response.clientSecret.trim()
+          ) {
+            throw new PaymentError({
+              code: 'BACKEND_ERROR',
+              message: 'Invalid Cash App Pay create-payment response from backend.',
+              method: 'cash-app-pay',
+              provider: 'cashAppPay',
+            });
+          }
+        },
+      },
+    );
+  }
+
   private endpointUrl(
     key:
       | 'createPaymentUrl'
@@ -320,6 +375,7 @@ export class BackendService {
       | 'klarnaCreatePaymentUrl'
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
+      | 'cashAppPayCreatePaymentUrl'
       | 'confirmPaymentUrl',
   ): string | undefined {
     const backend = this.configService.getSnapshot().backend;
@@ -334,6 +390,7 @@ export class BackendService {
       | 'klarnaCreatePaymentUrl'
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
+      | 'cashAppPayCreatePaymentUrl'
       | 'confirmPaymentUrl',
     missingMessage: string,
     method: PaymentMethod,

@@ -15,6 +15,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'affirm',
   'card',
   'us-bank-account',
+  'cash-app-pay',
 ]);
 
 export function isKnownPaymentMethod(value: string): value is PaymentMethod {
@@ -38,6 +39,7 @@ export function interactionForMethod(
     case 'klarna':
     case 'affirm':
     case 'us-bank-account':
+    case 'cash-app-pay':
       return 'confirm';
     default: {
       const _exhaustive: never = method;

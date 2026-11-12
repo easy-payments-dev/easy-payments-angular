@@ -118,6 +118,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'affirm', enabled: true },
   // Opt-in ACH for Full Checkout, Buttons Only, and Headless.
   { method: 'us-bank-account', enabled: true },
+  // Opt-in Cash App Pay for Full Checkout, Buttons Only, and Headless.
+  { method: 'cash-app-pay', enabled: true },
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
@@ -1216,6 +1218,7 @@ ${cardAppearanceBlock}
                 purchaseCountry: 'US',
               },
               usBankAccount: {},
+              cashAppPay: {},
             }
           : {}),
         ...(this.paypalConfigReady()
@@ -1236,6 +1239,7 @@ ${cardAppearanceBlock}
         klarnaCreatePaymentUrl: environment.klarnaCreatePaymentUrl.trim(),
         affirmCreatePaymentUrl: environment.affirmCreatePaymentUrl.trim(),
         createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
+        cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
       },
     });
 

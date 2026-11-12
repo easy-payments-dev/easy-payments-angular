@@ -43,6 +43,7 @@ const STRIPE_DEPENDENT_METHODS = new Set<PaymentMethod>([
   'klarna',
   'affirm',
   'us-bank-account',
+  'cash-app-pay',
 ]);
 
 @Injectable({ providedIn: 'root' })

@@ -288,6 +288,9 @@ export class MockMethodPanelComponent {
     if (method === 'us-bank-account') {
       return this.msgs().methodUsBankAccount;
     }
+    if (method === 'cash-app-pay') {
+      return this.msgs().methodCashAppPay;
+    }
     return PAYMENT_METHOD_LABELS[method];
   });
   readonly amountLabel = computed(() =>

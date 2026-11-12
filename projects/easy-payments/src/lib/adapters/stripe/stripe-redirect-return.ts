@@ -1,5 +1,5 @@
 /**
- * Generic Stripe BNPL / redirect return helpers (Klarna, Affirm, …).
+ * Generic Stripe BNPL / redirect return helpers (Klarna, Affirm, Cash App Pay, …).
  *
  * Stripe appends `payment_intent` and `payment_intent_client_secret` to return_url.
  * We stamp `ep_method=<method>` and a light sessionStorage marker (no secrets)
@@ -7,13 +7,18 @@
  *
  * Host kinds:
  * - `checkout` / `buttons` — Full Checkout and Buttons Only (existing)
- * - `headless` — Headless Klarna/Affirm (H4.2 ownership; public recovery is H4.3)
+ * - `headless` — Headless Klarna/Affirm/Cash App Pay (H4.2 ownership; public recovery is H4.3)
  */
 
 import { PaymentError } from '../../errors/payment-error';
 import type { PaymentMethod, PaymentProviderName } from '../../models';
 
-export type StripeRedirectMethod = 'klarna' | 'affirm';
+export type StripeRedirectMethod = 'klarna' | 'affirm' | 'cash-app-pay';
+
+/** Provider name for a Stripe redirect method (`cash-app-pay` → `cashAppPay`). */
+export function stripeRedirectProvider(method: StripeRedirectMethod): PaymentProviderName {
+  return method === 'cash-app-pay' ? 'cashAppPay' : method;
+}
 
 export const STRIPE_RETURN_METHOD_PARAM = 'ep_method';
 /** Random, non-secret attempt token that ties a return URL to its pending marker. */
@@ -96,7 +101,7 @@ function currentSearch(search?: string): string {
 }
 
 function isRedirectMethod(value: string | null | undefined): value is StripeRedirectMethod {
-  return value === 'klarna' || value === 'affirm';
+  return value === 'klarna' || value === 'affirm' || value === 'cash-app-pay';
 }
 
 function isHostKind(value: unknown): value is StripeReturnHostKind {
@@ -118,8 +123,9 @@ const STRIPE_RETURN_URL_MESSAGE =
   'Checkout successUrl must be a same-origin http(s) URL. Relative paths are resolved against the current page. Other schemes and cross-origin destinations are not allowed.';
 
 function invalidStripeReturnUrl(method: PaymentMethod): never {
-  const provider: PaymentProviderName =
-    method === 'klarna' || method === 'affirm' ? method : 'stripe';
+  const provider: PaymentProviderName = isRedirectMethod(method)
+    ? stripeRedirectProvider(method)
+    : 'stripe';
   throw new PaymentError({
     code: 'CONFIG_INVALID',
     message: STRIPE_RETURN_URL_MESSAGE,
@@ -255,18 +261,18 @@ export function markHeadlessPendingReturn(
     throw new PaymentError({
       code: 'PROVIDER_UNAVAILABLE',
       message:
-        'sessionStorage is required to record Headless Klarna/Affirm redirect ownership before confirmation.',
+        'sessionStorage is required to record Headless Klarna/Affirm/Cash App Pay redirect ownership before confirmation.',
       method,
-      provider: method,
+      provider: stripeRedirectProvider(method),
     });
   }
   if (!origin.attemptId || !isValidCheckoutInstanceId(origin.checkoutInstanceId)) {
     throw new PaymentError({
       code: 'CONFIG_INVALID',
       message:
-        'Headless Klarna/Affirm redirect requires a stable checkoutInstanceId and attempt id for ownership.',
+        'Headless Klarna/Affirm/Cash App Pay redirect requires a stable checkoutInstanceId and attempt id for ownership.',
       method,
-      provider: method,
+      provider: stripeRedirectProvider(method),
     });
   }
 
@@ -287,7 +293,7 @@ export function markHeadlessPendingReturn(
         message:
           'A Stripe redirect return is already pending for another checkout attempt. Complete or abandon that attempt before starting another.',
         method,
-        provider: method,
+        provider: stripeRedirectProvider(method),
       });
     }
   }
@@ -307,7 +313,7 @@ export function markHeadlessPendingReturn(
       code: 'PROVIDER_UNAVAILABLE',
       message: 'Unable to persist Headless redirect ownership marker in sessionStorage.',
       method,
-      provider: method,
+      provider: stripeRedirectProvider(method),
     });
   }
 }

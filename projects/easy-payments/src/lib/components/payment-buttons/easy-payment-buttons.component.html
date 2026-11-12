@@ -49,7 +49,8 @@
           (slot.kind === 'card-selector' ||
             slot.kind === 'klarna-selector' ||
             slot.kind === 'affirm-selector' ||
-            slot.kind === 'us-bank-account-selector')
+            slot.kind === 'us-bank-account-selector' ||
+            slot.kind === 'cash-app-pay-selector')
         ) {
           <button
             type="button"
@@ -348,6 +349,44 @@
         [isMock]="true"
         [loading]="processingMethod() === 'us-bank-account'"
         (pay)="onMockUsBankAccountPay()"
+      />
+    </section>
+  }
+
+  @if (showCashAppPayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-cash-app-pay-panel"
+      [attr.aria-label]="msgs().cashAppPayPaymentRegionAria"
+    >
+      <easy-cash-app-pay-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onCashAppPayStarted()"
+        (busyChange)="onCashAppPayBusy($event)"
+        (success)="onCashAppPaySuccess($event)"
+        (cancel)="onCashAppPayCancel($event)"
+        (error)="onCashAppPayError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockCashAppPayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-cash-app-pay-mock-panel"
+      [attr.aria-label]="msgs().cashAppPayPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="cash-app-pay"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'cash-app-pay'"
+        (pay)="onMockCashAppPayPay()"
       />
     </section>
   }

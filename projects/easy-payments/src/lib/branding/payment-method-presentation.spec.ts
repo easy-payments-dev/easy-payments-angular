@@ -61,6 +61,19 @@ describe('payment method presentation', () => {
     expect(achDark.markUrl).toBeNull();
   });
 
+  it('uses the official Cash App Pay rounded green badge on light and dark', () => {
+    const light = getPaymentMethodPresentation('cash-app-pay', 'light');
+    const dark = getPaymentMethodPresentation('cash-app-pay', 'dark');
+    expect(light.source).toBe('official-cdn');
+    // Badge is the $ plate only — visible "Cash App Pay" label stays beside it.
+    expect(light.markIncludesName).toBeFalse();
+    expect(light.label).toBe('Cash App Pay');
+    expect(light.markUrl).toContain('static.afterpaycdn.com');
+    expect(light.markUrl).toContain('icon/color.svg');
+    // Partner Assets publish the same green embed for “Green” and “Green On Dark”.
+    expect(dark.markUrl).toBe(light.markUrl);
+  });
+
   it('lists presentations for every supported method', () => {
     const list = listPaymentMethodPresentations('light');
     expect(list.map((entry) => entry.method)).toEqual([
@@ -71,6 +84,7 @@ describe('payment method presentation', () => {
       'klarna',
       'affirm',
       'us-bank-account',
+      'cash-app-pay',
     ]);
   });
 });

@@ -1,6 +1,6 @@
 # Stripe
 
-Card, Apple Pay, Google Pay, Klarna, and Affirm in Easy Payments all use **Stripe** on the provider side (PayPal is separate).
+Card, Apple Pay, Google Pay, Klarna, Affirm, US bank account (ACH), and Cash App Pay in Easy Payments all use **Stripe** on the provider side (PayPal is separate).
 
 ## What you need
 
@@ -99,3 +99,5 @@ Easy Payments passes the resolved locale into Stripe Elements (`en` / `es` / `pt
 | Google Pay | `googlePay` (+ Stripe) | `createPaymentUrl` |
 | Klarna | `klarna` (+ Stripe) | `klarnaCreatePaymentUrl` |
 | Affirm | `affirm` (+ Stripe) | `affirmCreatePaymentUrl` |
+| US bank account | `usBankAccount` (+ Stripe) | `createUsBankAccountPaymentUrl` |
+| Cash App Pay | `cashAppPay` (+ Stripe) | `cashAppPayCreatePaymentUrl` |

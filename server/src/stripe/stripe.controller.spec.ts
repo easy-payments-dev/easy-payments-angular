@@ -9,6 +9,8 @@ describe('StripeController', () => {
     createPaymentIntent: jest.Mock;
     createKlarnaPaymentIntent: jest.Mock;
     createAffirmPaymentIntent: jest.Mock;
+    createUsBankAccountPaymentIntent: jest.Mock;
+    createCashAppPayPaymentIntent: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -16,6 +18,8 @@ describe('StripeController', () => {
       createPaymentIntent: jest.fn(),
       createKlarnaPaymentIntent: jest.fn(),
       createAffirmPaymentIntent: jest.fn(),
+      createUsBankAccountPaymentIntent: jest.fn(),
+      createCashAppPayPaymentIntent: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -117,6 +121,27 @@ describe('StripeController', () => {
       provider: 'affirm',
       clientSecret: 'pi_affirm_secret',
       paymentIntentId: 'pi_affirm_1',
+    });
+  });
+
+  it('creates a Cash App Pay PaymentIntent via the dedicated endpoint', async () => {
+    service.createCashAppPayPaymentIntent.mockResolvedValue({
+      provider: 'cashAppPay',
+      clientSecret: 'pi_cash_secret',
+      paymentIntentId: 'pi_cash_1',
+    });
+
+    await expect(
+      controller.createCashAppPayPaymentIntent({
+        provider: 'cashAppPay',
+        productId: 'premium-plan',
+        quantity: 1,
+        currency: 'USD',
+      }),
+    ).resolves.toEqual({
+      provider: 'cashAppPay',
+      clientSecret: 'pi_cash_secret',
+      paymentIntentId: 'pi_cash_1',
     });
   });
 });
