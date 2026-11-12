@@ -54,6 +54,7 @@ import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
+import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
 import { PaymentMethodSelectorComponent } from '../checkout/payment-method-selector.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -69,6 +70,7 @@ import {
   isStripeReturnAttempt,
   type StripeRedirectMethod,
 } from '../../adapters/stripe/stripe-redirect-return';
+import { isAchReturnAttempt } from '../../adapters/us-bank-account/us-bank-account-return';
 import {
   EasyPaymentsI18nService,
   type EasyPaymentsLocale,
@@ -89,6 +91,7 @@ import {
     ApplePayPaymentComponent,
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
+    UsBankAccountPaymentComponent,
     CheckoutOutcomeComponent,
   ],
   templateUrl: './easy-payments.component.html',
@@ -254,6 +257,11 @@ export class EasyPaymentsComponent {
   readonly lastError = signal<PaymentError | null>(null);
   /** Bumped on reset so real provider panels remount with a fresh session. */
   readonly providerMountKey = signal(0);
+  /**
+   * Stable `@for` collection for provider panels. Inline `[providerMountKey()]`
+   * recreates a new array every CD and can destroy Payment Elements mid-confirm.
+   */
+  readonly providerMountKeys = computed(() => [this.providerMountKey()]);
 
   /** Prevents duplicate Stripe BNPL return recovery / success emits on one page load. */
   private stripeReturnRecoveryStarted = false;
@@ -269,7 +277,14 @@ export class EasyPaymentsComponent {
   /** Terminal/mock-processing screens that replace the checkout form. */
   readonly showOutcome = computed(() => {
     const state = this.viewState();
-    return state === 'success' || state === 'error' || state === 'cancelled' || state === 'processing';
+    return (
+      state === 'success' ||
+      state === 'error' ||
+      state === 'cancelled' ||
+      state === 'processing' ||
+      state === 'pending' ||
+      state === 'status-check'
+    );
   });
 
   readonly showCheckoutForm = computed(() => !this.showOutcome());
@@ -331,6 +346,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'affirm' && !entry.isMock),
   );
 
+  readonly hasRealUsBankAccountMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'us-bank-account' && !entry.isMock),
+  );
+
   readonly showMockPanel = computed(() => {
     if (!this.showCheckoutForm()) {
       return false;
@@ -355,6 +374,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'affirm' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'us-bank-account' && !entry.isMock) {
       return false;
     }
     return true;
@@ -410,6 +432,7 @@ export class EasyPaymentsComponent {
 
   readonly showKlarnaPanel = computed(() => this.hasRealKlarnaMethod());
   readonly showAffirmPanel = computed(() => this.hasRealAffirmMethod());
+  readonly showUsBankAccountPanel = computed(() => this.hasRealUsBankAccountMethod());
 
   /**
    * Keep the active real-provider panel interactive while its own UI is needed
@@ -458,6 +481,13 @@ export class EasyPaymentsComponent {
       this.hasRealAffirmMethod(),
   );
 
+  readonly usBankAccountPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'us-bank-account' &&
+      this.hasRealUsBankAccountMethod(),
+  );
+
   constructor() {
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
     // One listener per host, so concurrent checkouts each refresh their own tiles.
@@ -495,6 +525,12 @@ export class EasyPaymentsComponent {
       this.viewState.set('processing');
       this.updateSelectedMethod(method);
       this.providerBusy.set(true);
+    } else if (typeof window !== 'undefined' && isAchReturnAttempt()) {
+      // ACH return: panel recovers via retrievePaymentIntent (no second confirm).
+      this.viewState.set('processing');
+      this.updateSelectedMethod('us-bank-account');
+      this.providerBusy.set(true);
+      this.paymentAttempt = 'active';
     }
 
     effect(() => {
@@ -943,6 +979,18 @@ export class EasyPaymentsComponent {
     this.handlePaymentError(error);
   }
 
+  onUsBankAccountSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onUsBankAccountCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onUsBankAccountError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   onAffirmReturning(active: boolean): void {
     if (active) {
       this.updateSelectedMethod('affirm');
@@ -1012,7 +1060,12 @@ export class EasyPaymentsComponent {
       return;
     }
 
-    if (state === 'error' || state === 'cancelled') {
+    if (
+      state === 'error' ||
+      state === 'cancelled' ||
+      state === 'pending' ||
+      state === 'status-check'
+    ) {
       this.resetCheckoutView();
     }
   }
@@ -1085,14 +1138,20 @@ export class EasyPaymentsComponent {
     }
     if (
       this.terminalSuccessEmitted &&
-      (result.method === 'klarna' || result.method === 'affirm')
+      (result.method === 'klarna' ||
+        result.method === 'affirm' ||
+        result.method === 'us-bank-account')
     ) {
       return;
     }
     if (!this.acceptTerminalEvent()) {
       return;
     }
-    if (result.method === 'klarna' || result.method === 'affirm') {
+    if (
+      result.method === 'klarna' ||
+      result.method === 'affirm' ||
+      result.method === 'us-bank-account'
+    ) {
       this.terminalSuccessEmitted = true;
     }
 
@@ -1110,7 +1169,8 @@ export class EasyPaymentsComponent {
 
   /**
    * Asynchronous pending PaymentIntent: not success, not failure.
-   * Locks retry (settles the attempt) and keeps the processing screen.
+   * Locks retry (settles the attempt). Verified processing exits the spinner
+   * into a pending confirmation; unknown status uses status-check.
    */
   private handlePending(result: PaymentResult): void {
     if (this.destroyed) {
@@ -1124,7 +1184,9 @@ export class EasyPaymentsComponent {
     this.lastError.set(null);
     this.providerBusy.set(false);
     this.processingMethod.set(result.method);
-    this.viewState.set('processing');
+    this.viewState.set(
+      result.metadata?.['statusCheck'] === true ? 'status-check' : 'pending',
+    );
   }
 
   private handleCancelled(result: PaymentResult): void {

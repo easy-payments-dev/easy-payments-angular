@@ -36,6 +36,7 @@ export type {
   ProviderConfigStatus,
   ProviderValidationResult,
   StripeProviderConfig,
+  UsBankAccountProviderConfig,
 } from './lib/config/easy-payments.config';
 
 export type { PaymentProduct, EasyPaymentsMerchantMetadata } from './lib/models/payment-product.model';
@@ -85,13 +86,16 @@ export type {
   CreatePaymentResponse,
   CreatePayPalOrderResponse,
   CreateStripePaymentResponse,
+  CreateUsBankAccountPaymentResponse,
   KlarnaCreatePaymentRequest,
   PayPalCreateOrderRequest,
+  UsBankAccountCreatePaymentRequest,
 } from './lib/models/create-payment.model';
 export {
   toAffirmCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
+  toUsBankAccountCreatePaymentRequest,
 } from './lib/models/create-payment.model';
 
 export { PaymentError, normalizeError } from './lib/errors/payment-error';

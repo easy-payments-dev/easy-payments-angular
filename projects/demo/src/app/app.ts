@@ -116,6 +116,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'google-pay', enabled: true },
   { method: 'klarna', enabled: true },
   { method: 'affirm', enabled: true },
+  // Full Checkout only — Buttons Only filters this out; Headless rejects it.
+  { method: 'us-bank-account', enabled: true },
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
@@ -1148,11 +1150,11 @@ ${cardAppearanceBlock}
     this.checkoutMaxWidth.set(Number.isFinite(numeric) ? numeric : 640);
   }
 
-  setMockOutcome(outcome: 'success' | 'cancelled' | 'failed'): void {
+  setMockOutcome(outcome: 'success' | 'cancelled' | 'failed' | 'processing'): void {
     this.mockController.setOutcome(outcome);
   }
 
-  mockOutcome(): 'success' | 'cancelled' | 'failed' {
+  mockOutcome(): 'success' | 'cancelled' | 'failed' | 'processing' {
     return this.mockController.outcome();
   }
 
@@ -1213,6 +1215,7 @@ ${cardAppearanceBlock}
               affirm: {
                 purchaseCountry: 'US',
               },
+              usBankAccount: {},
             }
           : {}),
         ...(this.paypalConfigReady()
@@ -1232,6 +1235,7 @@ ${cardAppearanceBlock}
         paypalCaptureOrderUrl: environment.paypalCaptureOrderUrl.trim(),
         klarnaCreatePaymentUrl: environment.klarnaCreatePaymentUrl.trim(),
         affirmCreatePaymentUrl: environment.affirmCreatePaymentUrl.trim(),
+        createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
       },
     });
 

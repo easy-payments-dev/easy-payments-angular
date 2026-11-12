@@ -14,7 +14,23 @@ import { getPaymentMethodPresentation } from '../../branding/payment-method-pres
   standalone: true,
   template: `
     <span class="ep-mark" [attr.data-method]="method()" [attr.data-source]="presentation().source">
-      @if (presentation().source === 'generic') {
+      @if (presentation().source === 'generic' && method() === 'us-bank-account') {
+        <!-- Decorative bank building; tile aria-label carries the method name. -->
+        <svg
+          class="ep-mark__generic ep-mark__generic--bank"
+          viewBox="0 0 32 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M16 2.5 29 10.5H3Z" fill="currentColor" opacity="0.55" />
+          <rect x="4" y="10.5" width="24" height="9" fill="currentColor" opacity="0.12" />
+          <rect x="7" y="11.5" width="2.5" height="6.5" rx="0.5" fill="currentColor" opacity="0.5" />
+          <rect x="12.25" y="11.5" width="2.5" height="6.5" rx="0.5" fill="currentColor" opacity="0.5" />
+          <rect x="17.25" y="11.5" width="2.5" height="6.5" rx="0.5" fill="currentColor" opacity="0.5" />
+          <rect x="22.5" y="11.5" width="2.5" height="6.5" rx="0.5" fill="currentColor" opacity="0.5" />
+          <rect x="2.5" y="19.5" width="27" height="2.5" rx="0.5" fill="currentColor" opacity="0.4" />
+        </svg>
+      } @else if (presentation().source === 'generic') {
         <svg class="ep-mark__generic" viewBox="0 0 32 24" aria-hidden="true" focusable="false">
           <rect x="1" y="3" width="30" height="18" rx="3" fill="currentColor" opacity="0.12" />
           <rect x="1" y="7" width="30" height="4" fill="currentColor" opacity="0.35" />

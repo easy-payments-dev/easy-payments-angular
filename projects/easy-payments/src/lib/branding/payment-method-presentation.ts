@@ -124,6 +124,17 @@ export function getPaymentMethodPresentation(
           'Affirm-hosted logo assets (cdn-assets.affirm.com). Merchant toolkit recommends Affirm-hosted assets.',
       };
 
+    case 'us-bank-account':
+      return {
+        method,
+        label,
+        markIncludesName: false,
+        source: 'generic',
+        markUrl: null,
+        notes:
+          'Generic bank-building icon via currentColor (decorative; tile keeps a visible label). No official ACH mark in this release.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -141,6 +152,7 @@ export function listPaymentMethodPresentations(
     'paypal',
     'klarna',
     'affirm',
+    'us-bank-account',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

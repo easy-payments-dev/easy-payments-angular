@@ -59,6 +59,17 @@ export interface AffirmProviderConfig {
   locale?: string;
 }
 
+/**
+ * ACH Direct Debit (US bank account) via Stripe Payment Element.
+ * Opt in with `providers.usBankAccount: {}`.
+ * Requires Stripe publishableKey + backend.createUsBankAccountPaymentUrl.
+ * Full Checkout only in 1.3.0 — not offered by Buttons Only or Headless.
+ */
+export interface UsBankAccountProviderConfig {
+  /** ISO country for ACH purchase context (default US). */
+  purchaseCountry?: string;
+}
+
 export interface EasyPaymentsBackendConfig {
   /**
    * Optional origin or origin + path prefix for relative backend endpoints.
@@ -85,6 +96,12 @@ export interface EasyPaymentsBackendConfig {
   /** Creates an Affirm-only Stripe PaymentIntent. Returns clientSecret. */
   affirmCreatePaymentUrl?: string;
   /**
+   * Creates a US bank account (ACH) Stripe PaymentIntent (`us_bank_account` only).
+   * Returns clientSecret. Required for real ACH in Full Checkout.
+   * Does not replace createPaymentUrl (card remains card-only).
+   */
+  createUsBankAccountPaymentUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -98,6 +115,7 @@ export interface EasyPaymentsProviderConfig {
   googlePay?: GooglePayProviderConfig;
   klarna?: KlarnaProviderConfig;
   affirm?: AffirmProviderConfig;
+  usBankAccount?: UsBankAccountProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -117,6 +135,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   googlePay: 'Google Pay',
   klarna: 'Klarna',
   affirm: 'Affirm',
+  usBankAccount: 'US bank account',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -126,6 +145,8 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
   googlePay: 'configuration missing (requires Stripe publishableKey for gateway)',
   klarna: 'configuration missing (requires Stripe publishableKey + klarnaCreatePaymentUrl)',
   affirm: 'configuration missing (requires Stripe publishableKey + affirmCreatePaymentUrl)',
+  usBankAccount:
+    'configuration missing (requires Stripe publishableKey + createUsBankAccountPaymentUrl)',
 };
 
 export type ProviderConfigStatus =

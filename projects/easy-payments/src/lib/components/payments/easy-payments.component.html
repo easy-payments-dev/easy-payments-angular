@@ -75,7 +75,7 @@
     [inert]="showOutcome()"
   >
     @if (showStripePanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!stripePanelActive()"
@@ -98,7 +98,7 @@
     }
 
     @if (showPayPalPanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!paypalPanelActive()"
@@ -120,7 +120,7 @@
     }
 
     @if (showGooglePayPanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!googlePayPanelActive()"
@@ -142,7 +142,7 @@
     }
 
     @if (showApplePayPanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!applePayPanelActive()"
@@ -164,7 +164,7 @@
     }
 
     @if (showKlarnaPanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!klarnaPanelActive()"
@@ -187,7 +187,7 @@
     }
 
     @if (showAffirmPanel()) {
-      @for (key of [providerMountKey()]; track key) {
+      @for (key of providerMountKeys(); track key) {
         <div
           class="ep-checkout__panel"
           [class.ep-checkout__panel--inactive]="!affirmPanelActive()"
@@ -204,6 +204,28 @@
             (started)="onPaymentStarted('affirm')"
             (busyChange)="onProviderBusy($event)"
             (returning)="onAffirmReturning($event)"
+          />
+        </div>
+      }
+    }
+
+    @if (showUsBankAccountPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!usBankAccountPanelActive()"
+          [attr.aria-hidden]="!usBankAccountPanelActive()"
+          [inert]="!usBankAccountPanelActive()"
+        >
+          <easy-us-bank-account-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onUsBankAccountSuccess($event)"
+            (cancel)="onUsBankAccountCancel($event)"
+            (error)="onUsBankAccountError($event)"
+            (started)="onPaymentStarted('us-bank-account')"
+            (busyChange)="onProviderBusy($event)"
           />
         </div>
       }

@@ -11,6 +11,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   demoModeAria: 'demo mode',
 
   methodCard: 'Card',
+  methodUsBankAccount: 'US bank account',
 
   orderTotal: 'Order total',
   quantityPrefix: 'Qty',
@@ -18,6 +19,13 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
 
   processingTitle: 'Processing payment...',
   processingHint: "Please don't close this window.",
+  pendingTitle: 'Payment submitted',
+  pendingBody: "Your payment is being processed. You don't need to pay again.",
+  pendingContinue: 'Return to checkout',
+  statusCheckTitle: 'Confirm payment status',
+  statusCheckBody:
+    'We could not verify the final status in this browser. Do not pay again — check your bank or Stripe Dashboard, and confirm via your backend webhooks.',
+  statusCheckReturn: 'Return to checkout',
   successTitle: 'Payment successful',
   successBody: 'Your payment has been completed successfully.',
   successContinue: 'Continue',
@@ -60,6 +68,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   cardPaymentRegionAria: 'Card payment',
   klarnaPaymentRegionAria: 'Klarna payment',
   affirmPaymentRegionAria: 'Affirm payment',
+  usBankAccountPaymentRegionAria: 'US bank account payment',
   demoWalletButtonAria: '{{method}}, demo mode',
 
   payWithCard: 'Pay with card',
@@ -106,4 +115,9 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutAffirm: 'Secure checkout powered by Affirm via Stripe',
   preparingAffirm: 'Preparing Affirm…',
   affirmFormAria: 'Affirm secure payment form',
+
+  payWithUsBankAccount: 'Pay with US bank account',
+  secureCheckoutUsBankAccount: 'Secure ACH Direct Debit powered by Stripe',
+  preparingUsBankAccount: 'Preparing US bank account…',
+  usBankAccountFormAria: 'US bank account secure payment form',
 };

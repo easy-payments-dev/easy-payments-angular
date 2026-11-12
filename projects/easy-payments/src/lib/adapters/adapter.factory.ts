@@ -16,6 +16,10 @@ import { ApplePayAdapter, ApplePayMockAdapter } from './apple-pay/apple-pay.adap
 import { GooglePayAdapter, GooglePayMockAdapter } from './google-pay/google-pay.adapter';
 import { KlarnaAdapter, KlarnaMockAdapter } from './klarna/klarna.adapter';
 import { AffirmAdapter, AffirmMockAdapter } from './affirm/affirm.adapter';
+import {
+  UsBankAccountAdapter,
+  UsBankAccountMockAdapter,
+} from './us-bank-account/us-bank-account.adapter';
 
 type ProviderKey = keyof EasyPaymentsProviderConfig;
 
@@ -26,6 +30,7 @@ const REAL_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   googlePay: GooglePayAdapter,
   klarna: KlarnaAdapter,
   affirm: AffirmAdapter,
+  usBankAccount: UsBankAccountAdapter,
 };
 
 const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => PaymentProviderAdapter> = {
@@ -35,6 +40,7 @@ const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   googlePay: GooglePayMockAdapter,
   klarna: KlarnaMockAdapter,
   affirm: AffirmMockAdapter,
+  usBankAccount: UsBankAccountMockAdapter,
 };
 
 const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
@@ -44,6 +50,7 @@ const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
   googlePay: 'googlePay',
   klarna: 'klarna',
   affirm: 'affirm',
+  usBankAccount: 'usBankAccount',
 };
 
 @Injectable({ providedIn: 'root' })

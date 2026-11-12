@@ -131,6 +131,14 @@ function normalizeSessionMethods(methods: PaymentMethod[] | undefined): PaymentM
   const normalized: PaymentMethod[] = [];
 
   for (const method of methods) {
+    if (method === 'us-bank-account') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'US bank account (ACH) is available in Full Checkout only. It is not supported by Headless in this release.',
+        method: 'us-bank-account',
+      });
+    }
     if (typeof method !== 'string' || !isKnownPaymentMethod(method)) {
       throw new PaymentError({
         code: 'CONFIG_INVALID',

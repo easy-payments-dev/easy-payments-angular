@@ -465,7 +465,8 @@ export class EasyPaymentButtonsComponent {
    * Availability filters state only — never reorders.
    */
   readonly methodSlots = computed<EasyPaymentButtonSlot[]>(() => {
-    const requested = this.methods();
+    // ACH is Full Checkout only — never advertise it in Buttons Only.
+    const requested = this.methods().filter((method) => method !== 'us-bank-account');
     const published = this.availabilityPublished();
     const availability = this.availableMethods();
     const theme = this.resolvedTheme();
