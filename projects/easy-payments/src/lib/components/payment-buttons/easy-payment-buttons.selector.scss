@@ -18,6 +18,7 @@
 }
 
 .ep-payment-buttons__selector--labeled {
+  /* Horizontal padding only by default — vertical padding would break equal strip heights. */
   padding: var(--ep-buttons-selector-padding, 0 12px);
 }
 

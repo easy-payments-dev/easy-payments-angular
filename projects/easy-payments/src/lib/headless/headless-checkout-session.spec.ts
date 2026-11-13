@@ -141,7 +141,7 @@ describe('EasyPaymentsHeadless / HeadlessCheckoutSession', () => {
     expect(() => create({ methods: [] })).toThrowError(/non-empty/);
     expect(() => create({ methods: ['card', 'card'] })).toThrowError(/Duplicate/);
     expect(() =>
-      create({ methods: ['venmo' as never] }),
+      create({ methods: ['bitcoin' as never] }),
     ).toThrowError(/Unsupported/);
   });
 

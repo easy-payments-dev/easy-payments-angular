@@ -39,6 +39,7 @@ export type {
   ProviderValidationResult,
   StripeProviderConfig,
   UsBankAccountProviderConfig,
+  VenmoProviderConfig,
 } from './lib/config/easy-payments.config';
 
 export type { PaymentProduct, EasyPaymentsMerchantMetadata } from './lib/models/payment-product.model';

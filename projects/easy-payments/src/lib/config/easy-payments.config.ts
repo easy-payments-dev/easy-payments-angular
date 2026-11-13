@@ -91,6 +91,25 @@ export type CashAppPayProviderConfig = Record<string, never>;
  */
 export type AfterpayProviderConfig = Record<string, never>;
 
+/**
+ * Venmo via the PayPal JS SDK (`enable-funding=venmo` + official Venmo Buttons).
+ * Opt in with `providers.venmo: {}` (or with sandboxBuyerCountry for sandbox).
+ * Requires PayPal `clientId` + backend paypalCreateOrderUrl / paypalCaptureOrderUrl
+ * (same Orders v2 flow as PayPal — no separate Venmo Nest routes).
+ * US buyers / USD. Disabled by default.
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ *
+ * @see https://developer.paypal.com/docs/checkout/pay-with-venmo/integrate/
+ * @see https://developer.paypal.com/docs/checkout/pay-with-venmo/test/
+ */
+export interface VenmoProviderConfig {
+  /**
+   * Sandbox only: set `'US'` to simulate a US buyer so the Venmo button can appear.
+   * Never set in production — the live SDK uses the buyer's real country.
+   */
+  sandboxBuyerCountry?: 'US';
+}
+
 export interface EasyPaymentsBackendConfig {
   /**
    * Optional origin or origin + path prefix for relative backend endpoints.
@@ -149,6 +168,7 @@ export interface EasyPaymentsProviderConfig {
   usBankAccount?: UsBankAccountProviderConfig;
   cashAppPay?: CashAppPayProviderConfig;
   afterpay?: AfterpayProviderConfig;
+  venmo?: VenmoProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -171,6 +191,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   usBankAccount: 'US bank account',
   cashAppPay: 'Cash App Pay',
   afterpay: 'Afterpay',
+  venmo: 'Venmo',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -185,6 +206,8 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
   cashAppPay:
     'configuration missing (requires Stripe publishableKey + cashAppPayCreatePaymentUrl)',
   afterpay: 'configuration missing (requires Stripe publishableKey + afterpayCreatePaymentUrl)',
+  venmo:
+    'configuration missing (requires providers.venmo + PayPal clientId + paypal create/capture URLs)',
 };
 
 export type ProviderConfigStatus =

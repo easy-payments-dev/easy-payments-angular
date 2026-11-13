@@ -22,12 +22,14 @@ import {
 } from './us-bank-account/us-bank-account.adapter';
 import { CashAppPayAdapter, CashAppPayMockAdapter } from './cash-app-pay/cash-app-pay.adapter';
 import { AfterpayAdapter, AfterpayMockAdapter } from './afterpay/afterpay.adapter';
+import { VenmoAdapter, VenmoMockAdapter } from './venmo/venmo.adapter';
 
 type ProviderKey = keyof EasyPaymentsProviderConfig;
 
 const REAL_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => PaymentProviderAdapter> = {
   stripe: StripeCardAdapter,
   paypal: PayPalAdapter,
+  venmo: VenmoAdapter,
   applePay: ApplePayAdapter,
   googlePay: GooglePayAdapter,
   klarna: KlarnaAdapter,
@@ -40,6 +42,7 @@ const REAL_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
 const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => PaymentProviderAdapter> = {
   stripe: StripeCardMockAdapter,
   paypal: PayPalMockAdapter,
+  venmo: VenmoMockAdapter,
   applePay: ApplePayMockAdapter,
   googlePay: GooglePayMockAdapter,
   klarna: KlarnaMockAdapter,
@@ -52,6 +55,7 @@ const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
 const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
   stripe: 'stripe',
   paypal: 'paypal',
+  venmo: 'venmo',
   applePay: 'applePay',
   googlePay: 'googlePay',
   klarna: 'klarna',

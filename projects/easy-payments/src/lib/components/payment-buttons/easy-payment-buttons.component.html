@@ -87,6 +87,7 @@
               [checkout]="checkout()"
               [resolvedTheme]="resolvedTheme()"
               [compact]="true"
+              [buttonBorderRadiusPx]="buttonsBorderRadiusPx()"
               (started)="onPayPalStarted()"
               (busyChange)="onPayPalBusy($event)"
               (success)="onPayPalSuccess($event)"
@@ -110,6 +111,41 @@
               (pay)="onMockPayPalPay()"
             />
           </div>
+        } @else if (slot.kind === 'venmo-express') {
+          <div
+            class="ep-payment-buttons__express"
+            data-testid="easy-payment-buttons-venmo-express"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-venmo-payment
+              [product]="product()"
+              [checkout]="checkout()"
+              [resolvedTheme]="resolvedTheme()"
+              [compact]="true"
+              [buttonBorderRadiusPx]="buttonsBorderRadiusPx()"
+              (started)="onVenmoStarted()"
+              (busyChange)="onVenmoBusy($event)"
+              (success)="onVenmoSuccess($event)"
+              (cancel)="onVenmoCancel($event)"
+              (error)="onVenmoError($event)"
+            />
+          </div>
+        } @else if (slot.kind === 'venmo-mock') {
+          <div
+            class="ep-payment-buttons__mock"
+            data-testid="easy-payment-buttons-venmo-mock"
+            [attr.aria-label]="slotAriaLabel(slot)"
+          >
+            <easy-mock-method-panel
+              method="venmo"
+              presentation="strip"
+              [product]="product()"
+              [theme]="resolvedTheme()"
+              [isMock]="true"
+              [loading]="processingMethod() === 'venmo'"
+              (pay)="onMockVenmoPay()"
+            />
+          </div>
         } @else if (slot.kind === 'google-pay-express') {
           <div
             class="ep-payment-buttons__express"
@@ -121,6 +157,7 @@
               [checkout]="checkout()"
               [resolvedTheme]="resolvedTheme()"
               [compact]="true"
+              [buttonBorderRadiusPx]="buttonsBorderRadiusPx()"
               (started)="onGooglePayStarted()"
               (busyChange)="onGooglePayBusy($event)"
               (success)="onGooglePaySuccess($event)"
@@ -155,6 +192,7 @@
               [checkout]="checkout()"
               [resolvedTheme]="resolvedTheme()"
               [compact]="true"
+              [buttonBorderRadiusPx]="buttonsBorderRadiusPx()"
               (started)="onApplePayStarted()"
               (busyChange)="onApplePayBusy($event)"
               (success)="onApplePaySuccess($event)"

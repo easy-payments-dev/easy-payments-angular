@@ -1687,6 +1687,64 @@ describe('EasyPaymentsComponent', () => {
       expect(text).toContain('One year subscription');
     });
 
+    it('updates Card/ACH selector labels when locale and [selectorLabels] change', async () => {
+      fixture.destroy();
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [EasyPaymentsComponent],
+        providers: [
+          provideEasyPayments({
+            enableMockMode: true,
+            providers: { usBankAccount: {} },
+          }),
+          { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        ],
+      }).compileComponents();
+      TestBed.inject(MockPaymentController).reset();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+      fixture = TestBed.createComponent(EasyPaymentsComponent);
+      fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+      fixture.componentRef.setInput('methods', ['card', 'us-bank-account']);
+      fixture.componentRef.setInput('locale', 'en');
+      fixture.componentRef.setInput('selectorLabels', null);
+      await render(fixture);
+
+      const tiles = () =>
+        Array.from(
+          fixture.nativeElement.querySelectorAll('button.ep-tile'),
+        ) as HTMLButtonElement[];
+      const byVisible = (label: string) =>
+        tiles().find((btn) => btn.querySelector('.ep-tile__label')?.textContent?.trim() === label);
+      const visibles = () =>
+        tiles().map((btn) => btn.querySelector('.ep-tile__label')?.textContent?.trim() ?? '');
+
+      expect(visibles()).toEqual(['Card', 'US bank account']);
+      expect(byVisible('Card')?.getAttribute('aria-label')).toContain('Card');
+
+      fixture.componentRef.setInput('locale', 'es');
+      await render(fixture);
+      expect(visibles()).toEqual(['Tarjeta', 'Cuenta bancaria de EE. UU.']);
+      expect(byVisible('Tarjeta')?.getAttribute('aria-label')).toContain('Tarjeta');
+
+      fixture.componentRef.setInput('locale', 'pt');
+      fixture.componentRef.setInput('selectorLabels', {
+        card: 'Crédito / Débito',
+        usBankAccount: 'Conta bancária',
+      });
+      await render(fixture);
+      expect(visibles()).toEqual(['Crédito / Débito', 'Conta bancária']);
+      expect(byVisible('Crédito / Débito')?.getAttribute('aria-label')).toContain('Crédito / Débito');
+      expect(byVisible('Conta bancária')?.getAttribute('aria-label')).toContain('Conta bancária');
+
+      fixture.componentRef.setInput('selectorLabels', {
+        card: '',
+        usBankAccount: '   ',
+      });
+      await render(fixture);
+      expect(visibles()).toEqual(['Cartão', 'Conta bancária dos EUA']);
+      expect(byVisible('Cartão')?.getAttribute('aria-label')).toContain('Cartão');
+    });
+
     it('does not leak English provider diagnostics into Spanish error UI', async () => {
       fixture.componentRef.setInput('locale', 'es');
       fixture.componentRef.setInput('methods', ['card']);

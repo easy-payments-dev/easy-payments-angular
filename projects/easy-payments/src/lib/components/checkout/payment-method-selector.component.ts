@@ -11,8 +11,10 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { PaymentMethod, ResolvedPaymentTheme } from '../../models';
+import type { EasyPaymentButtonsSelectorLabels } from '../../models/easy-payment-buttons-appearance.model';
 import { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { EasyPaymentsI18nService, EN_TRANSLATIONS } from '../../i18n';
+import { resolveSelectorLabelOverride } from '../../utils/selector-label';
 import { PaymentMethodTileComponent } from './payment-method-tile.component';
 
 @Component({
@@ -40,6 +42,7 @@ import { PaymentMethodTileComponent } from './payment-method-tile.component';
               [isMock]="entry.isMock"
               [selected]="entry.method === selected()"
               [disabled]="disabled()"
+              [labelOverride]="labelOverrideFor(entry.method)"
               (select)="onTileSelect(entry.method)"
             />
           }
@@ -133,6 +136,11 @@ export class PaymentMethodSelectorComponent {
   readonly selected = input<PaymentMethod | null>(null);
   readonly theme = input<ResolvedPaymentTheme>('light');
   readonly disabled = input(false);
+  /**
+   * Optional host overrides for library-owned selector labels (Card, ACH, …).
+   * Blank / omitted keys keep localized defaults. Confirm CTAs are unchanged.
+   */
+  readonly selectorLabels = input<EasyPaymentButtonsSelectorLabels | null>(null);
   /** Methods that render their own provider button in place of a selectable tile. */
   readonly expressTemplates = input<Partial<Record<PaymentMethod, TemplateRef<unknown>>>>({});
   readonly methodSelect = output<PaymentMethod>();
@@ -144,6 +152,10 @@ export class PaymentMethodSelectorComponent {
     const express = this.expressTemplates();
     return this.methods().filter((entry) => !express[entry.method]);
   });
+
+  labelOverrideFor(method: PaymentMethod): string | null {
+    return resolveSelectorLabelOverride(this.selectorLabels(), method);
+  }
 
   onTileSelect(method: PaymentMethod): void {
     if (this.disabled()) {

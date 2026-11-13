@@ -294,6 +294,9 @@ export class MockMethodPanelComponent {
     if (method === 'afterpay') {
       return this.msgs().methodAfterpay;
     }
+    if (method === 'venmo') {
+      return this.msgs().methodVenmo;
+    }
     return PAYMENT_METHOD_LABELS[method];
   });
   readonly amountLabel = computed(() =>

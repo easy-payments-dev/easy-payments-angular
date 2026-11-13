@@ -1,9 +1,10 @@
 /**
  * Optional strip presentation for {@link EasyPaymentButtonsComponent}.
  *
- * Applies to library-owned selectors, placeholders, and the outer strip shell.
- * Official Apple Pay / Google Pay / PayPal SDK chrome is not restyled beyond
- * layout/gap constraints the SDKs already tolerate.
+ * Applies to library-owned selectors, placeholders, mock strip buttons, and
+ * (via each provider's styling API) mounted PayPal / Venmo / Google Pay /
+ * Apple Pay SDK buttons in the Buttons Only grid. Do not clip SDK iframes
+ * with CSS overflow/radius — radius is forwarded through official options.
  *
  * Defaults favor a transparent, compact payment strip that sits inside the
  * merchant's own checkout UI.
@@ -49,8 +50,16 @@ export interface EasyPaymentButtonsAppearance {
   borderWidth?: string;
 
   /**
-   * Corner radius for library-owned selectors / strip mock buttons.
-   * Examples: `'0'`, `'8px'`, `'999px'` (pill). Default: theme `--ep-radius-md`.
+   * Shared corner radius for the entire Buttons Only payment grid.
+   * Examples: `'0'`, `'4px'`, `'8px'`, `'999px'` (pill for library/mock).
+   * Default: theme `--ep-radius-md` for library/mock chrome; SDK buttons keep
+   * provider defaults until this is set.
+   *
+   * Forwarded as:
+   * - CSS `--ep-buttons-radius` (library selectors + mock strip buttons)
+   * - PayPal / Venmo `style.borderRadius` (px number; `0` → `shape: 'sharp'`)
+   * - Google Pay `buttonRadius` (clamped to ≤ half button height, max 20 at 40px)
+   * - Apple Pay Stripe ECE Appearance `variables.borderRadius`
    */
   borderRadius?: string;
 
@@ -104,8 +113,15 @@ export interface EasyPaymentButtonsAppearance {
   showSelectorIcon?: boolean;
 }
 
-/** Plain-text overrides for library-owned strip selectors. */
+/**
+ * Plain-text overrides for library-owned selectors.
+ * Used by Buttons Only (`buttonsAppearance.selectorLabels`) and Full Checkout
+ * (`[selectorLabels]`). Blank / omitted keys keep localized defaults.
+ * Accessible names follow the visible label. Confirm CTAs are independent
+ * (`cardButtonAppearance.label`).
+ */
 export interface EasyPaymentButtonsSelectorLabels {
+  /** Override for the Card selector label. */
   card?: string;
   klarna?: string;
   affirm?: string;
@@ -115,6 +131,8 @@ export interface EasyPaymentButtonsSelectorLabels {
   cashAppPay?: string;
   /** Override for the Afterpay selector label. */
   afterpay?: string;
+  /** Optional Venmo selector label (Full Checkout tiles use the official wordmark by default). */
+  venmo?: string;
 }
 
 /** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay / Afterpay triggers. Wallets stay official SDK buttons. */

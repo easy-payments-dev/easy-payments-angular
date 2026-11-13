@@ -61,6 +61,11 @@ export interface PayPalButtonsStyle {
   layout?: 'vertical' | 'horizontal';
   color?: 'gold' | 'blue' | 'silver' | 'white' | 'black';
   shape?: 'rect' | 'pill' | 'sharp';
+  /**
+   * Custom corner radius in CSS pixels. When set, overrides `shape`.
+   * For `0`, prefer `shape: 'sharp'` — classic SDK ignores `borderRadius: 0`.
+   */
+  borderRadius?: number;
   label?: 'paypal' | 'checkout' | 'buynow' | 'pay';
   height?: number;
   tagline?: boolean;

@@ -120,7 +120,7 @@ describe('PayPalAdapter', () => {
     expect(second).toBe(paypalNs);
     expect(sdkLoader.loadScript).toHaveBeenCalledTimes(1);
     expect(sdkLoader.loadScript.calls.mostRecent().args[0].id).toBe(
-      'easy-payments-paypal-sdk-en_US',
+      'easy-payments-paypal-sdk-en_US-none+no-buyer',
     );
   });
 
@@ -130,7 +130,9 @@ describe('PayPalAdapter', () => {
     await expectAsync(adapter.ensureSdkLoaded()).toBeRejectedWith(
       jasmine.objectContaining({ code: 'SDK_LOAD_FAILED' }),
     );
-    expect(sdkLoader.unloadScript).toHaveBeenCalledWith('easy-payments-paypal-sdk-en_US');
+    expect(sdkLoader.unloadScript).toHaveBeenCalledWith(
+      'easy-payments-paypal-sdk-en_US-none+no-buyer',
+    );
 
     sdkLoader.loadScript.and.callFake(async () => {
       (window as Window & { paypal?: PayPalNamespace }).paypal = paypalNs;

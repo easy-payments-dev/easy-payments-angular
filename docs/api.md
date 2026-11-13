@@ -23,10 +23,30 @@ Standalone component. Selector: `easy-payments`.
 | `appearance` | `EasyPaymentsAppearance` | `'default'` | No | `default`, `transparent` | Outer shell. Independent of `theme`. `transparent` removes built-in card chrome. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | see [Visual style](#visual-style) | Optional EP-owned font / color / token overrides. Invalid fields ignored. Does not restyle provider SDK chrome. |
 | `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | see [Stripe Card button appearance](#stripe-card-button-appearance) | Optional label + styles for the EP-owned Stripe Card confirm CTA. Does not restyle the Payment Element iframe or wallet SDK buttons. |
+| `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | No | see [Selector labels](#selector-labels) | Optional plain-text overrides for Full Checkout method tiles (`card`, `usBankAccount`, …). Blank/omitted keys keep localized defaults. Accessible names follow the visible label. Does not change confirm CTAs. |
 | `maxWidth` | `number \| string \| null \| undefined` | `640` | No | clamped to **320–1200** px | Max checkout width. Component stays `width: 100%` up to this cap. Invalid values fall back to `640`. |
 | `successBehavior` | `CheckoutSuccessBehavior` | `'confirmation'` | No | `confirmation`, `event-only` | Built-in success UI vs emit-only. Overridden by `checkout.successBehavior` when set. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `auto`, `en`, `es`, `pt` | UI locale. `auto` detects from the browser (`es-*`→es, `pt-*`→pt, `en-*`→en, else English). See [localization.md](./localization.md). |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | partial dictionary keys | Partial overrides for Easy Payments-owned strings. Priority: override → locale dictionary → English. |
+
+#### Selector labels
+
+```ts
+selectorLabels: EasyPaymentButtonsSelectorLabels = {
+  card: 'Credit / Debit',
+  usBankAccount: 'Bank account',
+};
+```
+
+```html
+<easy-payments
+  [product]="product"
+  [methods]="['card', 'us-bank-account', 'venmo']"
+  [selectorLabels]="selectorLabels"
+/>
+```
+
+Blank/omitted keys keep localized defaults. Accessible names match the visible label. Confirm CTAs remain on `cardButtonAppearance`.
 
 #### Examples
 
@@ -611,16 +631,20 @@ Leave `selectorVisibility` at `library` (the default). Optional `buttonsAppearan
 | `selectorTextColor` | `--ep-buttons-selector-text` | same |
 | `selectorFontFamily` / `selectorFontSize` / `selectorFontWeight` | `--ep-buttons-selector-font-*` | same |
 | `selectorPadding` | `--ep-buttons-selector-padding` | same |
-| `borderRadius` / `buttonHeight` | `--ep-buttons-radius` / `--ep-buttons-height` | library selectors and slot sizing |
+| `borderRadius` / `buttonHeight` | `--ep-buttons-radius` / `--ep-buttons-height` | Shared grid radius + slot height. `borderRadius` also forwards to PayPal/Venmo (`style.borderRadius`), Google Pay (`buttonRadius`, clamped ≤ half height), and Apple Pay (Stripe ECE Appearance `variables.borderRadius`). `0` is accepted. |
 | `selectorHoverBackgroundColor` / `selectorHoverTextColor` / `selectorHoverBorderColor` | `--ep-buttons-selector-hover-*` | enabled hover |
 | `selectorSelectedBackgroundColor` / `selectorSelectedTextColor` / `selectorSelectedBorderColor` | `--ep-buttons-selector-selected-*` | `aria-pressed` |
 | `selectorDisabledBackgroundColor` / `selectorDisabledTextColor` | `--ep-buttons-selector-disabled-*` | disabled |
 | `selectorLoadingBackgroundColor` / `selectorLoadingTextColor` | `--ep-buttons-selector-loading-*` | `aria-busy` |
 | `selectorFocusOutlineColor` | `--ep-buttons-selector-focus-color` | `:focus-visible` only |
 
-You can set the same variables in your stylesheet on `easy-payment-buttons`. Values that contain `url(`, `expression(`, `javascript:`, or stylesheet breaks are ignored. `selectorLabels.card` / `.klarna` / `.affirm` are plain text (max 64 characters). Markup is dropped and the default label remains. `showSelectorIcon: false` hides the library brand mark on those selectors only.
+You can set the same variables in your stylesheet on `easy-payment-buttons`. Values that contain `url(`, `expression(`, `javascript:`, or stylesheet breaks are ignored. `selectorLabels.card` / `.usBankAccount` / `.klarna` / `.affirm` (and other library selectors) are plain text (max 64 characters). Markup or blank values are dropped and the localized default remains. Card and US bank account overrides are independent. Accessible names follow the visible label. Confirm CTAs stay on `cardButtonAppearance` and are not affected. `showSelectorIcon: false` hides the library brand mark on those selectors only.
 
-PayPal, Google Pay, and Apple Pay keep their official SDK buttons. Do not recolor those iframes or replace them with custom HTML. Stripe Payment Element fields are also not restyled by these variables.
+Full Checkout uses the same `EasyPaymentButtonsSelectorLabels` shape via `[selectorLabels]` on `<easy-payments>`.
+
+PayPal, Venmo, Google Pay, and Apple Pay keep their official SDK buttons. Corner radius is forwarded through each provider’s styling API (see `borderRadius` above) — do not clip SDK iframes with CSS overflow/radius. Do not recolor those iframes or replace them with custom HTML. Stripe Payment Element fields are also not restyled by these color variables.
+
+**Provider radius limits:** Google Pay clamps `buttonRadius` to ≤ half the button height (20 at the default 40px). PayPal/Venmo accept a numeric `style.borderRadius`; `0` is mapped to `shape: 'sharp'` because the classic SDK ignores `borderRadius: 0`. Apple Pay uses Stripe Elements Appearance `variables.borderRadius` (no separate `buttonRadius`).
 
 Library selectors stay keyboard buttons (`type="button"`), expose accessible names, use `:focus-visible`, disable while a payment is busy, and announce the busy method in a polite live region. `prefers-reduced-motion` removes the selector color transition.
 

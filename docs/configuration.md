@@ -106,6 +106,39 @@ Each `<easy-payments>` instance resolves its own `theme` (component-scoped theme
 
 ---
 
+## Selector labels (Card + US bank account)
+
+Optional plain-text overrides for library-owned method selectors. Same `EasyPaymentButtonsSelectorLabels` shape for Full Checkout and Buttons Only. Card and US bank account can be set independently; blank or omitted keys keep the localized defaults. Accessible names follow the visible label. Confirmation button labels stay on `[cardButtonAppearance]` and are not affected.
+
+```ts
+import type { EasyPaymentButtonsSelectorLabels } from '@easy-payments/angular';
+
+selectorLabels: EasyPaymentButtonsSelectorLabels = {
+  card: 'Credit / Debit',
+  usBankAccount: 'Bank account',
+};
+```
+
+```html
+<!-- Full Checkout -->
+<easy-payments
+  [product]="product"
+  [methods]="['card', 'us-bank-account', 'venmo']"
+  [selectorLabels]="selectorLabels"
+/>
+
+<!-- Buttons Only -->
+<easy-payment-buttons
+  [product]="product"
+  [methods]="['card', 'us-bank-account', 'venmo']"
+  [buttonsAppearance]="{ selectorLabels }"
+/>
+```
+
+Markup, empty strings, and values over 64 characters are rejected and fall back to the localized label.
+
+---
+
 ## Stripe Card button appearance
 
 Optional `[cardButtonAppearance]` styles the Easy Payments–owned Stripe Card **confirm** button shared by Full Checkout and Buttons Only. It does not change Stripe Elements, PayPal, Google Pay, or Apple Pay SDK UI.

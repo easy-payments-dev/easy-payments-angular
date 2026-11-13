@@ -15,7 +15,12 @@ export function isMockHeadlessStatus(status: HeadlessMethodStatus | undefined): 
 
 /** Wallet-style mock methods start payment from the mounted DEMO control (buyer click). */
 export function isMockWalletMethod(method: PaymentMethod): boolean {
-  return method === 'paypal' || method === 'google-pay' || method === 'apple-pay';
+  return (
+    method === 'paypal' ||
+    method === 'venmo' ||
+    method === 'google-pay' ||
+    method === 'apple-pay'
+  );
 }
 
 export interface HeadlessMockSurface {

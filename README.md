@@ -502,6 +502,7 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 | `appearance` | `'default' \| 'transparent'` | `'default'` | Independent of theme |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | Optional EP-owned font/color/token overrides |
 | `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | Optional Stripe Card CTA label + styles (EP-owned button only) |
+| `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | Optional Card / US bank account (and other library) selector label overrides |
 | `maxWidth` | `number \| string \| null` | `640` | Clamped **320–1200** |
 | `successBehavior` | `'confirmation' \| 'event-only'` | `'confirmation'` | Overridable via `checkout` |
 | `locale` | `'auto' \| 'en' \| 'es' \| 'pt'` | `'auto'` | UI locale |
@@ -728,6 +729,233 @@ export class BrandedCheckoutComponent {
 | Reset | Set `[visualStyle]="null"` (or omit) to restore the active theme defaults. |
 
 Interactive playground controls (presets, field editors, dual-instance theme check): run the demo and open **Visual style (Phase 3 QA)**. Checklist: **[docs/phase-3-visual-qa.md](docs/phase-3-visual-qa.md)**. Full token contract: **[docs/configuration.md](docs/configuration.md#visual-style)** · **[docs/api.md](docs/api.md#visual-style)**.
+
+### Buttons Only shared corner radius (`buttonsAppearance.borderRadius`)
+
+One shared setting for the **entire Buttons Only payment grid**. Reuses the existing `buttonsAppearance.borderRadius` CSS length (for example `'0'`, `'4px'`, `'999px'`). Default when omitted: theme `--ep-radius-md` for library/mock chrome; SDK buttons keep provider defaults until you set it.
+
+```ts
+import { Component } from '@angular/core';
+import {
+  EasyPaymentButtonsComponent,
+  type EasyPaymentButtonsAppearance,
+  type PaymentMethod,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+@Component({
+  selector: 'app-buttons-radius',
+  imports: [EasyPaymentButtonsComponent],
+  template: `
+    <easy-payment-buttons
+      [product]="product"
+      [methods]="methods"
+      [buttonsAppearance]="buttonsAppearance"
+    />
+  `,
+})
+export class ButtonsRadiusComponent {
+  readonly product: PaymentProduct = {
+    id: 'premium-plan',
+    name: 'Premium Plan',
+    amount: 49.99,
+    currency: 'USD',
+  };
+
+  readonly methods: PaymentMethod[] = [
+    'card',
+    'paypal',
+    'venmo',
+    'google-pay',
+    'apple-pay',
+  ];
+
+  /** Exact property: `buttonsAppearance.borderRadius` (CSS px string). */
+  readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
+    borderRadius: '4px', // also accepts '0' and pill-like '999px'
+  };
+}
+```
+
+| Surface | How radius is applied |
+|---------|------------------------|
+| Library selectors + mock strip buttons | CSS `--ep-buttons-radius` |
+| PayPal / Venmo (live SDK) | `style.borderRadius` (px number). `0` → `shape: 'sharp'` (classic SDK bug) |
+| Google Pay (live SDK) | `buttonRadius` (px). Clamped to ≤ half button height (**max 20** at the default 40px height) |
+| Apple Pay (Stripe ECE) | Elements Appearance `variables.borderRadius` |
+
+Scoped to Buttons Only. Does not change Full Checkout tiles or confirmation CTAs. Single-line selectors stay **40px** tall; long custom labels still wrap. Changing `borderRadius` remounts supported SDK buttons with the new radius. Do not clip official SDK chrome with CSS.
+
+### Selector labels (`selectorLabels`)
+
+Optional plain-text overrides for **library-owned** method selectors (Card, US bank account, and other non-wallet tiles). Card and US bank account can be set independently. These options change the **visible selector label** and its **accessible name**. Confirmation button text is configured separately via [`cardButtonAppearance`](#stripe-card-confirmation-button-cardbuttonappearance) (and related CTA inputs) — not here.
+
+Omitted or blank keys fall back to the library’s localized defaults for the active `[locale]`.
+
+#### Full Checkout
+
+Bind `[selectorLabels]` on `<easy-payments>`:
+
+```ts
+import { Component } from '@angular/core';
+import {
+  EasyPaymentsComponent,
+  type EasyPaymentButtonsSelectorLabels,
+  type PaymentMethod,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+@Component({
+  selector: 'app-selector-labels-full-checkout',
+  imports: [EasyPaymentsComponent],
+  template: `
+    <easy-payments
+      [product]="product"
+      [methods]="methods"
+      [selectorLabels]="selectorLabels"
+    />
+  `,
+})
+export class SelectorLabelsFullCheckoutComponent {
+  readonly product: PaymentProduct = {
+    id: 'premium-plan',
+    name: 'Premium Plan',
+    amount: 49.99,
+    currency: 'USD',
+  };
+
+  readonly methods: PaymentMethod[] = ['card', 'us-bank-account', 'paypal'];
+
+  readonly selectorLabels: EasyPaymentButtonsSelectorLabels = {
+    card: 'Credit / Debit',
+    usBankAccount: 'Bank account',
+  };
+}
+```
+
+#### Buttons Only
+
+Set `buttonsAppearance.selectorLabels` (same `card` / `usBankAccount` keys):
+
+```ts
+import { Component } from '@angular/core';
+import {
+  EasyPaymentButtonsComponent,
+  type EasyPaymentButtonsAppearance,
+  type PaymentMethod,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+@Component({
+  selector: 'app-selector-labels-buttons-only',
+  imports: [EasyPaymentButtonsComponent],
+  template: `
+    <easy-payment-buttons
+      [product]="product"
+      [methods]="methods"
+      [buttonsAppearance]="buttonsAppearance"
+    />
+  `,
+})
+export class SelectorLabelsButtonsOnlyComponent {
+  readonly product: PaymentProduct = {
+    id: 'premium-plan',
+    name: 'Premium Plan',
+    amount: 49.99,
+    currency: 'USD',
+  };
+
+  readonly methods: PaymentMethod[] = ['card', 'us-bank-account', 'paypal'];
+
+  readonly buttonsAppearance: EasyPaymentButtonsAppearance = {
+    selectorLabels: {
+      card: 'Credit / Debit',
+      usBankAccount: 'Bank account',
+    },
+  };
+}
+```
+
+#### Host-localized overrides (en / es / pt)
+
+Supply your own English, Spanish, and Portuguese labels, pick the map for the active locale, and rebind when the language changes. Easy Payments does not translate host overrides — update the binding yourself (or omit keys to use library defaults).
+
+```ts
+import { Component, computed, signal } from '@angular/core';
+import {
+  EasyPaymentButtonsComponent,
+  EasyPaymentsComponent,
+  type EasyPaymentButtonsAppearance,
+  type EasyPaymentButtonsSelectorLabels,
+  type EasyPaymentsLocale,
+  type PaymentMethod,
+  type PaymentProduct,
+} from '@easy-payments/angular';
+
+const SELECTOR_LABELS_BY_LOCALE: Record<
+  'en' | 'es' | 'pt',
+  EasyPaymentButtonsSelectorLabels
+> = {
+  en: { card: 'Credit / Debit', usBankAccount: 'Bank account' },
+  es: { card: 'Crédito / Débito', usBankAccount: 'Cuenta bancaria' },
+  pt: { card: 'Crédito / Débito', usBankAccount: 'Conta bancária' },
+};
+
+@Component({
+  selector: 'app-selector-labels-i18n',
+  imports: [EasyPaymentsComponent, EasyPaymentButtonsComponent],
+  template: `
+    <easy-payments
+      [product]="product"
+      [methods]="methods"
+      [locale]="locale()"
+      [selectorLabels]="selectorLabels()"
+    />
+
+    <easy-payment-buttons
+      [product]="product"
+      [methods]="methods"
+      [locale]="locale()"
+      [buttonsAppearance]="buttonsAppearance()"
+    />
+  `,
+})
+export class SelectorLabelsI18nComponent {
+  readonly product: PaymentProduct = {
+    id: 'premium-plan',
+    name: 'Premium Plan',
+    amount: 49.99,
+    currency: 'USD',
+  };
+
+  readonly methods: PaymentMethod[] = ['card', 'us-bank-account'];
+
+  /** Host app language (keep in sync with `[locale]`). */
+  readonly locale = signal<Exclude<EasyPaymentsLocale, 'auto'>>('en');
+
+  readonly selectorLabels = computed(
+    () => SELECTOR_LABELS_BY_LOCALE[this.locale()],
+  );
+
+  readonly buttonsAppearance = computed<EasyPaymentButtonsAppearance>(() => ({
+    selectorLabels: this.selectorLabels(),
+  }));
+
+  setLanguage(next: 'en' | 'es' | 'pt'): void {
+    this.locale.set(next);
+  }
+}
+```
+
+| Concern | Behavior |
+|---------|----------|
+| Keys | Use `card` and `usBankAccount` (and other library selectors as needed). Wallet SDK buttons are not relabelable. |
+| Fallback | Omit a key or pass blank / invalid text → library localized default for the current `[locale]`. |
+| A11y | Accessible names follow the visible selector label (override or default). |
+| Confirm CTAs | Unchanged — configure with `[cardButtonAppearance]` (and BNPL/ACH confirm copy separately). |
+| Reactivity | Rebind `[selectorLabels]` / `buttonsAppearance.selectorLabels` when your language changes so host copy stays in sync; defaults already track `[locale]`. |
+
+Full field notes: **[docs/api.md](docs/api.md#selector-labels)** · **[docs/configuration.md](docs/configuration.md#selector-labels-card--us-bank-account)**.
 
 ### Stripe Card confirmation button (`cardButtonAppearance`)
 

@@ -52,6 +52,7 @@ export type HeadlessMethodInteraction =
   | 'confirm'
   | 'wallet-button'
   | 'paypal-buttons'
+  | 'venmo-buttons'
   | 'mock';
 
 /**
@@ -143,7 +144,7 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * Supports `card`, `klarna`, `affirm`, `us-bank-account`, `paypal`, `google-pay`, and `apple-pay`.
+   * Supports `card`, `klarna`, `affirm`, `us-bank-account`, `paypal`, `venmo`, `google-pay`, and `apple-pay`.
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 

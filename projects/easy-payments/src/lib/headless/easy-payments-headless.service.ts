@@ -12,6 +12,7 @@ import { CashAppPayAdapter } from '../adapters/cash-app-pay/cash-app-pay.adapter
 import { AfterpayAdapter } from '../adapters/afterpay/afterpay.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
+import { VenmoAdapter } from '../adapters/venmo/venmo.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
@@ -50,6 +51,7 @@ export class EasyPaymentsHeadless {
   private readonly cashAppPay = inject(CashAppPayAdapter);
   private readonly afterpay = inject(AfterpayAdapter);
   private readonly paypal = inject(PayPalAdapter);
+  private readonly venmo = inject(VenmoAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
@@ -96,6 +98,7 @@ export class EasyPaymentsHeadless {
         cashAppPay: this.cashAppPay,
         afterpay: this.afterpay,
         paypal: this.paypal,
+        venmo: this.venmo,
         googlePay: this.googlePay,
         applePay: this.applePay,
         stripeRedirectRecovery: this.stripeRedirectRecovery,

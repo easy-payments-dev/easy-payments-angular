@@ -101,6 +101,11 @@ export interface GooglePayButtonOptions {
     | 'subscribe';
   buttonSizeMode?: 'static' | 'fill';
   buttonLocale?: string;
+  /**
+   * Corner radius in CSS pixels. Min 0; max is half the button height
+   * (20 at the default 40px height). Pill-like host values must be clamped.
+   */
+  buttonRadius?: number;
 }
 
 export interface GooglePayNamespace {

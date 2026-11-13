@@ -142,7 +142,8 @@
 }
 
 /* PayPal Smart Buttons do not render below 150px wide. */
-.ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='paypal-express'] {
+.ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='venmo-express'] {
   min-width: min(100%, 150px);
 }
 
@@ -218,7 +219,22 @@
 
 .ep-payment-buttons__selector--labeled {
   gap: 8px;
-  padding: 0 12px;
+  /*
+   * Single-line Card / ACH stay on the strip height (match mock wallets).
+   * height:auto + min-height lets long custom labels wrap and grow without
+   * clipping; default padding stays horizontal-only so short labels do not
+   * inflate past --ep-buttons-height.
+   */
+  height: auto;
+  min-height: var(--ep-buttons-height, 40px);
+  padding: var(--ep-buttons-selector-padding, 0 12px);
+  align-items: center;
+  justify-content: center;
+}
+
+.ep-payment-buttons__selector--labeled .ep-payment-buttons__mark {
+  /* Icon must not shrink or collide with a wrapping label. */
+  flex: 0 0 auto;
 }
 
 .ep-payment-buttons__placeholder {
@@ -316,10 +332,16 @@
 }
 
 .ep-payment-buttons__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
   font-size: 13px;
   font-weight: 650;
-  line-height: 1.2;
-  white-space: nowrap;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
   color: inherit;
 }
 
@@ -364,7 +386,8 @@
 .ep-payment-buttons__express:focus,
 .ep-payment-buttons__express:focus-visible,
 .ep-payment-buttons__express:focus-within,
-.ep-payment-buttons__item[data-kind='paypal-express']:focus-within {
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express']:focus-within {
   outline: none;
   box-shadow: none;
 }
@@ -374,17 +397,23 @@
  * does not paint a second outer focus ring around the official button. Never
  * attempts to restyle cross-origin iframe document contents.
  */
-.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe,
-.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe:focus,
-.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep iframe:focus-visible,
-.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep .paypal-buttons:focus,
-.ep-payment-buttons__item[data-kind='paypal-express'] ::ng-deep .paypal-buttons:focus-visible {
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] ::ng-deep iframe,
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] ::ng-deep iframe:focus,
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] ::ng-deep iframe:focus-visible,
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] ::ng-deep .paypal-buttons:focus,
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] ::ng-deep .paypal-buttons:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
 
 /* Keep the PayPal express slot height stable even if SDK chrome changes. */
-.ep-payment-buttons__item[data-kind='paypal-express'] .ep-payment-buttons__express {
+.ep-payment-buttons__item[data-kind='paypal-express'],
+.ep-payment-buttons__item[data-kind='venmo-express'] .ep-payment-buttons__express {
   height: var(--ep-buttons-height, 40px);
   min-height: var(--ep-buttons-height, 40px);
   align-items: stretch;

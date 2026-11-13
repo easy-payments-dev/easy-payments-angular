@@ -2,6 +2,7 @@ export type PaymentMethod =
   | 'apple-pay'
   | 'google-pay'
   | 'paypal'
+  | 'venmo'
   | 'klarna'
   | 'affirm'
   | 'card'
@@ -12,6 +13,7 @@ export type PaymentMethod =
 export type PaymentProviderName =
   | 'stripe'
   | 'paypal'
+  | 'venmo'
   | 'applePay'
   | 'googlePay'
   | 'klarna'
@@ -24,6 +26,7 @@ export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderN
   'apple-pay': 'applePay',
   'google-pay': 'googlePay',
   paypal: 'paypal',
+  venmo: 'venmo',
   klarna: 'klarna',
   affirm: 'affirm',
   card: 'stripe',
@@ -36,6 +39,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   'apple-pay': 'Apple Pay',
   'google-pay': 'Google Pay',
   paypal: 'PayPal',
+  venmo: 'Venmo',
   klarna: 'Klarna',
   affirm: 'Affirm',
   card: 'Card',

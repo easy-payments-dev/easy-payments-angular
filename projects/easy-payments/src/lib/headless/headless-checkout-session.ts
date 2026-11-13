@@ -23,6 +23,7 @@ import type { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-a
 import type { CashAppPayAdapter } from '../adapters/cash-app-pay/cash-app-pay.adapter';
 import type { AfterpayAdapter } from '../adapters/afterpay/afterpay.adapter';
 import type { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
+import type { VenmoAdapter } from '../adapters/venmo/venmo.adapter';
 import { mapPayPalError } from '../adapters/paypal/paypal-error.mapper';
 import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mapper';
@@ -88,6 +89,7 @@ type HeadlessStripeElementMethod =
 type HeadlessMountableMethod =
   | HeadlessStripeElementMethod
   | 'paypal'
+  | 'venmo'
   | 'google-pay'
   | 'apple-pay';
 
@@ -106,6 +108,7 @@ function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMe
   return (
     isStripeElementMethod(method) ||
     method === 'paypal' ||
+    method === 'venmo' ||
     method === 'google-pay' ||
     method === 'apple-pay'
   );
@@ -155,6 +158,7 @@ export interface HeadlessCheckoutSessionDeps {
   cashAppPay: CashAppPayAdapter;
   afterpay: AfterpayAdapter;
   paypal: PayPalAdapter;
+  venmo: VenmoAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
   stripeRedirectRecovery: StripeRedirectRecoveryService;
@@ -191,6 +195,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly cashAppPay: CashAppPayAdapter;
   private readonly afterpay: AfterpayAdapter;
   private readonly paypal: PayPalAdapter;
+  private readonly venmo: VenmoAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
   private readonly stripeRedirectRecovery: StripeRedirectRecoveryService;
@@ -301,6 +306,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.cashAppPay = deps.cashAppPay;
     this.afterpay = deps.afterpay;
     this.paypal = deps.paypal;
+    this.venmo = deps.venmo;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
     this.stripeRedirectRecovery = deps.stripeRedirectRecovery;
@@ -436,7 +442,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "google-pay", and "apple-pay".',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", and "apple-pay".',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -501,6 +507,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
     if (method === 'paypal') {
       return this.mountPayPal(container, mountGen);
+    }
+    if (method === 'venmo') {
+      return this.mountVenmo(container, mountGen);
     }
     if (method === 'google-pay') {
       return this.mountGooglePay(container, mountGen);
@@ -834,6 +843,86 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
   }
 
+
+  private async mountVenmo(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    try {
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      await this.venmo.ensureSdkLoaded(effectiveLocale);
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'venmo');
+
+      const mountId = await this.venmo.renderButtons(
+        container,
+        {
+          createOrder: () => this.onVenmoCreateOrder(mountGen),
+          onApprove: (data) => this.onVenmoApprove(data.orderID, mountGen),
+          onCancel: () => this.onVenmoCancel(mountGen),
+          onError: (err) => this.onVenmoSdkError(err, mountGen),
+          onClick: async (_data, actions) => {
+            if (
+              this._state() === 'destroyed' ||
+              mountGen !== this.mountGeneration ||
+              this.venmo.isBusy(this.paypalOrderOwnerId, this.paypalCurrentOrderId) ||
+              this._state() === 'success' ||
+              this._state() === 'pending'
+            ) {
+              await actions.reject();
+              return;
+            }
+            await actions.resolve();
+          },
+        },
+        effectiveLocale,
+        this.paypalButtonsMountId ?? undefined,
+      );
+
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        await this.venmo.destroyButtons(mountId);
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'venmo',
+          provider: 'venmo',
+        });
+      }
+
+      this.paypalButtonsMountId = mountId;
+      this.mountedMethod = 'venmo';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      return this.createVenmoMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.paypalButtonsMountId;
+        this.paypalButtonsMountId = null;
+        if (id) {
+          await this.venmo.destroyButtons(id);
+        }
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'venmo',
+          provider: 'venmo',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapPayPalError(error, 'PROVIDER_UNAVAILABLE', 'Venmo Buttons failed to initialize.');
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
+
   private async mountGooglePay(
     container: HTMLElement,
     mountGen: number,
@@ -1100,6 +1189,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           'PayPal is confirmed through the official PayPal Buttons, not session.confirm(). Mount PayPal and let the buyer click the PayPal button.',
         method: 'paypal',
         provider: 'paypal',
+      });
+    }
+
+    if (selected === 'venmo') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Venmo is confirmed through the official Venmo Buttons, not session.confirm(). Mount Venmo and let the buyer click the Venmo button.',
+        method: 'venmo',
+        provider: 'venmo',
       });
     }
 
@@ -1735,6 +1834,231 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this._state() === 'destroyed' ||
         mountGen !== this.mountGeneration ||
         this.mountedMethod !== 'paypal'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
+  }
+
+  private createVenmoMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'venmo',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.paypalCurrentOrderId = null;
+        this.paypalCaptureEmitted = false;
+        this.paypalAttemptAnnounced = false;
+        if (this.paypalButtonsMountId === mountId) {
+          this.paypalButtonsMountId = null;
+        }
+        void this.venmo.destroyButtons(mountId);
+      },
+    };
+  }
+
+  private async onVenmoCreateOrder(mountGen: number): Promise<string> {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      throw new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: 'Venmo checkout was superseded.',
+        method: 'venmo',
+        provider: 'venmo',
+      });
+    }
+
+    this._lastError.set(null);
+    this.paypalCaptureEmitted = false;
+    const confirmGen = ++this.confirmGeneration;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.paypalAttemptAnnounced) {
+      this.paypalAttemptAnnounced = true;
+      this.emitStarted('venmo');
+    }
+
+    try {
+      const orderId = await this.venmo.createOrder(
+        this.product,
+        this.checkout,
+        this.paypalOrderOwnerId,
+      );
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        throw new PaymentError({
+          code: 'PAYMENT_FAILED',
+          message: 'Venmo checkout was superseded.',
+          method: 'venmo',
+          provider: 'venmo',
+        });
+      }
+      this.paypalCurrentOrderId = orderId;
+      return orderId;
+    } catch (error) {
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        throw mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create Venmo order.');
+      }
+      const paymentError = mapPayPalError(error, 'BACKEND_ERROR', 'Failed to create Venmo order.');
+      this.paypalAttemptAnnounced = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      // Buttons remain mounted — allow another buyer attempt.
+      this._state.set('ready');
+      throw paymentError;
+    }
+  }
+
+  private async onVenmoApprove(orderId: string, mountGen: number): Promise<void> {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this.paypalCaptureEmitted
+    ) {
+      return;
+    }
+    this.paypalCaptureEmitted = true;
+
+    const confirmGen = this.confirmGeneration;
+    this._state.set('processing');
+    this._lastError.set(null);
+
+    try {
+      const result = await this.venmo.captureOrder(orderId);
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+
+      if (result.status === 'success') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'venmo');
+        return;
+      }
+
+      if (result.status === 'processing') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'venmo');
+        return;
+      }
+
+      if (result.status === 'cancelled') {
+        this.paypalAttemptAnnounced = false;
+        this.applyPaymentResult(result, confirmGen, 'venmo');
+        this.restoreVenmoReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      const paymentError = new PaymentError({
+        code: 'PAYMENT_FAILED',
+        message: result.message ?? 'Venmo payment failed.',
+        method: 'venmo',
+        provider: 'venmo',
+      });
+      this.paypalAttemptAnnounced = false;
+      this.paypalCaptureEmitted = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restoreVenmoReadyAfterTerminal(mountGen);
+    } catch (error) {
+      if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+        return;
+      }
+      const paymentError = normalizeError(error, { method: 'venmo', provider: 'venmo' });
+      if (paymentError.code === 'PAYMENT_CANCELLED') {
+        this.paypalAttemptAnnounced = false;
+        this.paypalCaptureEmitted = false;
+        this.applyPaymentResult(
+          {
+            status: 'cancelled',
+            method: 'venmo',
+            provider: 'venmo',
+            message: paymentError.message,
+            sessionId: orderId,
+          },
+          confirmGen,
+          'venmo',
+        );
+        this.restoreVenmoReadyAfterTerminal(mountGen);
+        return;
+      }
+
+      this.paypalAttemptAnnounced = false;
+      this.paypalCaptureEmitted = false;
+      this._lastError.set(paymentError);
+      this._state.set('error');
+      this.emitTerminalError(paymentError, confirmGen);
+      this.restoreVenmoReadyAfterTerminal(mountGen);
+    }
+  }
+
+  private onVenmoCancel(mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCaptureEmitted = false;
+    this.applyPaymentResult(
+      {
+        status: 'cancelled',
+        method: 'venmo',
+        provider: 'venmo',
+        message: 'Venmo checkout was cancelled.',
+        sessionId: this.paypalCurrentOrderId ?? undefined,
+      },
+      confirmGen,
+      'venmo',
+    );
+    this.restoreVenmoReadyAfterTerminal(mountGen);
+  }
+
+  private onVenmoSdkError(err: unknown, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const paymentError = mapPayPalError(err);
+    if (paymentError.code === 'PAYMENT_CANCELLED') {
+      this.onVenmoCancel(mountGen);
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.paypalAttemptAnnounced = false;
+    this.paypalCaptureEmitted = false;
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreVenmoReadyAfterTerminal(mountGen);
+  }
+
+  /** Official Buttons stay mounted after cancel/error so the buyer can retry. */
+  private restoreVenmoReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'venmo'
       ) {
         return;
       }
@@ -2500,6 +2824,8 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'Afterpay';
     case 'paypal':
       return 'PayPal';
+    case 'venmo':
+      return 'Venmo';
     case 'google-pay':
       return 'Google Pay';
     case 'apple-pay':

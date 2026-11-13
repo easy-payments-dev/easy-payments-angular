@@ -16,6 +16,7 @@ export interface EasyPaymentsTranslations {
   methodUsBankAccount: string;
   methodCashAppPay: string;
   methodAfterpay: string;
+  methodVenmo: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -80,6 +81,7 @@ export interface EasyPaymentsTranslations {
   usBankAccountPaymentRegionAria: string;
   cashAppPayPaymentRegionAria: string;
   afterpayPaymentRegionAria: string;
+  venmoPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -141,6 +143,15 @@ export interface EasyPaymentsTranslations {
   secureCheckoutAfterpay: string;
   preparingAfterpay: string;
   afterpayFormAria: string;
+
+  payWithVenmo: string;
+  secureCheckoutVenmo: string;
+  preparingVenmo: string;
+  creatingVenmoOrder: string;
+  waitingVenmoApproval: string;
+  capturingVenmo: string;
+  venmoCheckoutAria: string;
+  venmoCancelled: string;
 }
 
 /** Partial overrides supplied by the consuming app. */
