@@ -28,6 +28,7 @@ import {
 } from '../../models';
 import type { EasyPaymentsAppearance } from '../../models/easy-payments-appearance.model';
 import type { EasyPaymentsCardButtonAppearance } from '../../models/easy-payments-card-button-appearance.model';
+import type { EasyPaymentButtonsSelectorLabels } from '../../models/easy-payment-buttons-appearance.model';
 import type { EasyPaymentsVisualStyle } from '../../models/easy-payments-visual-style.model';
 import { PaymentError, normalizeError } from '../../errors/payment-error';
 import {
@@ -57,6 +58,7 @@ import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.compon
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
+import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
 import { PaymentMethodSelectorComponent } from '../checkout/payment-method-selector.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -96,6 +98,7 @@ import {
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
+    VenmoPaymentComponent,
     CheckoutOutcomeComponent,
   ],
   templateUrl: './easy-payments.component.html',
@@ -186,6 +189,14 @@ export class EasyPaymentsComponent {
    * Does not restyle the Stripe Payment Element iframe or other providers.
    */
   readonly cardButtonAppearance = input<EasyPaymentsCardButtonAppearance | null>(null);
+  /**
+   * Optional plain-text overrides for Full Checkout method selector tiles
+   * (same shape as Buttons Only `buttonsAppearance.selectorLabels`).
+   * Card and US bank account can be set independently; blank/omitted keys keep
+   * localized defaults. Accessible names follow the visible label. Does not
+   * change confirmation button labels (`cardButtonAppearance` owns those).
+   */
+  readonly selectorLabels = input<EasyPaymentButtonsSelectorLabels | null>(null);
   /**
    * Maximum checkout width in pixels. The component stays fluid (`width: 100%`)
    * up to this cap. Values are clamped to library-safe limits (320–1200).
@@ -362,6 +373,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'afterpay' && !entry.isMock),
   );
 
+  readonly hasRealVenmoMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'venmo' && !entry.isMock),
+  );
+
   readonly showMockPanel = computed(() => {
     if (!this.showCheckoutForm()) {
       return false;
@@ -395,6 +410,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'afterpay' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'venmo' && !entry.isMock) {
       return false;
     }
     return true;
@@ -453,6 +471,7 @@ export class EasyPaymentsComponent {
   readonly showUsBankAccountPanel = computed(() => this.hasRealUsBankAccountMethod());
   readonly showCashAppPayPanel = computed(() => this.hasRealCashAppPayMethod());
   readonly showAfterpayPanel = computed(() => this.hasRealAfterpayMethod());
+  readonly showVenmoPanel = computed(() => this.hasRealVenmoMethod());
 
   /**
    * Keep the active real-provider panel interactive while its own UI is needed
@@ -520,6 +539,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'afterpay' &&
       this.hasRealAfterpayMethod(),
+  );
+
+  readonly venmoPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'venmo' &&
+      this.hasRealVenmoMethod(),
   );
 
   constructor() {
@@ -1094,6 +1120,18 @@ export class EasyPaymentsComponent {
       return;
     }
     this.providerBusy.set(false);
+  }
+
+  onVenmoSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onVenmoCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onVenmoError(error: PaymentError): void {
+    this.handlePaymentError(error);
   }
 
   onAffirmReturning(active: boolean): void {

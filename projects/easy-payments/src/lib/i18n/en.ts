@@ -14,6 +14,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   methodUsBankAccount: 'US bank account',
   methodCashAppPay: 'Cash App Pay',
   methodAfterpay: 'Afterpay',
+  methodVenmo: 'Venmo',
 
   orderTotal: 'Order total',
   quantityPrefix: 'Qty',
@@ -73,6 +74,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   usBankAccountPaymentRegionAria: 'US bank account payment',
   cashAppPayPaymentRegionAria: 'Cash App Pay payment',
   afterpayPaymentRegionAria: 'Afterpay payment',
+  venmoPaymentRegionAria: 'Venmo payment',
   demoWalletButtonAria: '{{method}}, demo mode',
 
   payWithCard: 'Pay with card',
@@ -134,4 +136,13 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutAfterpay: 'Secure checkout powered by Afterpay via Stripe',
   preparingAfterpay: 'Preparing Afterpay…',
   afterpayFormAria: 'Afterpay secure payment form',
+
+  payWithVenmo: 'Pay with Venmo',
+  secureCheckoutVenmo: 'Secure checkout powered by Venmo via PayPal',
+  preparingVenmo: 'Preparing Venmo checkout…',
+  creatingVenmoOrder: 'Creating Venmo order…',
+  waitingVenmoApproval: 'Waiting for Venmo approval…',
+  capturingVenmo: 'Capturing Venmo payment…',
+  venmoCheckoutAria: 'Venmo official checkout',
+  venmoCancelled: 'Venmo checkout cancelled.',
 };

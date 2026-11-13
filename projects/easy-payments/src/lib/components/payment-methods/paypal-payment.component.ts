@@ -32,6 +32,7 @@ import {
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
+import { resolvePayPalBorderRadiusStyle } from '../../utils/button-border-radius';
 
 /** Matches the default `--ep-buttons-height` of the Buttons Only strip. */
 const PAYPAL_COMPACT_BUTTON_HEIGHT = 40;
@@ -230,6 +231,11 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
    * checkout panel chrome (title, security blurb, verbose status copy).
    */
   readonly compact = input(false);
+  /**
+   * Shared Buttons Only grid corner radius in CSS pixels (`buttonsAppearance.borderRadius`).
+   * Omitted keeps PayPal SDK defaults (`shape: 'rect'`).
+   */
+  readonly buttonBorderRadiusPx = input<number | null>(null);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -265,13 +271,14 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       const ready = this.viewReady();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
       const compact = this.compact();
+      const borderRadiusPx = this.buttonBorderRadiusPx();
       // Read theme so Angular tracks it, but do not use it as a render key.
       void this.resolvedTheme();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButtons(product, checkout, locale, compact);
+        void this.ensureButtons(product, checkout, locale, compact, borderRadiusPx);
       });
     });
 
@@ -331,6 +338,7 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
     checkout: CheckoutOptions | undefined,
     locale: EasyPaymentsResolvedLocale,
     compact = false,
+    borderRadiusPx: number | null = null,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -346,7 +354,8 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const nextKey = `${buildPayPalRenderKey(product, checkout)}|${locale}|compact:${compact ? 1 : 0}`;
+    const radiusKey = borderRadiusPx == null ? 'default' : String(borderRadiusPx);
+    const nextKey = `${buildPayPalRenderKey(product, checkout)}|${locale}|compact:${compact ? 1 : 0}|r:${radiusKey}`;
     if (nextKey === this.renderKey) {
       return;
     }
@@ -382,6 +391,8 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
       const host = this.host().nativeElement;
       host.replaceChildren();
 
+      const radiusStyle = resolvePayPalBorderRadiusStyle(borderRadiusPx);
+
       // Buttons Only: one primary PayPal funding button. Full checkout keeps
       // SDK-eligible funding sources (Pay Later / card) via omitted fundingSource.
       const mountId = await this.paypalAdapter.renderButtons(
@@ -393,9 +404,9 @@ export class PayPalPaymentComponent implements AfterViewInit, OnDestroy {
                 style: {
                   layout: 'vertical',
                   color: 'gold',
-                  shape: 'rect',
                   label: 'paypal',
                   height: PAYPAL_COMPACT_BUTTON_HEIGHT,
+                  ...radiusStyle,
                 },
               }
             : {}),

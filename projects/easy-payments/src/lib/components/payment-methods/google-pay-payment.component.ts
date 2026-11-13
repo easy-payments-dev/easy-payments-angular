@@ -35,6 +35,7 @@ import {
   toGooglePayButtonLocale,
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
+import { clampGooglePayButtonRadius } from '../../utils/button-border-radius';
 
 @Component({
   selector: 'easy-google-pay-payment',
@@ -197,6 +198,11 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
    * checkout panel chrome (title, security blurb, amount row, verbose status).
    */
   readonly compact = input(false);
+  /**
+   * Shared Buttons Only grid corner radius in CSS pixels (`buttonsAppearance.borderRadius`).
+   * Clamped to Google's max (half of 40px height → 20). Omitted keeps Google defaults.
+   */
+  readonly buttonBorderRadiusPx = input<number | null>(null);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -248,12 +254,13 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       const theme = this.resolvedTheme();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
       const compact = this.compact();
+      const borderRadiusPx = this.buttonBorderRadiusPx();
       const ready = this.viewReady();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButton(product, checkout, theme, locale, compact);
+        void this.ensureButton(product, checkout, theme, locale, compact, borderRadiusPx);
       });
     });
 
@@ -295,6 +302,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     theme: ResolvedPaymentTheme,
     locale: EasyPaymentsResolvedLocale,
     compact = false,
+    borderRadiusPx: number | null = null,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -311,7 +319,10 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     const buttonLocale = toGooglePayButtonLocale(locale);
-    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}|compact:${compact ? 1 : 0}`;
+    const clampedRadius =
+      borderRadiusPx == null ? null : clampGooglePayButtonRadius(borderRadiusPx);
+    const radiusKey = clampedRadius == null ? 'default' : String(clampedRadius);
+    const nextKey = `${buildGooglePayRenderKey(product)}|${buttonLocale}|compact:${compact ? 1 : 0}|r:${radiusKey}`;
     const themeChanged = this.lastTheme !== theme;
     const localeChanged = this.lastButtonLocale !== buttonLocale;
     if (nextKey === this.renderKey && !themeChanged && !localeChanged && this.uiState() === 'ready') {
@@ -351,6 +362,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
           theme,
           buttonLocale,
           compact,
+          ...(clampedRadius != null ? { buttonRadius: clampedRadius } : {}),
           onClick: () => this.onGooglePayClick(product, checkout, generation),
         },
         this.buttonMountId ?? undefined,

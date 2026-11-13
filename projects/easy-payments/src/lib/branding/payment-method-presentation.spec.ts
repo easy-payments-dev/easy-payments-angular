@@ -103,11 +103,24 @@ describe('payment method presentation', () => {
       'apple-pay',
       'google-pay',
       'paypal',
+      'venmo',
       'klarna',
       'affirm',
       'us-bank-account',
       'cash-app-pay',
       'afterpay',
     ]);
+  });
+
+  it('uses official Venmo wordmarks for light and dark themes', () => {
+    const light = getPaymentMethodPresentation('venmo', 'light');
+    const dark = getPaymentMethodPresentation('venmo', 'dark');
+    expect(light.label).toBe('Venmo');
+    expect(dark.label).toBe('Venmo');
+    expect(light.source).toBe('official-cdn');
+    expect(light.markIncludesName).toBeTrue();
+    expect(light.markUrl).toContain('Venmo_Logo_Blue');
+    expect(dark.markUrl).toContain('Venmo_Logo_White');
+    expect(dark.markUrl).not.toBe(light.markUrl);
   });
 });

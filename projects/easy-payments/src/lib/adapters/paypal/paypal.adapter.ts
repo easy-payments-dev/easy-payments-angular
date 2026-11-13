@@ -53,6 +53,25 @@ export function sanitizePayPalButtonStyle(style: PayPalButtonsStyle): PayPalButt
       next.height = Math.min(55, Math.max(25, Math.round(height)));
     }
   }
+  if ('borderRadius' in next) {
+    const raw = next.borderRadius as unknown;
+    let radius: number | undefined;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      radius = raw;
+    } else if (typeof raw === 'string') {
+      const parsed = Number.parseFloat(raw);
+      radius = Number.isFinite(parsed) ? parsed : undefined;
+    } else {
+      radius = undefined;
+    }
+    if (radius === undefined || radius < 0) {
+      delete next.borderRadius;
+    } else {
+      // Classic SDK treats borderRadius=0 as falsy and skips the CSS rule.
+      // Callers should prefer shape:'sharp' for zero; still coerce valid positives.
+      next.borderRadius = Math.round(radius);
+    }
+  }
   if (next.layout !== 'horizontal') {
     delete next.tagline;
   }
@@ -80,6 +99,8 @@ export class PayPalAdapter extends BaseProviderAdapter {
   private loadPromise: Promise<PayPalNamespace> | null = null;
   /** PayPal SDK locale last successfully loaded (underscore form, e.g. en_US). */
   private loadedSdkLocale: string | null = null;
+  /** Script fingerprint for locale + funding flags last successfully loaded. */
+  private loadedSdkFingerprint: string | null = null;
   /**
    * Per-host official Buttons mounts. Destroying one host must not close another's.
    * Keyed by opaque mount ids owned by PayPalPaymentComponent instances.
@@ -138,16 +159,26 @@ export class PayPalAdapter extends BaseProviderAdapter {
     }
 
     const paypalLocale = toPayPalSdkLocale(locale);
-    const scriptId = `easy-payments-paypal-sdk-${paypalLocale}`;
+    const snapshot = this.configService.getSnapshot();
+    const venmoConfig = snapshot.providers?.venmo;
+    const enableVenmo = !!venmoConfig && typeof venmoConfig === 'object';
+    const sandboxBuyerCountry =
+      enableVenmo && venmoConfig.sandboxBuyerCountry === 'US' ? 'US' : null;
+    const fundingFingerprint = [
+      enableVenmo ? 'venmo' : 'none',
+      sandboxBuyerCountry ?? 'no-buyer',
+    ].join('+');
+    const scriptId = `easy-payments-paypal-sdk-${paypalLocale}-${fundingFingerprint}`;
+    const fingerprint = `${paypalLocale}|${fundingFingerprint}`;
 
-    if (this.loadedSdkLocale === paypalLocale) {
+    if (this.loadedSdkFingerprint === fingerprint) {
       const existing = this.browser.getWindow()?.paypal;
       if (existing?.Buttons) {
         return existing;
       }
       this.loadPromise = null;
-    } else if (this.loadedSdkLocale) {
-      this.unloadSdk(this.loadedSdkLocale);
+    } else if (this.loadedSdkFingerprint || this.loadedSdkLocale) {
+      this.unloadSdk(this.loadedSdkLocale ?? paypalLocale, this.loadedSdkFingerprint);
       this.loadPromise = null;
     }
 
@@ -155,7 +186,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       return this.loadPromise;
     }
 
-    const paypalConfig = this.configService.getSnapshot().providers?.paypal;
+    const paypalConfig = snapshot.providers?.paypal;
     const clientId = paypalConfig?.clientId?.trim() ?? '';
     if (!clientId) {
       throw new PaymentError({
@@ -169,17 +200,36 @@ export class PayPalAdapter extends BaseProviderAdapter {
     const currency = (paypalConfig?.currency ?? 'USD').trim().toUpperCase() || 'USD';
     const intent = paypalConfig?.intent ?? 'capture';
 
+    const params = new URLSearchParams({
+      'client-id': clientId,
+      currency,
+      intent,
+      components: 'buttons',
+      locale: paypalLocale,
+    });
+    // Official Venmo docs: enable-funding=venmo so the Venmo button can render when eligible.
+    // https://developer.paypal.com/platforms/checkout/pay-with-venmo/integrate
+    if (enableVenmo) {
+      params.set('enable-funding', 'venmo');
+    }
+    // Sandbox-only simulation of a US buyer. Never set in production.
+    // https://developer.paypal.com/platforms/checkout/pay-with-venmo/test
+    if (sandboxBuyerCountry) {
+      params.set('buyer-country', sandboxBuyerCountry);
+    }
+
     this.loadPromise = (async () => {
       try {
         await this.sdkLoader.loadScript({
           id: scriptId,
-          src: `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=${encodeURIComponent(intent)}&components=buttons&locale=${encodeURIComponent(paypalLocale)}`,
+          src: `https://www.paypal.com/sdk/js?${params.toString()}`,
           // Surface hangs (adblock / DNS / captive portal) as a timeout instead of spinning forever.
           timeoutMs: 20_000,
         });
       } catch (error) {
         this.loadPromise = null;
         this.loadedSdkLocale = null;
+        this.loadedSdkFingerprint = null;
         this.sdkLoader.unloadScript(scriptId);
         throw mapPayPalError(error, 'SDK_LOAD_FAILED', 'PayPal SDK script failed to load.');
       }
@@ -188,6 +238,7 @@ export class PayPalAdapter extends BaseProviderAdapter {
       if (!paypal?.Buttons) {
         this.loadPromise = null;
         this.loadedSdkLocale = null;
+        this.loadedSdkFingerprint = null;
         this.sdkLoader.unloadScript(scriptId);
         throw new PaymentError({
           code: 'SDK_LOAD_FAILED',
@@ -199,20 +250,27 @@ export class PayPalAdapter extends BaseProviderAdapter {
       }
 
       this.loadedSdkLocale = paypalLocale;
+      this.loadedSdkFingerprint = fingerprint;
       return paypal;
     })();
 
     return this.loadPromise;
   }
 
-  private unloadSdk(previousLocale: string): void {
+  private unloadSdk(previousLocale: string, previousFingerprint: string | null = null): void {
     const win = this.browser.getWindow();
     if (win?.paypal) {
       delete win.paypal;
     }
+    if (previousFingerprint) {
+      const localePart = previousFingerprint.split('|')[0] ?? previousLocale;
+      const fundingPart = previousFingerprint.split('|')[1] ?? 'none+no-buyer';
+      this.sdkLoader.unloadScript(`easy-payments-paypal-sdk-${localePart}-${fundingPart}`);
+    }
     this.sdkLoader.unloadScript(`easy-payments-paypal-sdk-${previousLocale}`);
     // Legacy id from pre-locale builds.
     this.sdkLoader.unloadScript('easy-payments-paypal-sdk');
+    this.loadedSdkFingerprint = null;
   }
 
   /**
@@ -254,14 +312,25 @@ export class PayPalAdapter extends BaseProviderAdapter {
     }
   }
 
-  /** Captures one order. A second capture of the same order id is rejected (never double-captured). */
-  async captureOrder(orderId: string): Promise<PaymentResult> {
+  /**
+   * Captures one order. A second capture of the same order id is rejected (never double-captured).
+   * Venmo reuses PayPal Orders v2; pass `method: 'venmo'` so outcomes are tagged correctly.
+   */
+  async captureOrder(
+    orderId: string,
+    options?: { method?: 'paypal' | 'venmo' },
+  ): Promise<PaymentResult> {
+    const method = options?.method === 'venmo' ? 'venmo' : 'paypal';
+    const provider = method === 'venmo' ? 'venmo' : 'paypal';
     if (this.capturingOrders.has(orderId)) {
       throw new PaymentError({
         code: 'PAYMENT_FAILED',
-        message: 'A PayPal capture is already in progress.',
-        method: 'paypal',
-        provider: 'paypal',
+        message:
+          method === 'venmo'
+            ? 'A Venmo capture is already in progress.'
+            : 'A PayPal capture is already in progress.',
+        method,
+        provider,
       });
     }
 
@@ -270,17 +339,25 @@ export class PayPalAdapter extends BaseProviderAdapter {
       const response = await this.backend.capturePayPalOrder(orderId);
       return normalizePaymentResult({
         status: 'success',
-        method: 'paypal',
-        provider: 'paypal',
+        method,
+        provider,
         transactionId: response.captureId,
         sessionId: response.orderId,
-        message: 'PayPal payment completed.',
+        message:
+          method === 'venmo' ? 'Venmo payment completed.' : 'PayPal payment completed.',
         metadata: {
           paypalStatus: response.status,
+          ...(method === 'venmo' ? { fundingSource: 'venmo' } : {}),
         },
       });
     } catch (error) {
-      throw mapPayPalError(error, 'PAYMENT_FAILED', 'Failed to capture PayPal payment.');
+      throw mapPayPalError(
+        error,
+        'PAYMENT_FAILED',
+        method === 'venmo'
+          ? 'Failed to capture Venmo payment.'
+          : 'Failed to capture PayPal payment.',
+      );
     } finally {
       this.capturingOrders.delete(orderId);
     }
@@ -337,11 +414,14 @@ export class PayPalAdapter extends BaseProviderAdapter {
     }
 
     if (typeof buttons.isEligible === 'function' && !buttons.isEligible()) {
+      const isVenmo = resolvedFunding === 'venmo';
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
-        message: 'PayPal Buttons are not eligible in this browser or funding configuration.',
-        method: 'paypal',
-        provider: 'paypal',
+        message: isVenmo
+          ? 'Venmo Buttons are not eligible in this browser or funding configuration.'
+          : 'PayPal Buttons are not eligible in this browser or funding configuration.',
+        method: isVenmo ? 'venmo' : 'paypal',
+        provider: isVenmo ? 'venmo' : 'paypal',
       });
     }
 

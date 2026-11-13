@@ -64,6 +64,10 @@ Easy Payments loads the PayPal JS SDK with:
 
 Runtime locale changes unload/reload the SDK script for the new locale (no duplicate conflicting scripts).
 
+## Venmo
+
+Venmo is a **separate opt-in** method (`providers.venmo` + `'venmo'` in methods). When configured, Easy Payments loads the shared PayPal JS SDK with `enable-funding=venmo` and reuses the same Orders create/capture endpoints. See [venmo.md](./venmo.md).
+
 ## Testing
 
 1. Use Sandbox Client ID.  

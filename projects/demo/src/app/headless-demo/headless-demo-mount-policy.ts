@@ -19,7 +19,7 @@ export function isHeadlessDemoStripeElementMethod(method: PaymentMethod): boolea
  * on buyer click. Do not call `session.confirm()` for these methods.
  */
 export function isHeadlessDemoOfficialButtonMethod(method: PaymentMethod): boolean {
-  return method === 'paypal' || method === 'google-pay' || method === 'apple-pay';
+  return method === 'paypal' || method === 'venmo' || method === 'google-pay' || method === 'apple-pay';
 }
 
 /** @deprecated H5.3 mounts all official methods; kept for test compatibility. */

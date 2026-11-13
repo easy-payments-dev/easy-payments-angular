@@ -55,6 +55,7 @@
           [selected]="selectedMethod()"
           [theme]="resolvedTheme()"
           [disabled]="methodsLocked()"
+          [selectorLabels]="selectorLabels()"
           [expressTemplates]="applePayExpressInList() ? { 'apple-pay': applePayExpress } : {}"
           (methodSelect)="selectMethod($event)"
         />
@@ -273,6 +274,28 @@
             (started)="onPaymentStarted('afterpay')"
             (busyChange)="onProviderBusy($event)"
             (returning)="onAfterpayReturning($event)"
+          />
+        </div>
+      }
+    }
+
+    @if (showVenmoPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!venmoPanelActive()"
+          [attr.aria-hidden]="!venmoPanelActive()"
+          [inert]="!venmoPanelActive()"
+        >
+          <easy-venmo-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onVenmoSuccess($event)"
+            (cancel)="onVenmoCancel($event)"
+            (error)="onVenmoError($event)"
+            (started)="onPaymentStarted('venmo')"
+            (busyChange)="onProviderBusy($event)"
           />
         </div>
       }

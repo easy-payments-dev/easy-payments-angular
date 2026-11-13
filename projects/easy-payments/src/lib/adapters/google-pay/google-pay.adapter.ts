@@ -186,6 +186,11 @@ export class GooglePayAdapter extends BaseProviderAdapter {
        * Full checkout keeps `pay` (may include account UI).
        */
       compact?: boolean;
+      /**
+       * Shared Buttons Only grid radius (px). Clamped to Google's max
+       * (half of the default 40px height → 20).
+       */
+      buttonRadius?: number;
     },
     mountId?: string,
   ): Promise<string> {
@@ -209,6 +214,9 @@ export class GooglePayAdapter extends BaseProviderAdapter {
       buttonType: options.compact ? 'short' : 'pay',
       buttonSizeMode: 'fill',
       ...(options.buttonLocale ? { buttonLocale: options.buttonLocale } : {}),
+      ...(typeof options.buttonRadius === 'number'
+        ? { buttonRadius: options.buttonRadius }
+        : {}),
     };
 
     const button = client.createButton(buttonOptions);

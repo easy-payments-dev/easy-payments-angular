@@ -287,6 +287,11 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       theme: ResolvedPaymentTheme;
       /** Stripe Elements locale (Easy Payments chrome is localized separately). */
       locale?: string;
+      /**
+       * Shared Buttons Only grid radius (px). Applied via Elements Appearance
+       * `variables.borderRadius` — Apple Pay has no separate buttonRadius API.
+       */
+      buttonBorderRadiusPx?: number;
       onSuccess: (result: PaymentResult) => void;
       onCancel: () => void;
       onError: (error: PaymentError) => void;
@@ -351,6 +356,15 @@ export class ApplePayAdapter extends BaseProviderAdapter {
       currency,
       paymentMethodTypes: ['card'],
       ...(options.locale ? { locale: options.locale as StripeElementLocale } : {}),
+      ...(typeof options.buttonBorderRadiusPx === 'number'
+        ? {
+            appearance: {
+              variables: {
+                borderRadius: `${options.buttonBorderRadiusPx}px`,
+              },
+            },
+          }
+        : {}),
     });
 
     const expressCheckout = elements.create('expressCheckout', {

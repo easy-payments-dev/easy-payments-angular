@@ -203,6 +203,11 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
   readonly resolvedTheme = input.required<ResolvedPaymentTheme>();
   /** Button-only rendering for the express slot inside the payment methods list. */
   readonly compact = input(false);
+  /**
+   * Shared Buttons Only grid corner radius in CSS pixels (`buttonsAppearance.borderRadius`).
+   * Applied via Stripe Elements Appearance `variables.borderRadius`. Omitted keeps Stripe defaults.
+   */
+  readonly buttonBorderRadiusPx = input<number | null>(null);
 
   readonly success = output<PaymentResult>();
   readonly cancel = output<PaymentResult>();
@@ -250,11 +255,12 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
       const theme = this.resolvedTheme();
       const ready = this.viewReady();
       const locale = this.i18n?.effectiveLocale() ?? 'en';
+      const borderRadiusPx = this.buttonBorderRadiusPx();
       if (!ready) {
         return;
       }
       untracked(() => {
-        void this.ensureButton(product, checkout, theme, locale);
+        void this.ensureButton(product, checkout, theme, locale, borderRadiusPx);
       });
     });
 
@@ -296,6 +302,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
     checkout: CheckoutOptions | undefined,
     theme: ResolvedPaymentTheme,
     locale: 'en' | 'es' | 'pt',
+    borderRadiusPx: number | null = null,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);
     if (!validation.valid) {
@@ -312,7 +319,8 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     const elementsLocale = toStripeElementsLocale(locale);
-    const nextKey = buildApplePayRenderKey(product);
+    const radiusKey = borderRadiusPx == null ? 'default' : String(borderRadiusPx);
+    const nextKey = `${buildApplePayRenderKey(product)}|r:${radiusKey}`;
     const themeChanged = this.lastTheme !== theme;
     const localeChanged = this.lastLocale !== elementsLocale;
     if (
@@ -354,6 +362,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
           checkout,
           theme,
           locale: elementsLocale,
+          ...(borderRadiusPx != null ? { buttonBorderRadiusPx: borderRadiusPx } : {}),
           onSuccess: (result) => this.onPaymentSuccess(result, generation),
           onCancel: () => this.onPaymentCancel(generation),
           onError: (err) => this.onPaymentError(err, generation),

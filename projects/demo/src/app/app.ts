@@ -30,6 +30,7 @@ import {
   type CheckoutOptions,
   type EasyPaymentButtonsAppearance,
   type EasyPaymentButtonsLayout,
+  type EasyPaymentButtonsSelectorLabels,
   type EasyPaymentsAppearance,
   type EasyPaymentsCardButtonAppearance,
   type EasyPaymentsLocale,
@@ -122,6 +123,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'cash-app-pay', enabled: true },
   // Opt-in Afterpay for Full Checkout, Buttons Only, and Headless.
   { method: 'afterpay', enabled: true },
+  // Opt-in Venmo (PayPal JS SDK funding) for Full Checkout, Buttons Only, and Headless.
+  { method: 'venmo', enabled: true },
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
@@ -274,6 +277,15 @@ export class App {
   readonly productQuantity = signal(String(DEFAULT_PRODUCT.quantity ?? 1));
   readonly theme = signal<PaymentTheme>('system');
   readonly appearance = signal<EasyPaymentsAppearance>('default');
+  /**
+   * Demo Full Checkout + Buttons Only selector label overrides.
+   * Card and US bank account are independent; blank keys keep localized defaults.
+   * Confirm CTAs stay on `[cardButtonAppearance]` and are not affected here.
+   */
+  readonly selectorLabels = signal<EasyPaymentButtonsSelectorLabels>({
+    card: 'Credit / Debit',
+    usBankAccount: 'Bank account',
+  });
   /** Demo locale control for `<easy-payments [locale]>`. */
   readonly locale = signal<EasyPaymentsLocale>(readPersistedDemoLocale() ?? 'auto');
   readonly effectiveLocale = computed(() => resolveEffectiveLocale(this.locale()));
@@ -338,7 +350,8 @@ export class App {
   readonly buttonsBorder = signal<'default' | 'none'>('default');
   readonly buttonsBorderColor = signal('');
   readonly buttonsBorderWidth = signal('1px');
-  readonly buttonsBorderRadius = signal(10);
+  /** Shared Buttons Only grid radius (`buttonsAppearance.borderRadius`). Default 4px. */
+  readonly buttonsBorderRadius = signal(4);
   readonly buttonsGap = signal(8);
   readonly buttonsPadding = signal(0);
   readonly buttonsHeight = signal(40);
@@ -391,7 +404,8 @@ export class App {
     selectorDisabledBackgroundColor: '#374151',
     selectorLoadingBackgroundColor: '#030712',
     selectorLabels: {
-      card: 'Pay with card',
+      card: 'Credit / Debit',
+      usBankAccount: 'Bank account',
       klarna: 'Pay with Klarna',
       affirm: 'Pay with Affirm',
     },
@@ -636,6 +650,8 @@ export class App {
       borderRadius: `${this.buttonsBorderRadius()}px`,
       buttonHeight: `${this.buttonsHeight()}px`,
       buttonMinWidth: `${this.buttonsMinWidth()}px`,
+      // Independent Card + ACH selector labels (same API as Full Checkout `[selectorLabels]`).
+      selectorLabels: this.selectorLabels(),
     };
 
     const sepColor = this.buttonsSeparatorColor().trim();
@@ -1231,6 +1247,8 @@ ${cardAppearanceBlock}
                 currency: trusted.currency,
                 intent: 'capture' as const,
               },
+              // Sandbox-only buyer-country so Venmo Buttons can appear in non-US sandboxes.
+              venmo: { sandboxBuyerCountry: 'US' as const },
             }
           : {}),
       },

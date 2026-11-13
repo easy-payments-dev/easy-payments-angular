@@ -73,6 +73,8 @@ import {
   type StripeRedirectMethod,
 } from '../../adapters/stripe/stripe-redirect-return';
 import { createPaymentOwnerId } from '../../utils/payment-owner-id';
+import { resolveSelectorLabelOverride } from '../../utils/selector-label';
+import { parseCssLengthToPx } from '../../utils/button-border-radius';
 import { validatePaymentProduct } from '../../validators/product.validator';
 import { PaymentMethodIconComponent } from '../checkout/payment-method-icon.component';
 import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payment.component';
@@ -84,6 +86,7 @@ import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.compon
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
+import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 import { UsBankAccountAdapter } from '../../adapters/us-bank-account/us-bank-account.adapter';
 import {
@@ -111,7 +114,9 @@ export type EasyPaymentButtonSlotKind =
   | 'cash-app-pay-selector'
   | 'afterpay-selector'
   | 'paypal-express'
+  | 'venmo-express'
   | 'paypal-mock'
+  | 'venmo-mock'
   | 'google-pay-express'
   | 'google-pay-mock'
   | 'apple-pay-express'
@@ -178,6 +183,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
+    VenmoPaymentComponent,
     MockMethodPanelComponent,
   ],
   templateUrl: './easy-payment-buttons.component.html',
@@ -206,6 +212,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-us-bank-account-ready]': 'hasAvailableUsBankAccount() ? "true" : "false"',
     '[attr.data-cash-app-pay-ready]': 'hasAvailableCashAppPay() ? "true" : "false"',
     '[attr.data-afterpay-ready]': 'hasAvailableAfterpay() ? "true" : "false"',
+    '[attr.data-venmo-ready]': 'hasAvailableVenmo() ? "true" : "false"',
     '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
     '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
     '[attr.data-selector-visibility]': 'selectorVisibility()',
@@ -421,6 +428,14 @@ export class EasyPaymentButtonsComponent {
       null,
   );
 
+  /**
+   * Shared grid corner radius in CSS pixels for SDK button APIs.
+   * `0` is preserved. Non-px CSS lengths are ignored for SDK forwarding.
+   */
+  readonly buttonsBorderRadiusPx = computed(() =>
+    parseCssLengthToPx(this.buttonsRadiusCss()),
+  );
+
   readonly buttonsBorderWidthCss = computed(() => {
     if (this.borderlessSelectors()) {
       return '0px';
@@ -527,7 +542,9 @@ export class EasyPaymentButtonsComponent {
               ? msgs.methodCashAppPay
               : method === 'afterpay'
                 ? msgs.methodAfterpay
-                : brandLabel);
+                : method === 'venmo'
+                  ? msgs.methodVenmo
+                  : brandLabel);
       // Brand marks already name the provider — never duplicate visible text.
       // Card / ACH generic icons do not include the name; show a compact label
       // so the selector stays visible in light/dark and selected states.
@@ -537,6 +554,7 @@ export class EasyPaymentButtonsComponent {
         method === 'card' ||
         method === 'us-bank-account' ||
         method === 'cash-app-pay' ||
+        method === 'venmo' ||
         customLabel != null;
       const showBrandIcon = this.buttonsAppearance()?.showSelectorIcon !== false;
       return {
@@ -611,6 +629,10 @@ export class EasyPaymentButtonsComponent {
 
   readonly hasAvailableAfterpay = computed(() =>
     this.methodSlots().some((slot) => slot.method === 'afterpay' && slot.state === 'available'),
+  );
+
+  readonly hasAvailableVenmo = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'venmo' && slot.state === 'available'),
   );
 
   readonly selectedCardEntry = computed(() => {
@@ -918,6 +940,9 @@ export class EasyPaymentButtonsComponent {
     if (slot.kind === 'paypal-express') {
       return msgs.paypalCheckoutAria;
     }
+    if (slot.kind === 'venmo-express') {
+      return msgs.venmoCheckoutAria;
+    }
     if (slot.kind === 'google-pay-express') {
       return msgs.googlePayCheckoutAria;
     }
@@ -926,6 +951,7 @@ export class EasyPaymentButtonsComponent {
     }
     if (
       slot.kind === 'paypal-mock' ||
+      slot.kind === 'venmo-mock' ||
       slot.kind === 'google-pay-mock' ||
       slot.kind === 'apple-pay-mock'
     ) {
@@ -949,7 +975,7 @@ export class EasyPaymentButtonsComponent {
     if (this.destroyed) {
       return;
     }
-    if (method === 'paypal' || method === 'google-pay' || method === 'apple-pay') {
+    if (method === 'paypal' || method === 'venmo' || method === 'google-pay' || method === 'apple-pay') {
       this.error.emit(
         new PaymentError({
           code: 'CONFIG_INVALID',
@@ -1253,6 +1279,32 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('afterpay');
   }
 
+  onVenmoStarted(): void {
+    this.updateSelectedMethod('venmo');
+    this.onPaymentStarted('venmo');
+  }
+
+  onVenmoBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onVenmoSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onVenmoCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onVenmoError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  async onMockVenmoPay(): Promise<void> {
+    this.updateSelectedMethod('venmo');
+    await this.runMockPayment('venmo');
+  }
+
   async onMockPayPalPay(): Promise<void> {
     if (this.methodsLocked() || this.destroyed) {
       return;
@@ -1317,6 +1369,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';
+    }
+    if (method === 'venmo') {
+      return isMock ? 'venmo-mock' : 'venmo-express';
     }
     if (method === 'google-pay') {
       return isMock ? 'google-pay-mock' : 'google-pay-express';
@@ -1994,36 +2049,7 @@ function selectorLabel(
   labels: EasyPaymentButtonsSelectorLabels | undefined,
   method: PaymentMethod,
 ): string | null {
-  if (
-    !labels ||
-    (method !== 'card' &&
-      method !== 'klarna' &&
-      method !== 'affirm' &&
-      method !== 'us-bank-account' &&
-      method !== 'cash-app-pay' &&
-      method !== 'afterpay')
-  ) {
-    return null;
-  }
-  const key =
-    method === 'us-bank-account'
-      ? 'usBankAccount'
-      : method === 'cash-app-pay'
-        ? 'cashAppPay'
-        : method;
-  return sanitizeSelectorLabel(labels[key]);
-}
-
-/** Plain text only. Rejects markup so a label cannot inject HTML. */
-function sanitizeSelectorLabel(value: string | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.replace(/[\u0000-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim();
-  if (!trimmed || trimmed.length > 64 || /[<>]/.test(trimmed)) {
-    return null;
-  }
-  return trimmed;
+  return resolveSelectorLabelOverride(labels, method);
 }
 
 /** CSS custom-property values. Rejects urls, expressions, and stylesheet breaks. */

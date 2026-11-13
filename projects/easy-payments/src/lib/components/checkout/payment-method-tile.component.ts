@@ -191,6 +191,11 @@ export class PaymentMethodTileComponent {
   readonly selected = input(false);
   readonly isMock = input(false);
   readonly disabled = input(false);
+  /**
+   * Optional host override for the visible / accessible selector label.
+   * Blank or omitted keeps the localized default. Does not change confirm CTAs.
+   */
+  readonly labelOverride = input<string | null>(null);
 
   readonly select = output<void>();
 
@@ -202,8 +207,12 @@ export class PaymentMethodTileComponent {
    * Show a visible label when the mark does not already include the brand name,
    * or when we are on a text fallback (label IS the mark).
    * For text-fallback, the icon component already renders the name — avoid duplicate.
+   * Host overrides always show so the custom text is visible.
    */
   readonly showVisibleLabel = computed(() => {
+    if (this.labelOverride()) {
+      return true;
+    }
     const p = this.presentation();
     if (p.source === 'text-fallback') {
       return false;
@@ -213,6 +222,10 @@ export class PaymentMethodTileComponent {
 
   /** Localized label for generic methods; brand marks keep presentation.label. */
   readonly visibleLabel = computed(() => {
+    const override = this.labelOverride();
+    if (override) {
+      return override;
+    }
     const method = this.method();
     if (method === 'card') {
       return this.msgs().methodCard;
@@ -230,9 +243,11 @@ export class PaymentMethodTileComponent {
   });
 
   ariaLabel(): string {
+    const override = this.labelOverride();
     const method = this.method();
     const base =
-      method === 'card'
+      override ??
+      (method === 'card'
         ? this.msgs().methodCard
         : method === 'us-bank-account'
           ? this.msgs().methodUsBankAccount
@@ -240,7 +255,9 @@ export class PaymentMethodTileComponent {
             ? this.msgs().methodCashAppPay
             : method === 'afterpay'
               ? this.msgs().methodAfterpay
-              : PAYMENT_METHOD_LABELS[method];
+              : method === 'venmo'
+                ? this.msgs().methodVenmo
+                : PAYMENT_METHOD_LABELS[method]);
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;

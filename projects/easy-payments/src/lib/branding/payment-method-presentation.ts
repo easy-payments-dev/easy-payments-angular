@@ -65,6 +65,18 @@ const AFTERPAY_MARK_DARK =
   'https://static.afterpaycdn.com/en-US/integration/logo/lockup/new-color-white-32.svg';
 
 /**
+ * Official Venmo wordmark (blue) for light surfaces — PayPal Newsroom brand assets.
+ * @see https://newsroom.paypal-corp.com/
+ */
+const VENMO_MARK_LIGHT = 'https://newsroom.paypal-corp.com/image/Venmo_Logo_Blue.png';
+
+/**
+ * Official Venmo wordmark (white) for dark surfaces — PayPal Newsroom brand assets.
+ * @see https://newsroom.paypal-corp.com/
+ */
+const VENMO_MARK_DARK = 'https://newsroom.paypal-corp.com/image/Venmo_Logo_White.png';
+
+/**
  * Build presentation for a payment method + theme.
  * Uses only provider-approved assets or intentional fallbacks.
  */
@@ -175,6 +187,17 @@ export function getPaymentMethodPresentation(
           'Official Afterpay lockup from Afterpay brand assets (static.afterpaycdn.com). Black lockup on light themes, white on dark. UK Clearpay naming is shown by Stripe Payment Element; selector uses Afterpay lockup.',
       };
 
+    case 'venmo':
+      return {
+        method,
+        label,
+        markIncludesName: true,
+        source: 'official-cdn',
+        markUrl: dark ? VENMO_MARK_DARK : VENMO_MARK_LIGHT,
+        notes:
+          'Official Venmo wordmark from PayPal Newsroom brand assets. Blue lockup on light themes, white on dark. Accessible name remains “Venmo.” Buttons Only uses the PayPal JS SDK Venmo funding button (logo-only Label in paypal-checkout-components).',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -190,6 +213,7 @@ export function listPaymentMethodPresentations(
     'apple-pay',
     'google-pay',
     'paypal',
+    'venmo',
     'klarna',
     'affirm',
     'us-bank-account',

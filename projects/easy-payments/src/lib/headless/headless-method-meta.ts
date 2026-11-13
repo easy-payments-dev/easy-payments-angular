@@ -11,6 +11,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'apple-pay',
   'google-pay',
   'paypal',
+  'venmo',
   'klarna',
   'affirm',
   'card',
@@ -33,6 +34,8 @@ export function interactionForMethod(
   switch (method) {
     case 'paypal':
       return 'paypal-buttons';
+    case 'venmo':
+      return 'venmo-buttons';
     case 'google-pay':
     case 'apple-pay':
       return 'wallet-button';

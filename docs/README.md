@@ -36,6 +36,7 @@ Start here when wiring real providers:
 7. [Cash App Pay](./providers/cash-app-pay.md) — opt-in Stripe wallet (FC / Buttons / Headless)
 8. [Afterpay](./providers/afterpay.md) — opt-in Stripe BNPL / Clearpay (FC / Buttons / Headless)
 9. [PayPal](./providers/paypal.md) — JS SDK + Orders API
+10. [Venmo](./providers/venmo.md) — opt-in PayPal JS SDK funding (FC / Buttons / Headless)
 
 ## Screenshots
 

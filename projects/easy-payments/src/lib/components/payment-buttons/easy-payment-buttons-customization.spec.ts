@@ -109,11 +109,30 @@ describe('EasyPaymentButtonsComponent customization', () => {
     expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('18px');
     expect(host.style.getPropertyValue('--ep-buttons-height')).toBe('48px');
     expect(host.style.getPropertyValue('--ep-buttons-selector-bg')).not.toContain('url(');
+    expect(fixture.componentInstance.buttonsBorderRadiusPx()).toBe(18);
     fixture.componentInstance.processingMethod.set('card');
     fixture.detectChanges();
     const card = selector('card');
     expect(card?.style.backgroundColor).toBe('rgb(15, 23, 42)');
     expect(card?.style.color).toBe('rgb(226, 232, 240)');
+  });
+
+  it('accepts shared grid borderRadius 0 and forwards px to SDK-facing computed', async () => {
+    fixture.componentRef.setInput('buttonsAppearance', { borderRadius: '0' });
+    await settle();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('0');
+    expect(fixture.componentInstance.buttonsBorderRadiusPx()).toBe(0);
+
+    fixture.componentRef.setInput('buttonsAppearance', { borderRadius: '4px' });
+    await settle();
+    expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('4px');
+    expect(fixture.componentInstance.buttonsBorderRadiusPx()).toBe(4);
+
+    fixture.componentRef.setInput('buttonsAppearance', { borderRadius: '999px' });
+    await settle();
+    expect(host.style.getPropertyValue('--ep-buttons-radius')).toBe('999px');
+    expect(fixture.componentInstance.buttonsBorderRadiusPx()).toBe(999);
   });
 
   it('rejects unsafe style values and markup labels', async () => {
@@ -131,6 +150,135 @@ describe('EasyPaymentButtonsComponent customization', () => {
     expect(selector('card')?.textContent).not.toContain('<img');
     expect(selector('klarna')?.textContent).toContain('Pay with Klarna');
     expect(selector('klarna')?.querySelector('img[src="x"]')).toBeNull();
+  });
+
+  it('wraps custom Card and US bank account labels without clipping the accessible name', async () => {
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: true,
+          providers: { usBankAccount: {} },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.width = '280px';
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card', 'us-bank-account']);
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: {
+        card: 'Credit / Debit',
+        usBankAccount: 'Bank account.',
+      },
+      // Narrow strip slot so long labels must wrap instead of overflowing.
+      buttonWidth: '120px',
+    });
+    await settle();
+
+    const card = selector('card');
+    const ach = selector('us-bank-account');
+    expect(card).toBeTruthy();
+    expect(ach).toBeTruthy();
+
+    const cardLabel = card!.querySelector('.ep-payment-buttons__label') as HTMLElement | null;
+    const achLabel = ach!.querySelector('.ep-payment-buttons__label') as HTMLElement | null;
+    expect(cardLabel?.textContent?.trim()).toBe('Credit / Debit');
+    expect(achLabel?.textContent?.trim()).toBe('Bank account.');
+    expect(card!.getAttribute('aria-label')).toContain('Credit / Debit');
+    expect(ach!.getAttribute('aria-label')).toContain('Bank account.');
+
+    expect(getComputedStyle(cardLabel!).whiteSpace).toBe('normal');
+    expect(getComputedStyle(achLabel!).whiteSpace).toBe('normal');
+    expect(getComputedStyle(cardLabel!).overflowWrap).toBe('anywhere');
+    expect(card!.classList.contains('ep-payment-buttons__selector--labeled')).toBeTrue();
+    expect(getComputedStyle(card!).minHeight).toBe('40px');
+    // Border-box 40px with 1px borders → clientHeight 38; use border-box height.
+    expect(Math.round(card!.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
+
+    const cardMark = card!.querySelector('.ep-payment-buttons__mark') as HTMLElement | null;
+    expect(cardMark).toBeTruthy();
+    expect(getComputedStyle(cardMark!).flexShrink).toBe('0');
+    // Visible label stays inside the button (no horizontal clip/overflow).
+    expect(cardLabel!.scrollWidth).toBeLessThanOrEqual(cardLabel!.clientWidth + 1);
+    expect(achLabel!.scrollWidth).toBeLessThanOrEqual(achLabel!.clientWidth + 1);
+  });
+
+  it('updates Card/ACH selector labels when locale and host overrides change', async () => {
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: true,
+          providers: { usBankAccount: {} },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card', 'us-bank-account']);
+    fixture.componentRef.setInput('locale', 'en');
+    fixture.componentRef.setInput('buttonsAppearance', null);
+    await settle();
+
+    expect(selector('card')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Card',
+    );
+    expect(
+      selector('us-bank-account')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim(),
+    ).toBe('US bank account');
+    expect(selector('card')?.getAttribute('aria-label')).toContain('Card');
+
+    fixture.componentRef.setInput('locale', 'es');
+    await settle();
+    expect(selector('card')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Tarjeta',
+    );
+    expect(
+      selector('us-bank-account')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim(),
+    ).toBe('Cuenta bancaria de EE. UU.');
+    expect(selector('card')?.getAttribute('aria-label')).toContain('Tarjeta');
+
+    fixture.componentRef.setInput('locale', 'pt');
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: {
+        card: 'Crédito / Débito',
+        usBankAccount: 'Conta bancária',
+      },
+    });
+    await settle();
+    expect(selector('card')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Crédito / Débito',
+    );
+    expect(
+      selector('us-bank-account')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim(),
+    ).toBe('Conta bancária');
+    expect(selector('card')?.getAttribute('aria-label')).toContain('Crédito / Débito');
+    expect(selector('us-bank-account')?.getAttribute('aria-label')).toContain('Conta bancária');
+
+    // Blank override falls back to the active locale default (not a stale host string).
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: { card: '', usBankAccount: '   ' },
+    });
+    await settle();
+    expect(selector('card')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Cartão',
+    );
+    expect(
+      selector('us-bank-account')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim(),
+    ).toBe('Conta bancária dos EUA');
+    expect(selector('card')?.getAttribute('aria-label')).toContain('Cartão');
   });
 
   it('renders a disabled busy selector without starting a payment', async () => {
