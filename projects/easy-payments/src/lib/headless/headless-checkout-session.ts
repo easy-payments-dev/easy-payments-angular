@@ -91,7 +91,8 @@ type HeadlessMountableMethod =
   | 'paypal'
   | 'venmo'
   | 'google-pay'
-  | 'apple-pay';
+  | 'apple-pay'
+  | 'zip';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
   return (
@@ -110,7 +111,8 @@ function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMe
     method === 'paypal' ||
     method === 'venmo' ||
     method === 'google-pay' ||
-    method === 'apple-pay'
+    method === 'apple-pay' ||
+    method === 'zip'
   );
 }
 
@@ -161,6 +163,7 @@ export interface HeadlessCheckoutSessionDeps {
   venmo: VenmoAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
+  zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   stripeRedirectRecovery: StripeRedirectRecoveryService;
 }
 
@@ -198,7 +201,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly venmo: VenmoAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
+  private readonly zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   private readonly stripeRedirectRecovery: StripeRedirectRecoveryService;
+  private zipHostEl: HTMLElement | null = null;
+  private zipClickHandler: ((ev: Event) => void) | null = null;
   private readonly availability = new CheckoutAvailabilitySession();
 
   /** Stripe Element / PayPal / Google Pay owner — equals Headless session id for isolation. */
@@ -309,6 +315,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.venmo = deps.venmo;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
+    this.zip = deps.zip;
     this.stripeRedirectRecovery = deps.stripeRedirectRecovery;
     void this.translations;
 
@@ -442,7 +449,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", and "apple-pay".',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", "apple-pay", and "zip".',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -510,6 +517,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
     if (method === 'venmo') {
       return this.mountVenmo(container, mountGen);
+    }
+    if (method === 'zip') {
+      return this.mountZip(container, mountGen);
     }
     if (method === 'google-pay') {
       return this.mountGooglePay(container, mountGen);
@@ -843,6 +853,139 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
   }
 
+
+  private async mountZip(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    try {
+      await this.zip.prepareCheckout(this.product);
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'zip');
+
+      container.replaceChildren();
+      const button = this.browser.getDocument()?.createElement('button');
+      if (!button) {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Unable to create Zip checkout button.',
+          method: 'zip',
+          provider: 'zip',
+        });
+      }
+      button.type = 'button';
+      button.textContent = 'Pay with Zip';
+      button.setAttribute('data-testid', 'easy-payments-headless-zip-button');
+      button.style.minHeight = '44px';
+      button.style.width = '100%';
+      button.style.cursor = 'pointer';
+
+      this.zip.setOutcomeHandlers({
+        onComplete: (result) => {
+          if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+            return;
+          }
+          this.applyPaymentResult(result, this.confirmGeneration, 'zip');
+        },
+        onCancel: (result) => {
+          if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+            return;
+          }
+          this.applyPaymentResult(result, this.confirmGeneration, 'zip');
+        },
+        onError: (error) => {
+          if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+            return;
+          }
+          this._lastError.set(error);
+          this._state.set('error');
+          this.emitTerminalError(error, this.confirmGeneration);
+        },
+      });
+
+      const onClick = (ev: Event) => {
+        ev.preventDefault();
+        if (
+          this._state() === 'destroyed' ||
+          mountGen !== this.mountGeneration ||
+          this._state() === 'success' ||
+          this._state() === 'pending'
+        ) {
+          return;
+        }
+        try {
+          this._state.set('processing');
+          this.zip.startCheckout();
+        } catch (error) {
+          const paymentError =
+            error instanceof PaymentError
+              ? error
+              : new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message: 'Zip checkout failed to open.',
+                  method: 'zip',
+                  provider: 'zip',
+                  originalError: error,
+                });
+          this._lastError.set(paymentError);
+          this._state.set('error');
+          this.emitTerminalError(paymentError, this.confirmGeneration);
+        }
+      };
+      button.addEventListener('click', onClick);
+      container.appendChild(button);
+      this.zipHostEl = container;
+      this.zipClickHandler = onClick;
+      this.mountedMethod = 'zip';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      return {
+        method: 'zip',
+        unmount: () => {
+          if (this.zipClickHandler && this.zipHostEl) {
+            const btn = this.zipHostEl.querySelector('button');
+            if (btn && this.zipClickHandler) {
+              btn.removeEventListener('click', this.zipClickHandler);
+            }
+          }
+          this.zipClickHandler = null;
+          this.zipHostEl = null;
+          this.zip.setOutcomeHandlers({});
+          container.replaceChildren();
+          if (this.mountedMethod === 'zip') {
+            this.mountedMethod = null;
+          }
+        },
+      };
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'zip',
+          provider: 'zip',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : new PaymentError({
+              code: 'PROVIDER_UNAVAILABLE',
+              message: 'Zip checkout failed to initialize.',
+              method: 'zip',
+              provider: 'zip',
+              originalError: error,
+            });
+      this._lastError.set(paymentError);
+      this.emitTerminalError(paymentError, this.confirmGeneration);
+      throw paymentError;
+    }
+  }
 
   private async mountVenmo(
     container: HTMLElement,
@@ -1199,6 +1342,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           'Venmo is confirmed through the official Venmo Buttons, not session.confirm(). Mount Venmo and let the buyer click the Venmo button.',
         method: 'venmo',
         provider: 'venmo',
+      });
+    }
+
+    if (selected === 'zip') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Zip is confirmed through the Zip checkout button, not session.confirm(). Mount Zip and let the buyer click Pay with Zip.',
+        method: 'zip',
+        provider: 'zip',
       });
     }
 
@@ -2826,6 +2979,8 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'PayPal';
     case 'venmo':
       return 'Venmo';
+    case 'zip':
+      return 'Zip';
     case 'google-pay':
       return 'Google Pay';
     case 'apple-pay':

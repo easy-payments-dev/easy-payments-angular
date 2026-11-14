@@ -301,6 +301,28 @@
       }
     }
 
+    @if (showZipPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!zipPanelActive()"
+          [attr.aria-hidden]="!zipPanelActive()"
+          [inert]="!zipPanelActive()"
+        >
+          <easy-zip-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onZipSuccess($event)"
+            (cancel)="onZipCancel($event)"
+            (error)="onZipError($event)"
+            (started)="onPaymentStarted('zip')"
+            (busyChange)="onProviderBusy($event)"
+          />
+        </div>
+      }
+    }
+
     @if (showMockPanel()) {
       @if (selectedEntry(); as entry) {
         <div class="ep-checkout__panel">

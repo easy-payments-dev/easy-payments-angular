@@ -53,6 +53,7 @@ export type HeadlessMethodInteraction =
   | 'wallet-button'
   | 'paypal-buttons'
   | 'venmo-buttons'
+  | 'zip-checkout'
   | 'mock';
 
 /**

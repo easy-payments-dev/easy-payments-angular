@@ -133,6 +133,8 @@ export interface EasyPaymentButtonsSelectorLabels {
   afterpay?: string;
   /** Optional Venmo selector label (Full Checkout tiles use the official wordmark by default). */
   venmo?: string;
+  /** Optional Zip selector label (Full Checkout tiles use the official wordmark by default). */
+  zip?: string;
 }
 
 /** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay / Afterpay triggers. Wallets stay official SDK buttons. */

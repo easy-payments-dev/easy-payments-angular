@@ -11,6 +11,7 @@
 | [Backend](./backend.md) | Contract + NestJS reference |
 | [Demo](./demo.md) | Run the Angular playground |
 | [Payment flow](./payment-flow.md) | Checkout → processing → success / error / cancel |
+| [Payment method requirements](./payment-method-requirements.md) | Setup matrix for every exposed method (FC / Buttons / Headless) |
 | [Security](./security.md) | Frontend vs backend secrets, pricing |
 | [Release branch](./release-branch.md) | `release/1.0.0`, GitHub visibility limits, protection |
 | [npm README images](./npm-readme-images.md) | Absolute URLs required before npm publish |
@@ -25,18 +26,19 @@
 
 ## Provider Setup
 
-Start here when wiring real providers:
+Start with the [Payment method requirements](./payment-method-requirements.md) matrix, then open the provider guide:
 
-1. [Stripe](./providers/stripe.md) — keys, Payment Method Domains, HTTPS  
-2. [Apple Pay](./providers/apple-pay.md) — Stripe Express Checkout + troubleshooting  
-3. [Google Pay](./providers/google-pay.md) — official button + Stripe confirm  
-4. [Klarna](./providers/klarna.md) — Stripe-backed BNPL  
-5. [Affirm](./providers/affirm.md) — Stripe-backed BNPL  
+1. [Stripe](./providers/stripe.md) — Card keys, Payment Method Domains, HTTPS
+2. [Apple Pay](./providers/apple-pay.md) — Stripe Express Checkout + troubleshooting
+3. [Google Pay](./providers/google-pay.md) — official button + Stripe confirm
+4. [Klarna](./providers/klarna.md) — Stripe-backed BNPL
+5. [Affirm](./providers/affirm.md) — Stripe-backed BNPL
 6. [US bank account (ACH)](./providers/us-bank-account.md) — opt-in Direct Debit (FC / Buttons / Headless)
 7. [Cash App Pay](./providers/cash-app-pay.md) — opt-in Stripe wallet (FC / Buttons / Headless)
 8. [Afterpay](./providers/afterpay.md) — opt-in Stripe BNPL / Clearpay (FC / Buttons / Headless)
 9. [PayPal](./providers/paypal.md) — JS SDK + Orders API
 10. [Venmo](./providers/venmo.md) — opt-in PayPal JS SDK funding (FC / Buttons / Headless)
+11. [Zip](./providers/zip.md) — opt-in Zip US Gateway + JS SDK (FC / Buttons / Headless)
 
 ## Screenshots
 

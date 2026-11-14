@@ -92,6 +92,18 @@ export type CashAppPayProviderConfig = Record<string, never>;
 export type AfterpayProviderConfig = Record<string, never>;
 
 /**
+ * Zip US via Zip Gateway API + JS SDK (`window.quadpay.apiCheckout`).
+ * Opt in with `providers.zip: {}` (merchantId may be supplied by the create response).
+ * Requires backend `zipCreateCheckoutUrl` + `zipVerifyReturnUrl`.
+ * API secret stays on the server. US / USD. Disabled by default.
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ *
+ * @see https://docs.us.zip.co/docs/api-javascript-sdk.md
+ * @see https://docs.us.zip.co/docs/api-implementation.md
+ */
+export type ZipProviderConfig = Record<string, never>;
+
+/**
  * Venmo via the PayPal JS SDK (`enable-funding=venmo` + official Venmo Buttons).
  * Opt in with `providers.venmo: {}` (or with sandboxBuyerCountry for sandbox).
  * Requires PayPal `clientId` + backend paypalCreateOrderUrl / paypalCaptureOrderUrl
@@ -152,6 +164,21 @@ export interface EasyPaymentsBackendConfig {
    */
   afterpayCreatePaymentUrl?: string;
   /**
+   * Creates a Zip authorize requestBody + HMAC signature (server holds Zip API secret).
+   * Returns requestBody, signature, merchantReference, sdkScriptUrl. Catalog amount is authoritative.
+   */
+  zipCreateCheckoutUrl?: string;
+  /**
+   * Verifies Zip return/webhook outcome before the client reports success.
+   * Server checks HMAC and/or Zip order status; catalog amount is authoritative.
+   */
+  zipVerifyReturnUrl?: string;
+  /**
+   * Optional. Deferred-fund-capture merchants only — captures a Zip order (idempotent retry).
+   * Auto-capture (`capture: true` on create) does not need this URL.
+   */
+  zipCaptureUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -169,6 +196,7 @@ export interface EasyPaymentsProviderConfig {
   cashAppPay?: CashAppPayProviderConfig;
   afterpay?: AfterpayProviderConfig;
   venmo?: VenmoProviderConfig;
+  zip?: ZipProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -192,6 +220,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   cashAppPay: 'Cash App Pay',
   afterpay: 'Afterpay',
   venmo: 'Venmo',
+  zip: 'Zip',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -208,6 +237,7 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
   afterpay: 'configuration missing (requires Stripe publishableKey + afterpayCreatePaymentUrl)',
   venmo:
     'configuration missing (requires providers.venmo + PayPal clientId + paypal create/capture URLs)',
+  zip: 'configuration missing (requires providers.zip + zipCreateCheckoutUrl + zipVerifyReturnUrl)',
 };
 
 export type ProviderConfigStatus =

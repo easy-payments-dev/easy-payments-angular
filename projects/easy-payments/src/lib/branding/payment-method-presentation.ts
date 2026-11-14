@@ -77,6 +77,18 @@ const VENMO_MARK_LIGHT = 'https://newsroom.paypal-corp.com/image/Venmo_Logo_Blue
 const VENMO_MARK_DARK = 'https://newsroom.paypal-corp.com/image/Venmo_Logo_White.png';
 
 /**
+ * Official Zip wordmark (black) for light surfaces.
+ * @see https://zip.co/assets/fearless/logos/zip/black.svg
+ */
+const ZIP_MARK_LIGHT = 'https://zip.co/assets/fearless/logos/zip/black.svg';
+
+/**
+ * Official Zip wordmark (white) for dark surfaces when available; falls back to black on a dark plate.
+ * @see https://zip.co/assets/fearless/logos/zip/
+ */
+const ZIP_MARK_DARK = 'https://zip.co/assets/fearless/logos/zip/white.svg';
+
+/**
  * Build presentation for a payment method + theme.
  * Uses only provider-approved assets or intentional fallbacks.
  */
@@ -198,6 +210,17 @@ export function getPaymentMethodPresentation(
           'Official Venmo wordmark from PayPal Newsroom brand assets. Blue lockup on light themes, white on dark. Accessible name remains “Venmo.” Buttons Only uses the PayPal JS SDK Venmo funding button (logo-only Label in paypal-checkout-components).',
       };
 
+    case 'zip':
+      return {
+        method,
+        label,
+        markIncludesName: true,
+        source: 'official-cdn',
+        markUrl: dark ? ZIP_MARK_DARK : ZIP_MARK_LIGHT,
+        notes:
+          'Official Zip wordmark from zip.co brand assets (fearless logos). Black on light themes, white on dark. Accessible name remains “Zip.” Buttons Only uses the shared selector + Zip CTA with official branding.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -219,6 +242,7 @@ export function listPaymentMethodPresentations(
     'us-bank-account',
     'cash-app-pay',
     'afterpay',
+    'zip',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

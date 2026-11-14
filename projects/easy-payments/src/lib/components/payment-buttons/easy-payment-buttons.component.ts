@@ -86,6 +86,7 @@ import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.compon
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
+import { ZipPaymentComponent } from '../payment-methods/zip-payment.component';
 import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
 import { UsBankAccountAdapter } from '../../adapters/us-bank-account/us-bank-account.adapter';
@@ -113,6 +114,7 @@ export type EasyPaymentButtonSlotKind =
   | 'us-bank-account-selector'
   | 'cash-app-pay-selector'
   | 'afterpay-selector'
+  | 'zip-selector'
   | 'paypal-express'
   | 'venmo-express'
   | 'paypal-mock'
@@ -129,6 +131,7 @@ const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'us-bank-account-selector',
   'cash-app-pay-selector',
   'afterpay-selector',
+  'zip-selector',
 ]);
 
 export interface EasyPaymentButtonSlot {
@@ -183,6 +186,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
+    ZipPaymentComponent,
     VenmoPaymentComponent,
     MockMethodPanelComponent,
   ],
@@ -770,6 +774,25 @@ export class EasyPaymentButtonsComponent {
     return !!entry && entry.isMock;
   });
 
+  readonly selectedZipEntry = computed(() => {
+    if (this.selectedMethod() !== 'zip') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'zip' && entry.available) ?? null
+    );
+  });
+
+  readonly showZipPanel = computed(() => {
+    const entry = this.selectedZipEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockZipPanel = computed(() => {
+    const entry = this.selectedZipEntry();
+    return !!entry && entry.isMock;
+  });
+
   /**
    * True when at least one configured method is still loading (placeholder, not unavailable).
    */
@@ -877,7 +900,8 @@ export class EasyPaymentButtonsComponent {
         selected !== 'affirm' &&
         selected !== 'us-bank-account' &&
         selected !== 'cash-app-pay' &&
-        selected !== 'afterpay'
+        selected !== 'afterpay' &&
+        selected !== 'zip'
       ) {
         return;
       }
@@ -992,7 +1016,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'affirm' &&
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
-      method !== 'afterpay'
+      method !== 'afterpay' &&
+      method !== 'zip'
     ) {
       this.error.emit(
         new PaymentError({
@@ -1030,7 +1055,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'affirm' &&
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
-      method !== 'afterpay'
+      method !== 'afterpay' &&
+      method !== 'zip'
     ) {
       return false;
     }
@@ -1178,6 +1204,30 @@ export class EasyPaymentButtonsComponent {
 
   onAfterpayError(error: PaymentError): void {
     this.handlePaymentError(error);
+  }
+
+  onZipStarted(): void {
+    this.onPaymentStarted('zip');
+  }
+
+  onZipBusy(busy: boolean): void {
+    this.providerBusy.set(busy);
+  }
+
+  onZipSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onZipCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onZipError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  async onMockZipPay(): Promise<void> {
+    await this.runMockPayment('zip');
   }
 
   /**
@@ -1366,6 +1416,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'afterpay') {
       return 'afterpay-selector';
+    }
+    if (method === 'zip') {
+      return 'zip-selector';
     }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';

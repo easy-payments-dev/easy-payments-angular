@@ -15,6 +15,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   methodCashAppPay: 'Cash App Pay',
   methodAfterpay: 'Afterpay',
   methodVenmo: 'Venmo',
+  methodZip: 'Zip',
 
   orderTotal: 'Order total',
   quantityPrefix: 'Qty',
@@ -75,6 +76,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   cashAppPayPaymentRegionAria: 'Cash App Pay payment',
   afterpayPaymentRegionAria: 'Afterpay payment',
   venmoPaymentRegionAria: 'Venmo payment',
+  zipPaymentRegionAria: 'Zip payment',
   demoWalletButtonAria: '{{method}}, demo mode',
 
   payWithCard: 'Pay with card',
@@ -145,4 +147,11 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   capturingVenmo: 'Capturing Venmo payment…',
   venmoCheckoutAria: 'Venmo official checkout',
   venmoCancelled: 'Venmo checkout cancelled.',
+
+  payWithZip: 'Pay with Zip',
+  secureCheckoutZip: 'Secure checkout powered by Zip',
+  preparingZip: 'Preparing Zip checkout…',
+  zipCheckoutAria: 'Zip official checkout',
+  zipCancelled: 'Zip checkout cancelled.',
+  zipUnavailable: 'Zip is unavailable. Choose another payment method.',
 };

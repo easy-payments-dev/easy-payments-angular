@@ -17,6 +17,7 @@ export interface EasyPaymentsTranslations {
   methodCashAppPay: string;
   methodAfterpay: string;
   methodVenmo: string;
+  methodZip: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -82,6 +83,7 @@ export interface EasyPaymentsTranslations {
   cashAppPayPaymentRegionAria: string;
   afterpayPaymentRegionAria: string;
   venmoPaymentRegionAria: string;
+  zipPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -152,6 +154,14 @@ export interface EasyPaymentsTranslations {
   capturingVenmo: string;
   venmoCheckoutAria: string;
   venmoCancelled: string;
+
+  payWithZip: string;
+  secureCheckoutZip: string;
+  preparingZip: string;
+  zipCheckoutAria: string;
+  zipCancelled: string;
+  /** Buyer-facing copy when Zip fails due to merchant setup (not technical diagnostics). */
+  zipUnavailable: string;
 }
 
 /** Partial overrides supplied by the consuming app. */

@@ -18,6 +18,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'us-bank-account',
   'cash-app-pay',
   'afterpay',
+  'zip',
 ]);
 
 export function isKnownPaymentMethod(value: string): value is PaymentMethod {
@@ -39,6 +40,8 @@ export function interactionForMethod(
     case 'google-pay':
     case 'apple-pay':
       return 'wallet-button';
+    case 'zip':
+      return 'zip-checkout';
     case 'card':
     case 'klarna':
     case 'affirm':

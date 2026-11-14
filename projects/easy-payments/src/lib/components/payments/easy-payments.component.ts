@@ -59,6 +59,7 @@ import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-accoun
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
 import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
+import { ZipPaymentComponent } from '../payment-methods/zip-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
 import { PaymentMethodSelectorComponent } from '../checkout/payment-method-selector.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -99,6 +100,7 @@ import {
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
     VenmoPaymentComponent,
+    ZipPaymentComponent,
     CheckoutOutcomeComponent,
   ],
   templateUrl: './easy-payments.component.html',
@@ -377,6 +379,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'venmo' && !entry.isMock),
   );
 
+  readonly hasRealZipMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'zip' && !entry.isMock),
+  );
+
   readonly showMockPanel = computed(() => {
     if (!this.showCheckoutForm()) {
       return false;
@@ -413,6 +419,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'venmo' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'zip' && !entry.isMock) {
       return false;
     }
     return true;
@@ -472,6 +481,7 @@ export class EasyPaymentsComponent {
   readonly showCashAppPayPanel = computed(() => this.hasRealCashAppPayMethod());
   readonly showAfterpayPanel = computed(() => this.hasRealAfterpayMethod());
   readonly showVenmoPanel = computed(() => this.hasRealVenmoMethod());
+  readonly showZipPanel = computed(() => this.hasRealZipMethod());
 
   /**
    * Keep the active real-provider panel interactive while its own UI is needed
@@ -546,6 +556,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'venmo' &&
       this.hasRealVenmoMethod(),
+  );
+
+  readonly zipPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'zip' &&
+      this.hasRealZipMethod(),
   );
 
   constructor() {
@@ -1134,6 +1151,18 @@ export class EasyPaymentsComponent {
     this.handlePaymentError(error);
   }
 
+  onZipSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onZipCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onZipError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   onAffirmReturning(active: boolean): void {
     if (active) {
       this.updateSelectedMethod('affirm');
@@ -1285,7 +1314,8 @@ export class EasyPaymentsComponent {
         result.method === 'affirm' ||
         result.method === 'us-bank-account' ||
         result.method === 'cash-app-pay' ||
-        result.method === 'afterpay')
+        result.method === 'afterpay' ||
+        result.method === 'zip')
     ) {
       return;
     }
@@ -1297,7 +1327,8 @@ export class EasyPaymentsComponent {
       result.method === 'affirm' ||
       result.method === 'us-bank-account' ||
       result.method === 'cash-app-pay' ||
-      result.method === 'afterpay'
+      result.method === 'afterpay' ||
+      result.method === 'zip'
     ) {
       this.terminalSuccessEmitted = true;
     }

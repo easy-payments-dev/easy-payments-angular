@@ -26,15 +26,22 @@ import {
   CreatePayPalOrderResponse,
   CreateStripePaymentResponse,
   CreateUsBankAccountPaymentResponse,
+  CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
+  ZipCaptureRequest,
+  ZipCaptureResponse,
+  ZipCreateCheckoutRequest,
+  ZipVerifyReturnRequest,
+  ZipVerifyReturnResponse,
   toAffirmCreatePaymentRequest,
   toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
+  toZipCreateCheckoutRequest,
 } from '../models/create-payment.model';
 
 @Injectable({ providedIn: 'root' })
@@ -411,6 +418,160 @@ export class BackendService {
     });
   }
 
+  /**
+   * Creates a Zip signed authorize body. Catalog amount is authoritative.
+   * Never forwards a client amount.
+   */
+  async createZipCheckout(
+    payload:
+      | ZipCreateCheckoutRequest
+      | {
+          productId: string;
+          quantity: number;
+          currency: string;
+          redirectConfirmUrl: string;
+          redirectCancelUrl: string;
+          metadata?: Record<string, string>;
+        },
+  ): Promise<CreateZipCheckoutResponse> {
+    const url = this.requireEndpoint(
+      'zipCreateCheckoutUrl',
+      'Backend zipCreateCheckoutUrl is not configured.',
+      'zip',
+      'zip',
+    );
+
+    const body = toZipCreateCheckoutRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'zip', 'zip');
+    }
+
+    return this.postJson<CreateZipCheckoutResponse>(url, body, 'zip', 'zip', {
+      successMessage: 'Failed to create Zip checkout on backend.',
+      networkMessage: 'A network error occurred while creating the Zip checkout.',
+      validate: (response) => {
+        if (
+          response?.provider !== 'zip' ||
+          typeof response.merchantReference !== 'string' ||
+          !response.merchantReference.trim() ||
+          typeof response.signature !== 'string' ||
+          !response.signature.trim() ||
+          !response.requestBody ||
+          typeof response.requestBody !== 'object'
+        ) {
+          throw new PaymentError({
+            code: 'BACKEND_ERROR',
+            message: 'Invalid Zip create-checkout response from backend.',
+            method: 'zip',
+            provider: 'zip',
+          });
+        }
+      },
+    });
+  }
+
+  async verifyZipReturn(payload: ZipVerifyReturnRequest): Promise<ZipVerifyReturnResponse> {
+    const url = this.requireEndpoint(
+      'zipVerifyReturnUrl',
+      'Backend zipVerifyReturnUrl is not configured.',
+      'zip',
+      'zip',
+    );
+
+    const merchantReference = payload.merchantReference?.trim();
+    if (!merchantReference) {
+      throw new PaymentError({
+        code: 'BACKEND_ERROR',
+        message: 'Zip merchantReference is required to verify return.',
+        method: 'zip',
+        provider: 'zip',
+      });
+    }
+
+    return this.postJson<ZipVerifyReturnResponse>(
+      url,
+      {
+        provider: 'zip',
+        merchantReference,
+        ...(payload.orderId?.trim() ? { orderId: payload.orderId.trim() } : {}),
+        ...(payload.returnQuery?.trim() ? { returnQuery: payload.returnQuery.trim() } : {}),
+        ...(payload.clientResult ? { clientResult: payload.clientResult } : {}),
+      },
+      'zip',
+      'zip',
+      {
+        successMessage: 'Failed to verify Zip return on backend.',
+        networkMessage: 'A network error occurred while verifying the Zip return.',
+        validate: (response) => {
+          if (
+            response?.provider !== 'zip' ||
+            typeof response.merchantReference !== 'string' ||
+            !response.merchantReference.trim() ||
+            typeof response.success !== 'boolean'
+          ) {
+            throw new PaymentError({
+              code: 'BACKEND_ERROR',
+              message: 'Invalid Zip verify-return response from backend.',
+              method: 'zip',
+              provider: 'zip',
+            });
+          }
+        },
+      },
+    );
+  }
+
+  async captureZipOrder(payload: ZipCaptureRequest): Promise<ZipCaptureResponse> {
+    const url = this.requireEndpoint(
+      'zipCaptureUrl',
+      'Backend zipCaptureUrl is not configured.',
+      'zip',
+      'zip',
+    );
+
+    const orderId = payload.orderId?.trim();
+    const merchantReference = payload.merchantReference?.trim();
+    if (!orderId || !merchantReference) {
+      throw new PaymentError({
+        code: 'BACKEND_ERROR',
+        message: 'Zip orderId and merchantReference are required to capture.',
+        method: 'zip',
+        provider: 'zip',
+      });
+    }
+
+    return this.postJson<ZipCaptureResponse>(
+      url,
+      {
+        provider: 'zip',
+        orderId,
+        merchantReference,
+        ...(payload.amount != null ? { amount: payload.amount } : {}),
+        ...(payload.currency ? { currency: payload.currency } : {}),
+      },
+      'zip',
+      'zip',
+      {
+        successMessage: 'Failed to capture Zip order on backend.',
+        networkMessage: 'A network error occurred while capturing the Zip payment.',
+        validate: (response) => {
+          if (
+            response?.provider !== 'zip' ||
+            typeof response.orderId !== 'string' ||
+            !response.orderId.trim()
+          ) {
+            throw new PaymentError({
+              code: 'BACKEND_ERROR',
+              message: 'Invalid Zip capture response from backend.',
+              method: 'zip',
+              provider: 'zip',
+            });
+          }
+        },
+      },
+    );
+  }
+
   private endpointUrl(
     key:
       | 'createPaymentUrl'
@@ -421,6 +582,9 @@ export class BackendService {
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
+      | 'zipCreateCheckoutUrl'
+      | 'zipVerifyReturnUrl'
+      | 'zipCaptureUrl'
       | 'confirmPaymentUrl',
   ): string | undefined {
     const backend = this.configService.getSnapshot().backend;
@@ -437,6 +601,9 @@ export class BackendService {
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
+      | 'zipCreateCheckoutUrl'
+      | 'zipVerifyReturnUrl'
+      | 'zipCaptureUrl'
       | 'confirmPaymentUrl',
     missingMessage: string,
     method: PaymentMethod,

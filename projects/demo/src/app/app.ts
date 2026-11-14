@@ -125,6 +125,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'afterpay', enabled: true },
   // Opt-in Venmo (PayPal JS SDK funding) for Full Checkout, Buttons Only, and Headless.
   { method: 'venmo', enabled: true },
+  // Opt-in Zip US (Gateway API + JS SDK) for Full Checkout, Buttons Only, and Headless.
+  { method: 'zip', enabled: true },
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
@@ -1251,6 +1253,8 @@ ${cardAppearanceBlock}
               venmo: { sandboxBuyerCountry: 'US' as const },
             }
           : {}),
+        // Zip US Gateway — independent of Stripe / PayPal publishable credentials.
+        zip: {},
       },
       backend: {
         ...(backendBaseUrl ? { baseUrl: backendBaseUrl } : {}),
@@ -1262,6 +1266,9 @@ ${cardAppearanceBlock}
         createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
         cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
         afterpayCreatePaymentUrl: environment.afterpayCreatePaymentUrl.trim(),
+        zipCreateCheckoutUrl: environment.zipCreateCheckoutUrl.trim(),
+        zipVerifyReturnUrl: environment.zipVerifyReturnUrl.trim(),
+        zipCaptureUrl: environment.zipCaptureUrl.trim(),
       },
     });
 

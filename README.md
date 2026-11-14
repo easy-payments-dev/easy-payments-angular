@@ -20,7 +20,7 @@ npm install @easy-payments/angular @stripe/stripe-js
 | **Framework** | Angular |
 | **Compatibility** | Angular **20.3+**, **21**, **22** (`>=20.3.0 <23.0.0`) |
 | **Workspace** | Built with Angular **22.1.5** |
-| **Methods** | Card · PayPal · Apple Pay · Google Pay · Klarna · Affirm |
+| **Methods** | Card · PayPal · Venmo · Apple Pay · Google Pay · Klarna · Affirm · ACH · Cash App Pay · Afterpay · Zip |
 | **Locales** | `auto` · `en` · `es` · `pt` |
 
 <p align="center">
@@ -35,6 +35,7 @@ npm install @easy-payments/angular @stripe/stripe-js
   <a href="docs/api.md">API</a> ·
   <a href="docs/payment-flow.md">Payment flow</a> ·
   <a href="docs/configuration.md">Configuration</a> ·
+  <a href="#payment-method-requirements">Method requirements</a> ·
   <a href="#visual-customization">Visual style</a> ·
   <a href="#provider-isolation--diagnostics">Diagnostics</a> ·
   <a href="projects/demo">Demo source</a> ·
@@ -1049,20 +1050,49 @@ Checkout is fluid up to `[maxWidth]`. The payment method grid reflows from the *
 
 ---
 
+## Payment method requirements
+
+Every method currently exposed by the library (Full Checkout, Buttons Only, and Headless) has setup, eligibility, secret vs public values, and unavailable UX documented here:
+
+**[docs/payment-method-requirements.md](docs/payment-method-requirements.md)**
+
+| Method | Detailed setup |
+|--------|----------------|
+| Card | [docs/providers/stripe.md](docs/providers/stripe.md) |
+| Apple Pay | [docs/providers/apple-pay.md](docs/providers/apple-pay.md) |
+| Google Pay | [docs/providers/google-pay.md](docs/providers/google-pay.md) |
+| PayPal | [docs/providers/paypal.md](docs/providers/paypal.md) |
+| Venmo | [docs/providers/venmo.md](docs/providers/venmo.md) |
+| Klarna | [docs/providers/klarna.md](docs/providers/klarna.md) |
+| Affirm | [docs/providers/affirm.md](docs/providers/affirm.md) |
+| US bank account (ACH) | [docs/providers/us-bank-account.md](docs/providers/us-bank-account.md) |
+| Cash App Pay | [docs/providers/cash-app-pay.md](docs/providers/cash-app-pay.md) |
+| Afterpay | [docs/providers/afterpay.md](docs/providers/afterpay.md) |
+| Zip | [docs/providers/zip.md](docs/providers/zip.md) |
+
+Unavailable methods are **hidden** in Full Checkout and Buttons Only (not shown as disabled). Headless reports `readiness` / diagnostic codes. Use `EasyPaymentsDiagnosticsService` for developer diagnosis — buyers should not see technical config strings.
+
+---
+
 ## Provider credentials
 
 | Provider | Frontend | Backend | Notes |
 |----------|----------|---------|-------|
-| **Stripe** | `pk_test_` / `pk_live_` | `sk_test_` / `sk_live_` | Card + wallets + Klarna + Affirm |
-| **PayPal** | Client ID | Client Secret | Create + capture URLs |
+| **Stripe** | `pk_test_` / `pk_live_` | `sk_test_` / `sk_live_` | Card + wallets + Klarna + Affirm + ACH + Cash App + Afterpay |
+| **PayPal** | Client ID | Client Secret | Create + capture URLs (also Venmo) |
 | **Apple Pay** | `applePay: {}` + Stripe publishable key | Stripe secret via create URL | Opt-in via Easy Payments; uses Stripe ECE. Empty `{}` = no extra Apple Pay frontend credentials — HTTPS / Wallet / Payment Method Domains still required |
 | **Google Pay** | `googlePay` + Stripe | Stripe secret via create URL | `TEST` / `PRODUCTION` |
 | **Klarna** | `klarna` + Stripe | Stripe + `klarnaCreatePaymentUrl` | Redirect + return recovery |
 | **Affirm** | `affirm` + Stripe | Stripe + `affirmCreatePaymentUrl` | ~$35 min in library; eligibility varies |
+| **Venmo** | `venmo: {}` + PayPal Client ID | Same PayPal create/capture | US/USD; opt-in |
+| **US bank account** | `usBankAccount: {}` + Stripe | Stripe + `createUsBankAccountPaymentUrl` | USD ACH; opt-in |
+| **Cash App Pay** | `cashAppPay: {}` + Stripe | Stripe + `cashAppPayCreatePaymentUrl` | US/USD; ≥ $0.50; opt-in |
+| **Afterpay** | `afterpay: {}` + Stripe | Stripe + `afterpayCreatePaymentUrl` | AU/CA/NZ/GB/US; opt-in |
+| **Zip** | `zip: {}` | `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` | Server: `ZIP_MERCHANT_ID`, `ZIP_API_SECRET`, `ZIP_CALLBACK_URL`; US/USD; opt-in |
 
-Details: [docs/providers/](docs/providers/) · Security: [docs/security.md](docs/security.md)
+Details: [docs/payment-method-requirements.md](docs/payment-method-requirements.md) · [docs/providers/](docs/providers/) · Security: [docs/security.md](docs/security.md)
 
-> **Never** put Stripe secret keys or PayPal Client Secrets in Angular.
+> **Never** put Stripe secret keys, PayPal Client Secrets, or Zip API secrets in Angular.
 
 ---
 
