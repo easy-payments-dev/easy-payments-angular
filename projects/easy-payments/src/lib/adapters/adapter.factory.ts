@@ -23,6 +23,7 @@ import {
 import { CashAppPayAdapter, CashAppPayMockAdapter } from './cash-app-pay/cash-app-pay.adapter';
 import { AfterpayAdapter, AfterpayMockAdapter } from './afterpay/afterpay.adapter';
 import { VenmoAdapter, VenmoMockAdapter } from './venmo/venmo.adapter';
+import { ZipAdapter, ZipMockAdapter } from './zip/zip.adapter';
 
 type ProviderKey = keyof EasyPaymentsProviderConfig;
 
@@ -37,6 +38,7 @@ const REAL_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   usBankAccount: UsBankAccountAdapter,
   cashAppPay: CashAppPayAdapter,
   afterpay: AfterpayAdapter,
+  zip: ZipAdapter,
 };
 
 const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => PaymentProviderAdapter> = {
@@ -50,6 +52,7 @@ const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   usBankAccount: UsBankAccountMockAdapter,
   cashAppPay: CashAppPayMockAdapter,
   afterpay: AfterpayMockAdapter,
+  zip: ZipMockAdapter,
 };
 
 const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
@@ -63,6 +66,7 @@ const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
   usBankAccount: 'usBankAccount',
   cashAppPay: 'cashAppPay',
   afterpay: 'afterpay',
+  zip: 'zip',
 };
 
 @Injectable({ providedIn: 'root' })

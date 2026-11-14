@@ -17,7 +17,8 @@ export function resolveSelectorLabelOverride(
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
       method !== 'afterpay' &&
-      method !== 'venmo')
+      method !== 'venmo' &&
+      method !== 'zip')
   ) {
     return null;
   }

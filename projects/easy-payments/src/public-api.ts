@@ -40,6 +40,7 @@ export type {
   StripeProviderConfig,
   UsBankAccountProviderConfig,
   VenmoProviderConfig,
+  ZipProviderConfig,
 } from './lib/config/easy-payments.config';
 
 export type { PaymentProduct, EasyPaymentsMerchantMetadata } from './lib/models/payment-product.model';
@@ -94,9 +95,15 @@ export type {
   CreatePayPalOrderResponse,
   CreateStripePaymentResponse,
   CreateUsBankAccountPaymentResponse,
+  CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
+  ZipCaptureRequest,
+  ZipCaptureResponse,
+  ZipCreateCheckoutRequest,
+  ZipVerifyReturnRequest,
+  ZipVerifyReturnResponse,
 } from './lib/models/create-payment.model';
 export {
   toAffirmCreatePaymentRequest,
@@ -105,6 +112,7 @@ export {
   toKlarnaCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
+  toZipCreateCheckoutRequest,
 } from './lib/models/create-payment.model';
 
 export { PaymentError, normalizeError } from './lib/errors/payment-error';
@@ -123,6 +131,18 @@ export {
   isStripeReturnAttempt,
 } from './lib/adapters/stripe/stripe-redirect-return';
 export type { StripeRedirectMethod } from './lib/adapters/stripe/stripe-redirect-return';
+export {
+  buildZipReturnUrl,
+  clearZipPendingReturn,
+  isZipCancelReturn,
+  isZipReturnAttempt,
+  markZipPendingReturn,
+  readZipPendingReturn,
+  readZipReturnParams,
+} from './lib/adapters/zip/zip-return';
+export { ZipAdapter, ZipMockAdapter } from './lib/adapters/zip/zip.adapter';
+export type { ZipPreparedCheckout, ZipUiState } from './lib/adapters/zip/zip.types';
+export { ZipPaymentComponent } from './lib/components/payment-methods/zip-payment.component';
 
 export { EasyPaymentsConfigValidator } from './lib/validators/config.validator';
 export { validatePaymentProduct } from './lib/validators/product.validator';

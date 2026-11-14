@@ -109,7 +109,20 @@ describe('payment method presentation', () => {
       'us-bank-account',
       'cash-app-pay',
       'afterpay',
+      'zip',
     ]);
+  });
+
+  it('uses official Zip wordmarks for light and dark themes', () => {
+    const light = getPaymentMethodPresentation('zip', 'light');
+    const dark = getPaymentMethodPresentation('zip', 'dark');
+    expect(light.label).toBe('Zip');
+    expect(dark.label).toBe('Zip');
+    expect(light.source).toBe('official-cdn');
+    expect(light.markIncludesName).toBeTrue();
+    expect(light.markUrl).toContain('logos/zip/black.svg');
+    expect(dark.markUrl).toContain('logos/zip/white.svg');
+    expect(dark.markUrl).not.toBe(light.markUrl);
   });
 
   it('uses official Venmo wordmarks for light and dark themes', () => {

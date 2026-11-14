@@ -10,7 +10,7 @@ export type ReferencePaymentStatus =
   | 'CANCELED'
   | 'REFUNDED';
 
-export type WebhookProvider = 'stripe' | 'paypal';
+export type WebhookProvider = 'stripe' | 'paypal' | 'zip';
 
 export interface ReferencePaymentRecord {
   provider: WebhookProvider;

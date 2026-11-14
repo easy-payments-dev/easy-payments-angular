@@ -332,6 +332,105 @@ export interface CreateAfterpayPaymentResponse {
   sessionId?: string;
 }
 
+/**
+ * Minimal wire contract for Zip US create-checkout (signed authorize body).
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface ZipCreateCheckoutRequest {
+  provider: 'zip';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Merchant page URL Zip redirects to on approval (query params include signature). */
+  redirectConfirmUrl: string;
+  /** Merchant page URL Zip redirects to on cancel/abandon. */
+  redirectCancelUrl: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+export function toZipCreateCheckoutRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  redirectConfirmUrl: string;
+  redirectCancelUrl: string;
+  metadata?: Record<string, string>;
+}): ZipCreateCheckoutRequest {
+  const body: ZipCreateCheckoutRequest = {
+    provider: 'zip',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+    redirectConfirmUrl: input.redirectConfirmUrl.trim(),
+    redirectCancelUrl: input.redirectCancelUrl.trim(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Zip create-checkout.
+ * Server alone decides the trusted amount and holds the Zip API secret used to sign.
+ */
+export interface CreateZipCheckoutResponse {
+  provider: 'zip';
+  merchantReference: string;
+  merchantId: string;
+  amount: number;
+  currency: string;
+  /** Exact JSON object the client must pass to `openCheckout` (do not re-serialize). */
+  requestBody: Record<string, unknown>;
+  /** HMAC-SHA256 (base64) of the requestBody JSON string. */
+  signature: string;
+  /** CDN script for the active environment. */
+  sdkScriptUrl: string;
+  /**
+   * True when the demo server signed without ZIP_MERCHANT_ID / ZIP_API_SECRET.
+   * Real mode must not open Zip checkout with this response.
+   */
+  mock?: boolean;
+}
+
+export interface ZipVerifyReturnRequest {
+  provider: 'zip';
+  merchantReference: string;
+  orderId?: string;
+  /** Raw query string from the Zip redirect confirm URL (includes X-QP-Signature). */
+  returnQuery?: string;
+  /** Optional client-side completion payload from `onComplete` (never authoritative alone). */
+  clientResult?: Record<string, unknown>;
+}
+
+export interface ZipVerifyReturnResponse {
+  provider: 'zip';
+  merchantReference: string;
+  orderId: string;
+  status: 'confirmed' | 'declined' | 'abandoned' | 'created' | 'unknown';
+  success: boolean;
+  amount: number;
+  currency: string;
+  alreadyReported?: boolean;
+}
+
+export interface ZipCaptureRequest {
+  provider: 'zip';
+  orderId: string;
+  merchantReference: string;
+  amount?: number;
+  currency?: string;
+}
+
+export interface ZipCaptureResponse {
+  provider: 'zip';
+  orderId: string;
+  merchantReference: string;
+  status: string;
+  alreadyCaptured?: boolean;
+}
+
 export type CreatePaymentResponse =
   | CreateStripePaymentResponse
   | CreatePayPalOrderResponse
@@ -339,4 +438,5 @@ export type CreatePaymentResponse =
   | CreateAffirmPaymentResponse
   | CreateUsBankAccountPaymentResponse
   | CreateCashAppPayPaymentResponse
-  | CreateAfterpayPaymentResponse;
+  | CreateAfterpayPaymentResponse
+  | CreateZipCheckoutResponse;

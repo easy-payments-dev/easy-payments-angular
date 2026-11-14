@@ -13,6 +13,7 @@ import { AfterpayAdapter } from '../adapters/afterpay/afterpay.adapter';
 import { AffirmAdapter } from '../adapters/affirm/affirm.adapter';
 import { PayPalAdapter } from '../adapters/paypal/paypal.adapter';
 import { VenmoAdapter } from '../adapters/venmo/venmo.adapter';
+import { ZipAdapter } from '../adapters/zip/zip.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
@@ -52,6 +53,7 @@ export class EasyPaymentsHeadless {
   private readonly afterpay = inject(AfterpayAdapter);
   private readonly paypal = inject(PayPalAdapter);
   private readonly venmo = inject(VenmoAdapter);
+  private readonly zip = inject(ZipAdapter);
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
@@ -101,6 +103,7 @@ export class EasyPaymentsHeadless {
         venmo: this.venmo,
         googlePay: this.googlePay,
         applePay: this.applePay,
+        zip: this.zip,
         stripeRedirectRecovery: this.stripeRedirectRecovery,
       });
     } catch (error) {

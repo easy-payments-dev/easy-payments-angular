@@ -8,7 +8,8 @@ export type PaymentMethod =
   | 'card'
   | 'us-bank-account'
   | 'cash-app-pay'
-  | 'afterpay';
+  | 'afterpay'
+  | 'zip';
 
 export type PaymentProviderName =
   | 'stripe'
@@ -20,7 +21,8 @@ export type PaymentProviderName =
   | 'affirm'
   | 'usBankAccount'
   | 'cashAppPay'
-  | 'afterpay';
+  | 'afterpay'
+  | 'zip';
 
 export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderName> = {
   'apple-pay': 'applePay',
@@ -33,6 +35,7 @@ export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderN
   'us-bank-account': 'usBankAccount',
   'cash-app-pay': 'cashAppPay',
   afterpay: 'afterpay',
+  zip: 'zip',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -46,4 +49,5 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   'us-bank-account': 'US bank account',
   'cash-app-pay': 'Cash App Pay',
   afterpay: 'Afterpay',
+  zip: 'Zip',
 };

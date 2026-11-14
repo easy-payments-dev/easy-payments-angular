@@ -21,6 +21,7 @@ const ALL_PROVIDERS = [
   'cashAppPay',
   'afterpay',
   'venmo',
+  'zip',
 ] as const satisfies ReadonlyArray<keyof EasyPaymentsProviderConfig>;
 
 @Injectable({ providedIn: 'root' })
@@ -158,6 +159,15 @@ export class EasyPaymentsConfigValidator {
             status: 'invalid',
             message: 'sandboxBuyerCountry must be "US" when set',
           };
+        }
+        break;
+      }
+      case 'zip': {
+        const cfg = providerConfig as EasyPaymentsProviderConfig['zip'];
+        // Presence of the zip config object is enough to opt in.
+        // zipCreateCheckoutUrl + zipVerifyReturnUrl are enforced at runtime.
+        if (!cfg || typeof cfg !== 'object') {
+          return { provider, status: 'invalid', message: required };
         }
         break;
       }

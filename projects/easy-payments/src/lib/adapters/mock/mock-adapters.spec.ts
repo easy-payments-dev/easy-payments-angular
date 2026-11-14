@@ -31,7 +31,7 @@ describe('mock adapters', () => {
     await factory.initializeAdapters();
 
     const adapters = registry.getAll();
-    expect(adapters.length).toBe(10);
+    expect(adapters.length).toBe(11);
     expect(adapters.every((adapter) => adapter.isMock)).toBeTrue();
     expect(adapters.map((adapter) => adapter.provider).sort()).toEqual([
       'affirm',
@@ -44,6 +44,7 @@ describe('mock adapters', () => {
       'stripe',
       'usBankAccount',
       'venmo',
+      'zip',
     ]);
   });
 

@@ -4,6 +4,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { PayPalModule } from './paypal/paypal.module';
 import { StripeModule } from './stripe/stripe.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { ZipModule } from './zip/zip.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     CatalogModule,
     StripeModule,
     PayPalModule,
+    ZipModule,
     WebhooksModule,
   ],
 })

@@ -51,7 +51,8 @@
             slot.kind === 'affirm-selector' ||
             slot.kind === 'us-bank-account-selector' ||
             slot.kind === 'cash-app-pay-selector' ||
-            slot.kind === 'afterpay-selector')
+            slot.kind === 'afterpay-selector' ||
+            slot.kind === 'zip-selector')
         ) {
           <button
             type="button"
@@ -464,6 +465,44 @@
         [isMock]="true"
         [loading]="processingMethod() === 'afterpay'"
         (pay)="onMockAfterpayPay()"
+      />
+    </section>
+  }
+
+  @if (showZipPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-zip-panel"
+      [attr.aria-label]="msgs().zipPaymentRegionAria"
+    >
+      <easy-zip-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onZipStarted()"
+        (busyChange)="onZipBusy($event)"
+        (success)="onZipSuccess($event)"
+        (cancel)="onZipCancel($event)"
+        (error)="onZipError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockZipPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-zip-mock-panel"
+      [attr.aria-label]="msgs().zipPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="zip"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'zip'"
+        (pay)="onMockZipPay()"
       />
     </section>
   }
