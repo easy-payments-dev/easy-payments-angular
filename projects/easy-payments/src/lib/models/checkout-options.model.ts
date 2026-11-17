@@ -38,6 +38,13 @@ export interface CheckoutOptions {
    * trigger automatic redirects inside Easy Payments.
    */
   successBehavior?: CheckoutSuccessBehavior;
+  /**
+   * When true, an absolute `https:` `successUrl` may target a different origin
+   * (Capacitor Android App Links / iOS Universal Links for leave-app BNPL).
+   * Default `false` preserves browser same-origin enforcement.
+   * Never enable for untrusted user-supplied URLs.
+   */
+  allowExternalHttpsReturnUrl?: boolean;
   customer?: CheckoutCustomerOptions;
   shipping?: CheckoutShippingOptions;
 }

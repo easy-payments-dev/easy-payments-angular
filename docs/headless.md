@@ -156,14 +156,14 @@ session.events.started | methodChange | pending | success | cancel | error
 ### Stripe Card
 
 - Mounts the official Stripe **Payment Element**.
-- Merchant CTA → `session.confirm()`.
+- Merchant CTA → `session.confirm()` only when `availableMethods()` for `card` has `readiness === 'ready'` and `session.state()` is `ready` (disable the CTA while mounting).
 - Requires Stripe publishable key + `backend.createPaymentUrl`.
 - Client secrets stay inside the adapter session — not on Headless signals/events.
 
 ### Klarna / Affirm
 
 - Stripe Payment Element via existing Klarna/Affirm adapters.
-- Merchant CTA → `session.confirm()`.
+- Merchant CTA → `session.confirm()` gated the same way (`readiness === 'ready'` + session ready).
 - Often **redirect**; use a **stable** `checkoutInstanceId` (see §E).
 - Backend: `klarnaCreatePaymentUrl` / `affirmCreatePaymentUrl`.
 - Eligibility (currency / Affirm minimums) matches Full Checkout.

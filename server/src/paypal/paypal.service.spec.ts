@@ -5,6 +5,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PayPalService } from './paypal.service';
+import { VenmoAttemptStore } from './venmo-attempt.store';
 
 describe('PayPalService', () => {
   const originalFetch = global.fetch;
@@ -30,7 +31,11 @@ describe('PayPalService', () => {
 
   it('rejects unknown productId before calling PayPal', async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const service = module.get(PayPalService);
@@ -50,7 +55,11 @@ describe('PayPalService', () => {
 
   it('rejects invalid quantity via catalog total path with quantity from DTO (service assumes validated DTO)', async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const service = module.get(PayPalService);
@@ -63,6 +72,45 @@ describe('PayPalService', () => {
         quantity: 1,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates a premium-plan qty 1 order at catalog 99.00 USD', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token', expires_in: 300 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'ORDER-99', status: 'CREATED' }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
+    }).compile();
+
+    const service = module.get(PayPalService);
+    await service.createOrder({
+      provider: 'paypal',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(body.purchase_units[0].amount).toEqual({
+      currency_code: 'USD',
+      value: '99.00',
+      breakdown: {
+        item_total: { currency_code: 'USD', value: '99.00' },
+      },
+    });
   });
 
   it('creates an order using trusted catalog price (ignores any client price)', async () => {
@@ -79,7 +127,11 @@ describe('PayPalService', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const service = module.get(PayPalService);
@@ -117,7 +169,11 @@ describe('PayPalService', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     await module.get(PayPalService).createOrder({
@@ -138,7 +194,11 @@ describe('PayPalService', () => {
 
   it('rejects an order reference that is too long', async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     await expect(
@@ -176,7 +236,11 @@ describe('PayPalService', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const service = module.get(PayPalService);
@@ -194,6 +258,7 @@ describe('PayPalService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PayPalService,
+        VenmoAttemptStore,
         {
           provide: ConfigService,
           useValue: mockConfig({
@@ -217,7 +282,11 @@ describe('PayPalService', () => {
 
   it('rejects currency mismatch against catalog', async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const service = module.get(PayPalService);
@@ -246,7 +315,11 @@ describe('PayPalService', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     const ok = await module.get(PayPalService).verifyWebhookSignature({
@@ -280,7 +353,11 @@ describe('PayPalService', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PayPalService, { provide: ConfigService, useValue: mockConfig() }],
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
     }).compile();
 
     await expect(
@@ -294,5 +371,98 @@ describe('PayPalService', () => {
         webhookEvent: { id: 'WH-1' },
       }),
     ).resolves.toBe(false);
+  });
+
+  it('creates a Venmo handoff order, binds the attempt, and reports only returned link rels', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token', expires_in: 300 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'ORDER-VENMO',
+          status: 'PAYER_ACTION_REQUIRED',
+          links: [
+            {
+              rel: 'self',
+              href: 'https://api.sandbox.paypal.com/v2/checkout/orders/ORDER-VENMO',
+              method: 'GET',
+            },
+          ],
+        }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
+    }).compile();
+
+    const service = module.get(PayPalService);
+    const result = await service.createVenmoHandoff({
+      attemptId: 'attemptvenmo0001',
+      productId: 'premium-plan',
+      quantity: 1,
+      returnUrl: 'https://www.easy-payments.dev/capacitor-return?ep_result=approved',
+      cancelUrl: 'https://www.easy-payments.dev/capacitor-return?ep_result=cancelled',
+    });
+
+    expect(result.approvalUrl).toBeNull();
+    expect(result.handoff).toBe('official_button');
+    expect(result.links.map((l) => l.rel)).toEqual(['self']);
+    expect(result.product.amount).toBe('99.00');
+    expect(service.getVenmoAttempt('attemptvenmo0001').orderId).toBe('ORDER-VENMO');
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(body.payment_source.venmo.experience_context.return_url).toContain('ep_result=approved');
+    expect(body.payment_source.venmo.experience_context.cancel_url).toContain('ep_result=cancelled');
+  });
+
+  it('picks payer-action as approvalUrl when PayPal returns it', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token', expires_in: 300 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'ORDER-PA',
+          status: 'PAYER_ACTION_REQUIRED',
+          links: [
+            { rel: 'self', href: 'https://api.sandbox.paypal.com/v2/checkout/orders/ORDER-PA' },
+            {
+              rel: 'payer-action',
+              href: 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER-PA',
+            },
+          ],
+        }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PayPalService,
+        VenmoAttemptStore,
+        { provide: ConfigService, useValue: mockConfig() },
+      ],
+    }).compile();
+
+    const result = await module.get(PayPalService).createVenmoHandoff({
+      attemptId: 'attemptvenmo0002',
+      productId: 'premium-plan',
+      returnUrl: 'https://www.easy-payments.dev/capacitor-return',
+      cancelUrl: 'https://www.easy-payments.dev/capacitor-return',
+    });
+
+    expect(result.handoff).toBe('approval_url');
+    expect(result.approvalUrl).toContain('checkoutnow?token=ORDER-PA');
   });
 });

@@ -47,6 +47,26 @@ describe('buildStripeReturnUrl', () => {
     expect(url.searchParams.get('ep_method')).toBe('klarna');
   });
 
+  it('accepts Capacitor Android WebView https://localhost as same-origin', () => {
+    const url = parsed(undefined, 'https://localhost/index.html');
+    expect(url.origin).toBe('https://localhost');
+    expect(url.pathname).toBe('/index.html');
+    expect(url.searchParams.get('ep_method')).toBe('klarna');
+  });
+
+  it('rejects capacitor:// custom schemes with an actionable Capacitor message', () => {
+    expect(() =>
+      parsed('capacitor://localhost/return', 'https://localhost/index.html'),
+    ).toThrowError(PaymentError, /Capacitor custom schemes/);
+  });
+
+  it('rejects ionic:// pages as Stripe return bases', () => {
+    expect(() => parsed(undefined, 'ionic://localhost/home')).toThrowError(
+      PaymentError,
+      /Capacitor custom schemes/,
+    );
+  });
+
   it('stamps the Stripe return markers without dropping merchant params', () => {
     const url = parsed('https://shop.example/checkout?utm=1#done', PAGE, 'abc12345');
     expect(url.searchParams.get('ep_method')).toBe('klarna');
@@ -76,8 +96,41 @@ describe('buildStripeReturnUrl', () => {
     );
   });
 
-  it('rejects a cross-origin HTTPS URL', () => {
+  it('rejects a cross-origin HTTPS URL by default', () => {
     expect(() => parsed('https://evil.example/checkout')).toThrowError(PaymentError, /same-origin http/);
+  });
+
+  it('accepts a cross-origin HTTPS URL when allowExternalHttps is set', () => {
+    const url = new URL(
+      buildStripeReturnUrl('klarna', 'https://app-link.example/capacitor-return', PAGE, 'abcd1234', {
+        allowExternalHttps: true,
+      }),
+    );
+    expect(url.origin).toBe('https://app-link.example');
+    expect(url.pathname).toBe('/capacitor-return');
+    expect(url.searchParams.get('ep_method')).toBe('klarna');
+    expect(url.searchParams.get('ep_attempt')).toBe('abcd1234');
+  });
+
+  it('rejects cross-origin HTTP even when allowExternalHttps is set', () => {
+    expect(() =>
+      buildStripeReturnUrl('klarna', 'http://app-link.example/return', PAGE, undefined, {
+        allowExternalHttps: true,
+      }),
+    ).toThrowError(PaymentError, /same-origin http/);
+  });
+
+  it('re-accepts a stamped absolute App Link URL without the flag (adapter re-entry)', () => {
+    const stamped = buildStripeReturnUrl(
+      'klarna',
+      'https://app-link.example/capacitor-return',
+      PAGE,
+      'abcd1234',
+      { allowExternalHttps: true },
+    );
+    const again = new URL(buildStripeReturnUrl('klarna', stamped, 'https://localhost/home'));
+    expect(again.origin).toBe('https://app-link.example');
+    expect(again.searchParams.get('ep_method')).toBe('klarna');
   });
 
   it('rejects a protocol-relative cross-origin URL', () => {

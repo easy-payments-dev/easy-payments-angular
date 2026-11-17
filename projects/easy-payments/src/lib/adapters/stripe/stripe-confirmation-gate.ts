@@ -9,10 +9,20 @@ import type { PaymentMethod, PaymentProviderName } from '../../models';
  * Stripe.js confirmations can redirect the whole page (3DS, Klarna, Affirm), so a
  * second concurrent confirmation could be abandoned mid-flight. A rejected attempt
  * never reaches Stripe, so nothing is submitted and nothing is retried automatically.
+ *
+ * Capacitor / Custom Tab caveat: when Stripe redirects, `confirmPayment` often never
+ * settles, so `finally` never releases the gate. Call {@link clear} from App Link /
+ * resume recovery for that stale hold — do not release on mere `visibilitychange`
+ * (backgrounding mid-confirm must not unlock a second attempt).
+ *
+ * Each {@link acquire} returns an attempt-scoped releaser: an older `finally` cannot
+ * drop a newer hold, even when both use the same owner id.
  */
 @Injectable({ providedIn: 'root' })
 export class StripeConfirmationGate {
   private holder: string | null = null;
+  /** Monotonic id for the current hold; invalidated by {@link clear} and successful release. */
+  private attempt = 0;
 
   /** Throws a PaymentError on the caller's host when another confirmation is in flight. */
   acquire(ownerId: string, method: PaymentMethod, provider: PaymentProviderName): () => void {
@@ -27,17 +37,30 @@ export class StripeConfirmationGate {
         provider,
       });
     }
+    const myAttempt = ++this.attempt;
     this.holder = ownerId;
     let released = false;
+
     return () => {
       if (released) {
         return;
       }
       released = true;
-      if (this.holder === ownerId) {
+      // Only the live attempt may unlock — never a stale confirmPayment finally.
+      if (this.attempt === myAttempt && this.holder === ownerId) {
         this.holder = null;
       }
     };
+  }
+
+  /**
+   * Drop any in-flight hold (redirect recovery, visible resume, App Link return).
+   * Invalidates outstanding releasers so a hung confirm cannot unlock a later attempt.
+   * Idempotent.
+   */
+  clear(): void {
+    this.attempt += 1;
+    this.holder = null;
   }
 
   isHeld(): boolean {

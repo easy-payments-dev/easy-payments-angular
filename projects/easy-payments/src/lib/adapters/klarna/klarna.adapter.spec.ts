@@ -1,3 +1,4 @@
+import { createReadyPaymentElementMock } from '../../testing/stripe-payment-element-ready-mock';
 import { TestBed } from '@angular/core/testing';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
@@ -24,7 +25,7 @@ describe('KlarnaAdapter', () => {
   const unmount = jasmine.createSpy('unmount');
   const submit = jasmine.createSpy('submit').and.resolveTo({ error: undefined });
   const update = jasmine.createSpy('update');
-  const create = jasmine.createSpy('create').and.returnValue({ mount, unmount });
+  const create = jasmine.createSpy('create').and.returnValue(createReadyPaymentElementMock(mount, unmount));
   const elements = jasmine.createSpy('elements').and.returnValue({ create, submit, update });
   const confirmPayment = jasmine.createSpy('confirmPayment');
   const confirmKlarnaPayment = jasmine.createSpy('confirmKlarnaPayment');
@@ -396,6 +397,35 @@ describe('KlarnaAdapter', () => {
     const args = confirmPayment.calls.mostRecent().args[0];
     expect(args.redirect).toBe('if_required');
     expect(args.confirmParams.return_url).toContain('ep_method=klarna');
+  });
+
+  it('preserves App Link origin on confirmPayment return_url when the page is https://localhost', async () => {
+    backend.createKlarnaPayment.and.resolveTo({
+      provider: 'klarna',
+      clientSecret: 'pi_klarna_secret',
+      paymentIntentId: 'pi_klarna_1',
+    });
+    confirmPayment.and.resolveTo({
+      paymentIntent: { id: 'pi_klarna_1', status: 'succeeded' },
+    });
+
+    setTestLocation('/home');
+    await adapter.createPaymentSession({ ...SAMPLE_PRODUCT });
+    await adapter.mountPaymentElement(document.createElement('div'), 'pi_klarna_secret', 'light');
+
+    // Component boundary already stamped ep_method + ep_attempt on the App Link URL.
+    const stampedAppLink =
+      'https://www.easy-payments.dev/capacitor-return?ep_method=klarna&ep_attempt=abcdef1234567890';
+    await adapter.confirmPayment(stampedAppLink);
+
+    const args = confirmPayment.calls.mostRecent().args[0] as {
+      confirmParams?: { return_url?: string };
+    };
+    const returnUrl = args.confirmParams?.return_url ?? '';
+    expect(returnUrl.startsWith('https://www.easy-payments.dev/capacitor-return')).toBeTrue();
+    expect(returnUrl).toContain('ep_method=klarna');
+    expect(returnUrl).toContain('ep_attempt=abcdef1234567890');
+    expect(returnUrl).not.toContain('localhost');
   });
 
   describe('confirmDirectPayment', () => {

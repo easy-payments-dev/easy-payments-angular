@@ -26,6 +26,7 @@ import { resolveSameOriginStripeReturnUrl } from './stripe-redirect-return';
 import { StripeElementSession, StripeElementSessionStore } from './stripe-element-sessions';
 import { mapStripeError } from './stripe-error.mapper';
 import { StripeSdkLoader } from './stripe-sdk.loader';
+import { waitForPaymentElementReady } from './wait-for-payment-element-ready';
 import { StripeSessionResult } from './stripe.types';
 
 function looksLikeSecretKey(value: string): boolean {
@@ -256,7 +257,15 @@ export class StripeCardAdapter extends BaseProviderAdapter {
       session.elements = elements;
       session.paymentElement = elements.create('payment', STRIPE_PAYMENT_ELEMENT_OPTIONS);
       session.paymentElement.mount(container);
+      await waitForPaymentElementReady(session.paymentElement, {
+        method: 'card',
+        provider: 'stripe',
+        message: 'Stripe Payment Element failed to become ready.',
+      });
     } catch (error) {
+      if (error instanceof PaymentError) {
+        throw error;
+      }
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
         message: 'Stripe Payment Element failed to initialize.',
@@ -277,7 +286,11 @@ export class StripeCardAdapter extends BaseProviderAdapter {
     });
   }
 
-  async confirmPayment(returnUrl?: string, ownerId?: string): Promise<PaymentResult> {
+  async confirmPayment(
+    returnUrl?: string,
+    ownerId?: string,
+    options?: { allowExternalHttps?: boolean },
+  ): Promise<PaymentResult> {
     const session = this.sessions.get(ownerId);
     if (session.confirming) {
       throw new PaymentError({
@@ -309,7 +322,9 @@ export class StripeCardAdapter extends BaseProviderAdapter {
       }
 
       const resolvedReturnUrl = returnUrl?.trim()
-        ? resolveSameOriginStripeReturnUrl(returnUrl, undefined, 'card').href
+        ? resolveSameOriginStripeReturnUrl(returnUrl, undefined, 'card', {
+            allowExternalHttps: options?.allowExternalHttps === true,
+          }).href
         : this.browser.isBrowser
           ? `${window.location.origin}${window.location.pathname}`
           : undefined;

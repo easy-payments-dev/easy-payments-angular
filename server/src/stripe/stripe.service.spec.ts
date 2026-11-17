@@ -433,6 +433,37 @@ describe('StripeService', () => {
     expect(params.metadata.catalogUnitAmount).toBe('99');
   });
 
+  it('charges Klarna at catalog 99.00 USD (9900 cents) for premium-plan qty 1', async () => {
+    createMock.mockResolvedValue({
+      id: 'pi_klarna_catalog',
+      client_secret: 'pi_klarna_catalog_secret',
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StripeService, { provide: ConfigService, useValue: mockConfig() }],
+    }).compile();
+    const service = module.get(StripeService);
+
+    await service.createKlarnaPaymentIntent({
+      provider: 'klarna',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 9900,
+        currency: 'usd',
+        payment_method_types: ['klarna'],
+        metadata: expect.objectContaining({
+          productId: 'premium-plan',
+          trustedUnitAmount: '99',
+        }),
+      }),
+    );
+  });
+
   it('adds the same merchant metadata to Klarna and Affirm PaymentIntents', async () => {
     createMock.mockResolvedValue({
       id: 'pi_bnpl',

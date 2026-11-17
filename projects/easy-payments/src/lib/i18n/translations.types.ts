@@ -61,8 +61,12 @@ export interface EasyPaymentsTranslations {
   buttonsDemoModeNotice: string;
   continuePaymentHint: string;
   processingPayment: string;
+  /** Shown while reconciling an interrupted confirm after app resume. */
+  checkingPaymentStatus: string;
   /** Nonterminal recovered BNPL PaymentIntent — not an active buyer submit. */
   awaitingProviderPayment: string;
+  /** Google Pay sheet abandoned / hung before payment data — retry without cancel. */
+  googlePayIncomplete: string;
   payAmount: string;
   payAmountWithMethodAria: string;
   /** Confirm CTA without repeating the merchant-owned amount (Buttons Only expanded panels). */

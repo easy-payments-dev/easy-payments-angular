@@ -24,6 +24,13 @@ server/.env
 
 # Angular demo local credentials (fileReplacements → environment.local.ts)
 projects/demo/src/environments/environment.local.ts
+examples/ionic-capacitor-smoke/src/environments/environment.local.ts
+
+# Ionic/Capacitor smoke — native project trees & build output (regenerate locally)
+examples/ionic-capacitor-smoke/www/
+examples/ionic-capacitor-smoke/android/
+examples/ionic-capacitor-smoke/ios/
+examples/ionic-capacitor-smoke/.angular/
 
 # Private keys / certificates / local tunnel tooling
 *.pem

@@ -22,6 +22,7 @@ import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeElementSession, StripeElementSessionStore } from '../stripe/stripe-element-sessions';
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
+import { waitForPaymentElementReady } from '../stripe/wait-for-payment-element-ready';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
 import { buildStripeReturnUrl } from '../stripe/stripe-redirect-return';
 import {
@@ -265,7 +266,15 @@ export class CashAppPayAdapter extends BaseProviderAdapter {
       session.elements = elements;
       session.paymentElement = elements.create('payment', CASH_APP_PAY_PAYMENT_ELEMENT_OPTIONS);
       session.paymentElement.mount(container);
+      await waitForPaymentElementReady(session.paymentElement, {
+        method: 'cash-app-pay',
+        provider: 'cashAppPay',
+        message: 'Cash App Pay Payment Element failed to become ready.',
+      });
     } catch (error) {
+      if (error instanceof PaymentError) {
+        throw error;
+      }
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
         message: 'Cash App Pay Payment Element failed to initialize.',

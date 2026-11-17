@@ -14,6 +14,44 @@ describe('PayPalController', () => {
         captureId: 'C-1',
         status: 'COMPLETED',
       }),
+      getOrderStatus: jest.fn().mockResolvedValue({
+        provider: 'paypal',
+        orderId: 'O-1',
+        status: 'COMPLETED',
+        captureId: 'C-1',
+      }),
+      createVenmoHandoff: jest.fn().mockResolvedValue({
+        provider: 'paypal',
+        funding: 'venmo',
+        attemptId: 'attempt00000001',
+        orderId: 'O-V',
+        status: 'PAYER_ACTION_REQUIRED',
+        links: [{ rel: 'self', href: 'https://api.sandbox.paypal.com/v2/checkout/orders/O-V' }],
+        approvalUrl: null,
+        handoff: 'official_button',
+        product: {
+          productId: 'premium-plan',
+          name: 'Premium Plan',
+          quantity: 1,
+          amount: '99.00',
+          currency: 'USD',
+        },
+      }),
+      completeVenmoHandoff: jest.fn().mockResolvedValue({
+        provider: 'paypal',
+        funding: 'venmo',
+        attemptId: 'attempt00000001',
+        orderId: 'O-V',
+        status: 'COMPLETED',
+        captureId: 'C-V',
+        idempotent: false,
+      }),
+      getVenmoAttempt: jest.fn().mockResolvedValue({
+        provider: 'paypal',
+        funding: 'venmo',
+        attemptId: 'attempt00000001',
+        orderId: 'O-V',
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -39,5 +77,24 @@ describe('PayPalController', () => {
       expect.objectContaining({ captureId: 'C-1' }),
     );
     expect(paypalService.captureOrder).toHaveBeenCalledWith('O-1');
+
+    await expect(controller.getOrderStatus({ orderId: 'O-1' })).resolves.toEqual(
+      expect.objectContaining({ status: 'COMPLETED', captureId: 'C-1' }),
+    );
+    expect(paypalService.getOrderStatus).toHaveBeenCalledWith('O-1');
+
+    await expect(
+      controller.createVenmoHandoff({
+        attemptId: 'attempt00000001',
+        productId: 'premium-plan',
+        returnUrl: 'https://www.easy-payments.dev/capacitor-return',
+        cancelUrl: 'https://www.easy-payments.dev/capacitor-return',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ handoff: 'official_button', approvalUrl: null }));
+    expect(paypalService.createVenmoHandoff).toHaveBeenCalled();
+
+    await expect(
+      controller.completeVenmoHandoff({ attemptId: 'attempt00000001', orderId: 'O-V' }),
+    ).resolves.toEqual(expect.objectContaining({ status: 'COMPLETED', captureId: 'C-V' }));
   });
 });

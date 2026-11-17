@@ -22,6 +22,7 @@ import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeElementSession, StripeElementSessionStore } from '../stripe/stripe-element-sessions';
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
+import { waitForPaymentElementReady } from '../stripe/wait-for-payment-element-ready';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
 import { buildStripeReturnUrl } from '../stripe/stripe-redirect-return';
 import {
@@ -275,7 +276,15 @@ export class AfterpayAdapter extends BaseProviderAdapter {
       session.elements = elements;
       session.paymentElement = elements.create('payment', AFTERPAY_PAYMENT_ELEMENT_OPTIONS);
       session.paymentElement.mount(container);
+      await waitForPaymentElementReady(session.paymentElement, {
+        method: 'afterpay',
+        provider: 'afterpay',
+        message: 'Afterpay Payment Element failed to become ready.',
+      });
     } catch (error) {
+      if (error instanceof PaymentError) {
+        throw error;
+      }
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
         message: 'Afterpay Payment Element failed to initialize.',

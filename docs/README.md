@@ -12,6 +12,7 @@
 | [Demo](./demo.md) | Run the Angular playground |
 | [Payment flow](./payment-flow.md) | Checkout → processing → success / error / cancel |
 | [Payment method requirements](./payment-method-requirements.md) | Setup matrix for every exposed method (FC / Buttons / Headless) |
+| [Ionic + Capacitor](./ionic-capacitor-compatibility.md) | Smoke app versions, WebView matrix, redirects, iOS steps |
 | [Security](./security.md) | Frontend vs backend secrets, pricing |
 | [Release branch](./release-branch.md) | `release/1.0.0`, GitHub visibility limits, protection |
 | [npm README images](./npm-readme-images.md) | Absolute URLs required before npm publish |

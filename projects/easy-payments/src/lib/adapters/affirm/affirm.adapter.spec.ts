@@ -1,3 +1,4 @@
+import { createReadyPaymentElementMock } from '../../testing/stripe-payment-element-ready-mock';
 import { TestBed } from '@angular/core/testing';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
@@ -19,7 +20,7 @@ describe('AffirmAdapter', () => {
   const unmount = jasmine.createSpy('unmount');
   const submit = jasmine.createSpy('submit').and.resolveTo({ error: undefined });
   const update = jasmine.createSpy('update');
-  const create = jasmine.createSpy('create').and.returnValue({ mount, unmount });
+  const create = jasmine.createSpy('create').and.returnValue(createReadyPaymentElementMock(mount, unmount));
   const elements = jasmine.createSpy('elements').and.returnValue({ create, submit, update });
   const confirmPayment = jasmine.createSpy('confirmPayment');
   const confirmAffirmPayment = jasmine.createSpy('confirmAffirmPayment');

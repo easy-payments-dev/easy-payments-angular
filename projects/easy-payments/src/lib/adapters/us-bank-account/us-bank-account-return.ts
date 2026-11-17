@@ -6,7 +6,10 @@
  * retrievePaymentIntent only — never create or confirm a second PaymentIntent.
  */
 
-import { resolveSameOriginStripeReturnUrl } from '../stripe/stripe-redirect-return';
+import {
+  resolveSameOriginStripeReturnUrl,
+  type ResolveStripeReturnUrlOptions,
+} from '../stripe/stripe-redirect-return';
 
 export const ACH_RETURN_METHOD = 'us-bank-account' as const;
 export const ACH_RETURN_METHOD_PARAM = 'ep_method';
@@ -29,15 +32,17 @@ function currentSearch(search?: string): string {
   return search ?? (typeof window !== 'undefined' ? window.location.search : '');
 }
 
-/** Same-origin return_url with ep_method=us-bank-account. */
+/** Same-origin (or allowed App Link) return_url with ep_method=us-bank-account. */
 export function buildAchReturnUrl(
   baseUrl?: string,
   locationHref?: string,
+  options?: ResolveStripeReturnUrlOptions,
 ): string {
   const url = resolveSameOriginStripeReturnUrl(
     baseUrl,
     locationHref,
     'us-bank-account',
+    options,
   );
   url.searchParams.set(ACH_RETURN_METHOD_PARAM, ACH_RETURN_METHOD);
   return url.href;

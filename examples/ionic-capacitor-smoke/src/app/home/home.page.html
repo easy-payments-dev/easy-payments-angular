@@ -1,0 +1,118 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>EP Ionic Smoke</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <div class="meta">
+    <ion-chip color="medium">{{ platformLabel }}</ion-chip>
+    <ion-chip [color]="usingMock() ? 'tertiary' : 'warning'">
+      {{ usingMock() ? 'Mock' : 'Sandbox' }}
+    </ion-chip>
+    <ion-chip color="dark">last: {{ lastEvent() }}</ion-chip>
+  </div>
+
+  <ion-list lines="none">
+    <ion-item>
+      <ion-label>Surface</ion-label>
+      <ion-segment
+        [value]="surface()"
+        (ionChange)="onSurfaceChange($event.detail.value)"
+      >
+        <ion-segment-button value="full" (click)="onSurfaceChange('full')">
+          <ion-label>Full</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="buttons" (click)="onSurfaceChange('buttons')">
+          <ion-label>Buttons</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="headless" (click)="onSurfaceChange('headless')">
+          <ion-label>Headless</ion-label>
+        </ion-segment-button>
+      </ion-segment>
+    </ion-item>
+
+    @if (usingMock()) {
+      <ion-item>
+        <ion-select
+          label="Mock outcome"
+          interface="popover"
+          [value]="mockOutcome()"
+          (ionChange)="onMockOutcomeChange($event.detail.value)"
+        >
+          <ion-select-option value="success">success</ion-select-option>
+          <ion-select-option value="cancelled">cancelled</ion-select-option>
+          <ion-select-option value="failed">failed</ion-select-option>
+        </ion-select>
+      </ion-item>
+    }
+
+    <ion-item>
+      <ion-button expand="block" (click)="toggleMode()">
+        Switch to {{ usingMock() ? 'Sandbox' : 'Mock' }}
+      </ion-button>
+    </ion-item>
+  </ion-list>
+
+  <ion-note color="medium">
+    Product {{ product.name }} · {{ product.amount }} {{ product.currency }}. Zip Sandbox
+    stays pending without merchant ZIP_* secrets.
+  </ion-note>
+
+  @if (showVenmoChromeFallback()) {
+    <ion-item lines="none" class="venmo-chrome-fallback">
+      <ion-button
+        expand="block"
+        color="secondary"
+        [disabled]="venmoFallbackBusy()"
+        (click)="openVenmoInChrome()"
+        data-testid="venmo-chrome-fallback"
+      >
+        Continue with Venmo in Chrome
+      </ion-button>
+    </ion-item>
+    <ion-note color="medium">
+      Venmo is ineligible in this WebView. Opens the Sandbox web checkout in Chrome and
+      returns via App Link (backend verifies the PayPal order).
+    </ion-note>
+  }
+
+  <div class="surface" data-testid="smoke-surface">
+    @if (surface() === 'full') {
+      <easy-payments
+        [product]="product"
+        [methods]="methods"
+        [checkout]="checkout"
+        (success)="onSuccess($event)"
+        (cancel)="onCancel($event)"
+        (error)="onError($event)"
+        (started)="onStarted($event)"
+      />
+    }
+
+    @if (surface() === 'buttons') {
+      <easy-payment-buttons
+        [product]="product"
+        [methods]="methods"
+        [checkout]="checkout"
+        (success)="onSuccess($event)"
+        (cancel)="onCancel($event)"
+        (error)="onError($event)"
+        (started)="onStarted($event)"
+      />
+    }
+
+    @if (surface() === 'headless') {
+      <div #headlessHost class="headless-host" data-testid="headless-host"></div>
+    }
+  </div>
+
+  <section class="log" aria-label="Event log">
+    <h2>Event log</h2>
+    <ul>
+      @for (row of eventLog(); track $index) {
+        <li>{{ row }}</li>
+      }
+    </ul>
+  </section>
+</ion-content>

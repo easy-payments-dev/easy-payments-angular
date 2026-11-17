@@ -123,6 +123,43 @@ describe('ZipAdapter', () => {
     );
   });
 
+  it('uses checkout.successUrl for Zip redirect confirm/cancel when provided', async () => {
+    backend.createZipCheckout.and.resolveTo({
+      provider: 'zip',
+      merchantReference: 'ref-app-link',
+      merchantId: 'mid',
+      amount: 49,
+      currency: 'USD',
+      requestBody: { merchantReference: 'ref-app-link' },
+      signature: 'sig',
+      sdkScriptUrl: 'https://cdn.sand.us.zip.co/v1/zip.js',
+    });
+
+    await adapter.initialize();
+    await adapter.prepareCheckout(
+      {
+        id: 'premium-plan',
+        name: 'Premium',
+        amount: 49,
+        currency: 'USD',
+      },
+      { successUrl: 'https://www.easy-payments.dev/capacitor-return' },
+    );
+
+    const body = backend.createZipCheckout.calls.mostRecent().args[0] as {
+      redirectConfirmUrl?: string;
+      redirectCancelUrl?: string;
+    };
+    expect(body.redirectConfirmUrl).toContain(
+      'https://www.easy-payments.dev/capacitor-return',
+    );
+    expect(body.redirectConfirmUrl).toContain('ep_zip_return=confirm');
+    expect(body.redirectCancelUrl).toContain(
+      'https://www.easy-payments.dev/capacitor-return',
+    );
+    expect(body.redirectCancelUrl).toContain('ep_zip_return=cancel');
+  });
+
   it('verifies approval via onComplete and emits success once', async () => {
     backend.createZipCheckout.and.resolveTo({
       provider: 'zip',

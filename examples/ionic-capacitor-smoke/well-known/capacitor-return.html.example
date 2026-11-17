@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Opening Easy Payments smoke…</title>
+  </head>
+  <body>
+    <p>
+      If the Android app did not open automatically, install the smoke APK and ensure
+      Digital Asset Links are verified for this domain.
+    </p>
+    <p>This page must be served at your configured <code>/capacitor-return</code> path over HTTPS.</p>
+  </body>
+</html>

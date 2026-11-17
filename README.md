@@ -1084,7 +1084,7 @@ Unavailable methods are **hidden** in Full Checkout and Buttons Only (not shown 
 | **Google Pay** | `googlePay` + Stripe | Stripe secret via create URL | `TEST` / `PRODUCTION` |
 | **Klarna** | `klarna` + Stripe | Stripe + `klarnaCreatePaymentUrl` | Redirect + return recovery |
 | **Affirm** | `affirm` + Stripe | Stripe + `affirmCreatePaymentUrl` | ~$35 min in library; eligibility varies |
-| **Venmo** | `venmo: {}` + PayPal Client ID | Same PayPal create/capture | US/USD; opt-in |
+| **Venmo** | `venmo: {}` + PayPal Client ID | Same PayPal create/capture (browser) | US/USD; opt-in — see [Android Sandbox Ionic note](#android-sandbox-ionic--venmo) |
 | **US bank account** | `usBankAccount: {}` + Stripe | Stripe + `createUsBankAccountPaymentUrl` | USD ACH; opt-in |
 | **Cash App Pay** | `cashAppPay: {}` + Stripe | Stripe + `cashAppPayCreatePaymentUrl` | US/USD; ≥ $0.50; opt-in |
 | **Afterpay** | `afterpay: {}` + Stripe | Stripe + `afterpayCreatePaymentUrl` | AU/CA/NZ/GB/US; opt-in |
@@ -1093,6 +1093,27 @@ Unavailable methods are **hidden** in Full Checkout and Buttons Only (not shown 
 Details: [docs/payment-method-requirements.md](docs/payment-method-requirements.md) · [docs/providers/](docs/providers/) · Security: [docs/security.md](docs/security.md)
 
 > **Never** put Stripe secret keys, PayPal Client Secrets, or Zip API secrets in Angular.
+
+### Android Sandbox (Ionic / Venmo)
+
+**Android Sandbox example** (EP Ionic smoke) — not the normal browser Venmo checkout.
+
+In a normal browser, shoppers use the official Venmo button in-page. On Android Capacitor, Venmo is often `isEligible() === false` in the WebView even when Chrome on the same device can show the button. The smoke example then uses **two taps**:
+
+1. **Continue with Venmo in Chrome** in Ionic — opens the Sandbox Venmo page in Chrome with a correlated attempt id.
+2. **Pay with Venmo** — the official PayPal Venmo button on that Chrome page (product, total, Venmo, cancel).
+
+**Return to Ionic** uses the verified HTTPS App Link (Android Intent so Chrome does not stay on the marketing site as a web page). Ionic reconciles the same attempt/order with Nest; success only after a completed capture.
+
+**Observed Sandbox Orders v2 behavior (this flow):** create with `payment_source.venmo` returned `PAYER_ACTION_REQUIRED` with HATEOAS links containing only `rel: "self"` (no `payer-action` / `approve` buyer URL). Because of that observation, the current handoff starts approval with the **official Venmo button** rather than redirecting to a PayPal-returned approval URL. It does not invent Venmo URLs.
+
+Full write-up: [docs/providers/venmo.md](docs/providers/venmo.md) · Website: [Venmo](https://www.easy-payments.dev/docs/angular/1.3.0/venmo) · Compatibility: [docs/ionic-capacitor-compatibility.md](docs/ionic-capacitor-compatibility.md)
+
+Official PayPal links:
+
+- [Pay with Venmo eligibility and supported browsers](https://developer.paypal.com/v5/venmo/overview)
+- [Orders API — Sample JSON order request 4: Pay with Venmo](https://developer.paypal.com/whats-an-order/)
+- [Venmo Sandbox testing](https://developer.paypal.com/platforms/checkout/pay-with-venmo/test)
 
 ---
 
@@ -1116,6 +1137,7 @@ This repo’s [`server/`](server) NestJS app is a **reference example**, not a p
 | Angular demo | [`projects/demo`](projects/demo) |
 | Reference backend | [`server`](server) |
 | Documentation | [`docs`](docs) |
+| Ionic / Capacitor smoke | [`examples/ionic-capacitor-smoke`](examples/ionic-capacitor-smoke) |
 | Issues | [GitHub Issues](https://github.com/easy-payments-dev/easy-payments-angular/issues) |
 
 ---

@@ -859,7 +859,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     mountGen: number,
   ): Promise<HeadlessMountHandle> {
     try {
-      await this.zip.prepareCheckout(this.product);
+      await this.zip.prepareCheckout(this.product, this.checkout);
       this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'zip');
 
       container.replaceChildren();
@@ -2675,7 +2675,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
     const attemptId = createStripeReturnAttemptId();
     const redirectMethod = method as StripeRedirectMethod;
-    const returnUrl = buildStripeReturnUrl(redirectMethod, base, undefined, attemptId);
+    const returnUrl = buildStripeReturnUrl(redirectMethod, base, undefined, attemptId, {
+      allowExternalHttps: this.checkout?.allowExternalHttpsReturnUrl === true,
+    });
     markHeadlessPendingReturn(redirectMethod, this.product.id, {
       attemptId,
       checkoutInstanceId: this.stableCheckoutIdentity,

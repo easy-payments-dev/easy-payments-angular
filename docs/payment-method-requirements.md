@@ -112,7 +112,7 @@ providers: {
 
 | | |
 |--|--|
-| **Provider** | PayPal JS SDK (`enable-funding=venmo` + Venmo Buttons). **Same Orders URLs as PayPal** — no separate Venmo Nest routes |
+| **Provider** | PayPal JS SDK (`enable-funding=venmo` + Venmo Buttons). Browser checkout uses the **same Orders create/capture URLs as PayPal**. Android Sandbox Ionic smoke may use optional Venmo handoff routes — see [providers/venmo.md](./providers/venmo.md#android-sandbox-example-ionic--capacitor) |
 | **Modes** | Full · Buttons · Headless (opt-in; not in defaults) |
 | **Merchant** | PayPal account with **Venmo enabled** on the app |
 | **Public** | `providers.venmo: {}` or `{ sandboxBuyerCountry: 'US' }` + PayPal `clientId` |
@@ -121,7 +121,7 @@ providers: {
 | **Constraints** | **US buyers / USD**; `Buttons().isEligible()`; never set `sandboxBuyerCountry` in production |
 | **Mock / sandbox / prod** | Mock without PayPal secrets. Sandbox: web login (desktop QR not sandbox-testable). Live: remove `sandboxBuyerCountry` |
 | **Unavailable** | Hidden; `PROVIDER_MISCONFIGURED`. Button may also hide after mount if ineligible |
-| **Guide** | [providers/venmo.md](./providers/venmo.md) · [PayPal Venmo integrate](https://developer.paypal.com/docs/checkout/pay-with-venmo/integrate/) |
+| **Guide** | [providers/venmo.md](./providers/venmo.md) · [Eligibility / browsers](https://developer.paypal.com/v5/venmo/overview) · [Orders sample: Pay with Venmo](https://developer.paypal.com/whats-an-order/) · [Sandbox test](https://developer.paypal.com/platforms/checkout/pay-with-venmo/test) |
 
 ---
 

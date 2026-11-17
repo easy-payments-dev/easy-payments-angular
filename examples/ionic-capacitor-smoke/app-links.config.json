@@ -1,0 +1,6 @@
+{
+  "applicationId": "dev.easypayments.ionic.smoke",
+  "host": "www.easy-payments.dev",
+  "pathPrefix": "/capacitor-return",
+  "comment": "Copy host from environment.nativeStripeReturnUrl. Run: node scripts/patch-android-app-links.mjs after cap sync."
+}

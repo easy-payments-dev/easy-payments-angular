@@ -10,6 +10,97 @@
   } @else {
     <p class="qa-loading" role="status">Loading multi-instance QA…</p>
   }
+} @else if (smokeVenmoCheckout()) {
+  <!-- Ionic Smoke Android Venmo — product + total + official Venmo + cancel only. -->
+  <div class="smoke-venmo" data-testid="smoke-venmo-checkout">
+    <header class="smoke-venmo__header">
+      <p class="smoke-venmo__eyebrow">EP Ionic Smoke · Sandbox</p>
+      <h1>Pay with Venmo</h1>
+    </header>
+
+    @if (smokeVenmoReturn(); as ret) {
+      <section class="smoke-venmo__return" data-testid="smoke-venmo-return" role="status">
+        <h2>
+          @if (ret.result === 'approved') {
+            Venmo payment captured
+          } @else {
+            Venmo cancelled
+          }
+        </h2>
+        <p>
+          @if (ret.result === 'approved') {
+            Capture finished in Chrome. Open Ionic so it can verify order status (no second charge).
+          } @else {
+            No payment was completed. Return to Ionic to clear this attempt.
+          }
+        </p>
+        <a
+          class="smoke-venmo__return-btn"
+          data-testid="smoke-venmo-return-to-ionic"
+          [href]="ret.httpsAppLink"
+          (click)="returnSmokeVenmoToIonic($event)"
+        >
+          Return to Ionic
+        </a>
+        <p class="smoke-venmo__trace">
+          App Link {{ ret.destinationHost }}{{ ret.destinationPath }} · attempt
+          {{ ret.attemptId }}
+        </p>
+      </section>
+    } @else if (!checkoutReady()) {
+      <p class="smoke-venmo__boot" role="status">
+        @if (modeMessage()) {
+          {{ modeMessage() }}
+        } @else {
+          Loading Venmo Sandbox…
+        }
+      </p>
+    } @else {
+      <div class="smoke-venmo__checkout">
+        <section class="smoke-venmo__product" data-testid="smoke-venmo-product">
+          <h2>{{ smokeVenmoProductName() }}</h2>
+          <p class="smoke-venmo__total">
+            Total {{ smokeVenmoCurrency() }} {{ smokeVenmoAmount() }}
+          </p>
+        </section>
+
+        @if (smokeVenmoBoundOrderId()) {
+          <!-- Nest-created Venmo order — official button, no second create. -->
+          <div
+            #smokeVenmoButtonsHost
+            class="smoke-venmo__buttons"
+            data-testid="smoke-venmo-official-button"
+          ></div>
+          @if (smokeVenmoButtonError()) {
+            <p class="smoke-venmo__error" role="alert">{{ smokeVenmoButtonError() }}</p>
+          }
+        } @else {
+          <easy-payments
+            [product]="product()"
+            [methods]="methods()"
+            [theme]="'light'"
+            [appearance]="'default'"
+            [locale]="locale()"
+            (started)="onPaymentStarted($event)"
+            (success)="onPaymentSuccess($event)"
+            (cancel)="onPaymentCancel($event)"
+            (error)="onPaymentError($event)"
+            (pending)="onPaymentPending($event)"
+            (methodChange)="onPaymentMethodChange($event)"
+          />
+        }
+
+        <button
+          type="button"
+          class="smoke-venmo__cancel"
+          data-testid="smoke-venmo-cancel-return"
+          (click)="cancelSmokeVenmoAndReturn()"
+        >
+          Cancel and return to Ionic
+        </button>
+      </div>
+    }
+  </div>
 } @else {
 <div class="demo">
   <header class="demo-header">

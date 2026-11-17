@@ -1,9 +1,11 @@
 import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { PaymentProduct, ResolvedPaymentTheme } from '../../models';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
 import { GooglePaySdkLoader } from '../../adapters/google-pay/google-pay-sdk.loader';
+import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
 import { StripeSdkLoader } from '../../adapters/stripe/stripe-sdk.loader';
 import { GooglePayPaymentComponent } from './google-pay-payment.component';
 import { PaymentError } from '../../errors/payment-error';
@@ -52,12 +54,14 @@ describe('GooglePayPaymentComponent', () => {
       'destroyButtonMount',
       'clearButtonHost',
       'isProcessing',
+      'abandonInFlight',
     ]);
     adapter.isAvailable.and.resolveTo(true);
     adapter.renderOfficialButton.and.resolveTo('google-pay-button-1');
     adapter.destroy.and.resolveTo();
     adapter.destroyButtonMount.and.stub();
     adapter.isProcessing.and.returnValue(false);
+    adapter.abandonInFlight.and.returnValue(null);
 
     await TestBed.configureTestingModule({
       imports: [HostComponent],
@@ -144,6 +148,107 @@ describe('GooglePayPaymentComponent', () => {
     expect(host.cancels.length).toBe(1);
     expect(host.successes.length).toBe(0);
   });
+
+  it('sheet fail before confirmation: resume unlocks without status-check so Card can confirm next', async () => {
+    let resolvePay!: (value: never) => void;
+    let processing = false;
+    const options = adapter.renderOfficialButton.calls.mostRecent().args[1];
+    adapter.isProcessing.and.callFake(() => processing);
+    adapter.payWithGooglePay.and.callFake(async () => {
+      processing = true;
+      return await new Promise((resolve) => {
+        resolvePay = resolve as (value: never) => void;
+      });
+    });
+    adapter.abandonInFlight.and.callFake(() => {
+      processing = false;
+      return {
+        clientSecret: 'pi_secret',
+        paymentIntentId: 'pi_1',
+        confirmationStarted: false,
+      };
+    });
+
+    const click = options.onClick();
+    await Promise.resolve();
+    const gpay = fixture.debugElement.query(By.directive(GooglePayPaymentComponent))
+      .componentInstance as GooglePayPaymentComponent;
+    expect(gpay.uiState()).toBe('awaiting-sheet');
+    expect(gpay.isBusy()).toBeTrue();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(adapter.abandonInFlight).toHaveBeenCalled();
+    expect(host.successes.length).toBe(0);
+    expect(host.cancels.length).toBe(0);
+    expect(gpay.uiState()).toBe('ready');
+    expect(gpay.inlineError()).toBeTruthy();
+
+    const gate = TestBed.inject(StripeConfirmationGate);
+    expect(gate.isHeld()).toBeFalse();
+    expect(() => gate.acquire('card:after-return', 'card', 'stripe')).not.toThrow();
+    gate.clear();
+
+    resolvePay({
+      status: 'cancelled',
+      method: 'google-pay',
+      provider: 'googlePay',
+    } as never);
+    await click;
+    // Late Google Pay settle after resume must not emit a second outcome.
+    expect(host.cancels.length).toBe(0);
+    expect(host.successes.length).toBe(0);
+  });
+
+  it('unknown outcome after confirmation was sent: resume emits status-check once', async () => {
+    let resolvePay!: (value: never) => void;
+    let processing = false;
+    const options = adapter.renderOfficialButton.calls.mostRecent().args[1];
+    adapter.isProcessing.and.callFake(() => processing);
+    adapter.payWithGooglePay.and.callFake(async () => {
+      processing = true;
+      return await new Promise((resolve) => {
+        resolvePay = resolve as (value: never) => void;
+      });
+    });
+    adapter.abandonInFlight.and.callFake(() => {
+      processing = false;
+      return {
+        clientSecret: 'pi_secret',
+        paymentIntentId: 'pi_1',
+        confirmationStarted: true,
+      };
+    });
+
+    const click = options.onClick();
+    await Promise.resolve();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(host.successes.length).toBe(1);
+    expect((host.successes[0] as { metadata?: { statusCheck?: boolean } }).metadata?.statusCheck).toBeTrue();
+    expect(host.cancels.length).toBe(0);
+
+    resolvePay({
+      status: 'success',
+      method: 'google-pay',
+      provider: 'googlePay',
+      transactionId: 'late',
+    } as never);
+    await click;
+    expect(host.successes.length).toBe(1);
+  });
 });
 
 describe('GooglePayPaymentComponent compact', () => {
@@ -159,11 +264,13 @@ describe('GooglePayPaymentComponent compact', () => {
       'destroyButtonMount',
       'clearButtonHost',
       'isProcessing',
+      'abandonInFlight',
     ]);
     adapter.isAvailable.and.resolveTo(true);
     adapter.renderOfficialButton.and.resolveTo('google-pay-button-compact');
     adapter.destroyButtonMount.and.stub();
     adapter.isProcessing.and.returnValue(false);
+    adapter.abandonInFlight.and.returnValue(null);
 
     await TestBed.configureTestingModule({
       imports: [GooglePayPaymentComponent],

@@ -1,0 +1,38 @@
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.surface {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ion-background-color-step-50, #f4f5f8);
+}
+
+.headless-host {
+  min-height: 120px;
+}
+
+.log {
+  margin-top: 24px;
+
+  h2 {
+    font-size: 0.95rem;
+    margin: 0 0 8px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+}
+
+ion-note {
+  display: block;
+  margin: 8px 0 0;
+}
