@@ -3,8 +3,11 @@ import { NgComponentOutlet } from '@angular/common';
 import {
   Component,
   computed,
+  effect,
+  ElementRef,
   inject,
   signal,
+  viewChild,
   ChangeDetectionStrategy,
   type Type,
 } from '@angular/core';
@@ -50,6 +53,13 @@ import {
   type DemoPlaygroundExperience,
 } from './demo-experience-persistence';
 import { persistDemoLocale, readPersistedDemoLocale } from './demo-locale-persistence';
+import {
+  buildSmokeVenmoReturnLinks,
+  openSmokeVenmoReturnToIonic,
+  parseSmokeVenmoChromeBridge,
+  type SmokeVenmoChromeBridge,
+  type SmokeVenmoReturnLinks,
+} from './smoke-venmo-chrome-bridge';
 import {
   DEMO_BNPL_TEST_SAMPLE,
   persistDemoBnplButtons,
@@ -269,6 +279,23 @@ export class App {
   private readonly configService = inject(EasyPaymentsConfigService);
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly http = inject(HttpClient);
+  /** Ionic smoke Android Venmo Chrome fallback — set only when ep_smoke_* query is present. */
+  private smokeVenmoChromeBridge: SmokeVenmoChromeBridge | null = null;
+  /** Dedicated Sandbox Venmo checkout (hides playground chrome). */
+  readonly smokeVenmoCheckout = signal(false);
+  /**
+   * After Venmo settles in Chrome: show Return to Ionic (do not navigate to the
+   * HTTPS App Link in-tab — that loads easy-payments.dev as a 404 web page).
+   */
+  readonly smokeVenmoReturn = signal<SmokeVenmoReturnLinks | null>(null);
+  readonly smokeVenmoBoundOrderId = signal<string | null>(null);
+  readonly smokeVenmoProductName = signal('Premium Plan');
+  readonly smokeVenmoAmount = signal('99.00');
+  readonly smokeVenmoCurrency = signal('USD');
+  readonly smokeVenmoButtonError = signal<string | null>(null);
+  private readonly smokeVenmoButtonsHost =
+    viewChild<ElementRef<HTMLElement>>('smokeVenmoButtonsHost');
+  private smokeVenmoButtonsMounted = false;
   /** Developer readiness. Kept outside the customer-facing checkout. */
   readonly paymentDiagnostics = inject(EasyPaymentsDiagnosticsService).diagnostics;
 
@@ -843,6 +870,17 @@ ${cardAppearanceBlock}
     } else {
       void this.bootstrapPlaygroundMode();
     }
+
+    effect(() => {
+      const ready = this.checkoutReady();
+      const orderId = this.smokeVenmoBoundOrderId();
+      const host = this.smokeVenmoButtonsHost()?.nativeElement;
+      const settled = this.smokeVenmoReturn();
+      if (!ready || !orderId || !host || settled || this.smokeVenmoButtonsMounted) {
+        return;
+      }
+      void this.mountSmokeVenmoBoundButtons(host, orderId);
+    });
   }
 
   private applyThemeFromQuery(): void {
@@ -867,20 +905,73 @@ ${cardAppearanceBlock}
     // Uses the user's last selection — never inferred from redirect query params or ownership markers.
     this.playgroundExperience.set(readPersistedDemoExperience() ?? 'checkout');
 
+    this.smokeVenmoChromeBridge =
+      typeof window !== 'undefined'
+        ? parseSmokeVenmoChromeBridge(window.location.search)
+        : null;
+    if (this.smokeVenmoChromeBridge) {
+      // Dedicated Sandbox Venmo surface — no playground sidebar / method hunting.
+      this.smokeVenmoCheckout.set(true);
+      this.playgroundExperience.set('checkout');
+      this.methodRows.set(
+        DEFAULT_METHODS.map((row) => ({
+          ...row,
+          enabled: row.method === 'venmo',
+        })),
+      );
+      this.smokeVenmoBoundOrderId.set(this.smokeVenmoChromeBridge.orderId);
+      this.smokeVenmoProductName.set(
+        this.smokeVenmoChromeBridge.productName?.trim() || this.productName(),
+      );
+      this.smokeVenmoAmount.set(
+        this.smokeVenmoChromeBridge.amount?.trim() ||
+          Number(this.productAmount()).toFixed(2),
+      );
+      this.smokeVenmoCurrency.set(
+        this.smokeVenmoChromeBridge.currency?.trim() || this.productCurrency(),
+      );
+      this.recordEvent(
+        this.smokeVenmoChromeBridge.orderId
+          ? `Ionic smoke Venmo — Nest-bound order ${this.smokeVenmoChromeBridge.orderId}; official button (Sandbox returned no approval URL).`
+          : 'Ionic smoke Venmo Sandbox checkout — official Venmo button only; return via App Link.',
+      );
+      // Smoke-only CDP/QA hook (Chrome emulator tests). Does not create/capture — only paints Return UI.
+      (window as Window & { __epSmokeVenmoSettle?: unknown }).__epSmokeVenmoSettle = (
+        result: 'approved' | 'cancelled',
+        orderId?: string | null,
+      ) => {
+        this.settleSmokeVenmoChromeBridge(result, {
+          method: 'venmo',
+          provider: 'venmo',
+          status: result === 'approved' ? 'success' : 'cancelled',
+          sessionId: orderId?.trim() || undefined,
+          transactionId: orderId?.trim() || undefined,
+        });
+      };
+    }
+
     try {
-      const forceReal = typeof window !== 'undefined' && isAnyStripeBnplReturnAttempt();
+      const forceReal =
+        !!this.smokeVenmoChromeBridge ||
+        (typeof window !== 'undefined' && isAnyStripeBnplReturnAttempt());
       const persisted = readPersistedDemoMode();
       const target: DemoMode = forceReal ? 'real' : (persisted ?? 'demo');
 
       if (target === 'real') {
         if (!this.realProvidersReady()) {
           this.modeMessage.set(
-            forceReal
-              ? 'Returned from a Stripe payment (Klarna/Affirm), but Real / Test Providers are not configured. Add Stripe pk_test_... and NestJS URLs.'
-              : 'Real / Test Providers mode requires Stripe (pk_test_...) and/or PayPal Sandbox Client ID plus NestJS backend URLs.',
+            this.smokeVenmoChromeBridge
+              ? 'Ionic smoke Venmo Chrome bridge needs Real / Test Providers (PayPal Sandbox clientId + Nest URLs).'
+              : forceReal
+                ? 'Returned from a Stripe payment (Klarna/Affirm), but Real / Test Providers are not configured. Add Stripe pk_test_... and NestJS URLs.'
+                : 'Real / Test Providers mode requires Stripe (pk_test_...) and/or PayPal Sandbox Client ID plus NestJS backend URLs.',
           );
           await this.applyDemoModeConfig();
           persistDemoMode('demo');
+        } else if (this.smokeVenmoChromeBridge) {
+          // Apply Real config directly so mode is Sandbox before the Venmo host mounts.
+          await this.applyRealModeConfig();
+          persistDemoMode('real');
         } else {
           await this.applyRealModeConfig();
           persistDemoMode('real');
@@ -1360,6 +1451,7 @@ ${cardAppearanceBlock}
           : `${result.method} — fulfill only after backend/webhook verification.`,
       });
     }
+    this.settleSmokeVenmoChromeBridge('approved', result);
   }
 
   onSuccessContinue(result: PaymentResult): void {
@@ -1378,6 +1470,222 @@ ${cardAppearanceBlock}
         detail: `${result.method} — the buyer cancelled before confirmation.`,
       });
     }
+    this.settleSmokeVenmoChromeBridge('cancelled', result);
+  }
+
+  /** Smoke dedicated view — cancel without creating another order. */
+  cancelSmokeVenmoAndReturn(): void {
+    if (!this.smokeVenmoChromeBridge || this.smokeVenmoReturn()) {
+      return;
+    }
+    this.settleSmokeVenmoChromeBridge('cancelled', {
+      method: 'venmo',
+      provider: 'venmo',
+      status: 'cancelled',
+    });
+  }
+
+  /**
+   * Official Venmo Buttons for a Nest-bound Orders v2 Venmo order (no second create).
+   * Capture goes through Nest /venmo/complete (idempotent).
+   */
+  private async mountSmokeVenmoBoundButtons(
+    host: HTMLElement,
+    orderId: string,
+  ): Promise<void> {
+    this.smokeVenmoButtonsMounted = true;
+    this.smokeVenmoButtonError.set(null);
+    const bridge = this.smokeVenmoChromeBridge;
+    if (!bridge) {
+      return;
+    }
+
+    type PayPalButtonsNs = {
+      Buttons: (options: Record<string, unknown>) => {
+        isEligible?: () => boolean;
+        render: (el: HTMLElement) => Promise<void>;
+      };
+      FUNDING?: { VENMO?: string };
+    };
+
+    const waitForPaypal = async (): Promise<PayPalButtonsNs | null> => {
+      for (let i = 0; i < 40; i++) {
+        const paypal = (window as unknown as { paypal?: PayPalButtonsNs }).paypal;
+        if (paypal?.Buttons) {
+          return paypal;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return null;
+    };
+
+    try {
+      await this.ensurePayPalSdkForSmokeVenmo();
+      const paypal = await waitForPaypal();
+      if (!paypal?.Buttons) {
+        this.smokeVenmoButtonError.set(
+          'PayPal SDK not ready. Confirm Sandbox clientId is configured.',
+        );
+        return;
+      }
+
+      const funding =
+        paypal.FUNDING?.VENMO ??
+        ('venmo' as unknown as string);
+      const buttons = paypal.Buttons({
+        fundingSource: funding,
+        style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay' },
+        createOrder: () => Promise.resolve(orderId),
+        onApprove: async (data: { orderID?: string }) => {
+          const approvedOrder = data.orderID?.trim() || orderId;
+          this.recordEvent(`Ionic smoke Venmo approved order=${approvedOrder} — Nest capture`);
+          try {
+            await this.completeSmokeVenmoHandoff(bridge.attemptId, approvedOrder);
+            this.settleSmokeVenmoChromeBridge('approved', {
+              method: 'venmo',
+              provider: 'venmo',
+              status: 'success',
+              sessionId: approvedOrder,
+              transactionId: approvedOrder,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'capture failed';
+            this.smokeVenmoButtonError.set(message);
+            this.recordEvent(`Ionic smoke Venmo Nest complete failed: ${message}`);
+          }
+        },
+        onCancel: () => {
+          this.cancelSmokeVenmoAndReturn();
+        },
+        onError: (err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Venmo button error';
+          this.smokeVenmoButtonError.set(message);
+          this.recordEvent(`Ionic smoke Venmo button error: ${message}`);
+        },
+      });
+
+      if (typeof buttons.isEligible === 'function' && !buttons.isEligible()) {
+        this.smokeVenmoButtonError.set(
+          'Official Venmo Buttons are not eligible in this browser.',
+        );
+        return;
+      }
+      await buttons.render(host);
+      this.recordEvent(`Ionic smoke Venmo official button rendered for order=${orderId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'button mount failed';
+      this.smokeVenmoButtonError.set(message);
+      this.recordEvent(`Ionic smoke Venmo button mount failed: ${message}`);
+    }
+  }
+
+  private async ensurePayPalSdkForSmokeVenmo(): Promise<void> {
+    if ((window as unknown as { paypal?: unknown }).paypal) {
+      return;
+    }
+    const clientId = environment.paypalClientId?.trim() ?? '';
+    if (!clientId || /REPLACE|YOUR_|EXAMPLE|XXXX/i.test(clientId)) {
+      throw new Error('PayPal Sandbox clientId is not configured.');
+    }
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-ep-smoke-venmo-sdk="1"]',
+    );
+    if (existing) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=USD&intent=capture&components=buttons&enable-funding=venmo&buyer-country=US`;
+      script.async = true;
+      script.dataset['epSmokeVenmoSdk'] = '1';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
+      document.head.appendChild(script);
+    });
+  }
+
+  private async completeSmokeVenmoHandoff(
+    attemptId: string,
+    orderId: string,
+  ): Promise<void> {
+    const captureUrl = environment.paypalCaptureOrderUrl?.trim() ?? '';
+    const completeUrl = captureUrl.includes('/paypal/capture')
+      ? captureUrl.replace(/\/paypal\/capture\/?$/, '/paypal/venmo/complete')
+      : 'http://localhost:3001/api/payments/paypal/venmo/complete';
+    const response = await fetch(completeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ attemptId, orderId }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`complete HTTP ${response.status}${text ? `: ${text.slice(0, 160)}` : ''}`);
+    }
+    const body = (await response.json()) as { status?: string };
+    if (body.status !== 'COMPLETED') {
+      throw new Error(`expected COMPLETED after capture, got ${body.status ?? 'UNKNOWN'}`);
+    }
+  }
+
+  /**
+   * User-visible Return to Ionic — uses the verified HTTPS App Link as href,
+   * but navigates via Android Intent so Chrome does not stay on the 404 web page.
+   */
+  returnSmokeVenmoToIonic(event?: Event): void {
+    event?.preventDefault();
+    const links = this.smokeVenmoReturn();
+    if (!links) {
+      return;
+    }
+    const nav = openSmokeVenmoReturnToIonic(links);
+    this.recordEvent(
+      `Ionic smoke return click mode=${nav.mode} host=${links.destinationHost} path=${links.destinationPath}`,
+    );
+  }
+
+  /**
+   * Ionic smoke only — after Venmo capture/cancel in Chrome, do not
+   * location.assign(HTTPS App Link): Chrome loads www.easy-payments.dev/capacitor-return
+   * as a website (404) and never returns to Ionic. Keep the tunnel page, show
+   * Return to Ionic (Intent → verified App Link payload). Capture already happened
+   * here; Ionic only verifies order status — no second create/capture.
+   */
+  private settleSmokeVenmoChromeBridge(
+    result: 'approved' | 'cancelled',
+    payment: PaymentResult,
+  ): void {
+    const bridge = this.smokeVenmoChromeBridge;
+    if (!bridge || payment.method !== 'venmo') {
+      return;
+    }
+    if (this.smokeVenmoReturn()) {
+      // Already settled this attempt — never create/capture again from the return UI.
+      return;
+    }
+    // PayPal/Venmo PaymentResult: sessionId = order id, transactionId = capture id.
+    const orderId = payment.sessionId ?? payment.transactionId ?? null;
+    const links = buildSmokeVenmoReturnLinks({
+      returnUrl: bridge.returnUrl,
+      attemptId: bridge.attemptId,
+      result,
+      orderId: result === 'approved' ? orderId : null,
+    });
+    if (!links) {
+      this.recordEvent('Ionic smoke Venmo return URL could not be built.');
+      return;
+    }
+    this.smokeVenmoReturn.set(links);
+    this.recordEvent(
+      `Ionic smoke Venmo settled ${result} → host=${links.destinationHost} path=${links.destinationPath} (Chrome must not load this as a web page; use Return to Ionic)`,
+    );
+    // Paint Return to Ionic first, then best-effort Intent (not HTTPS assign — that 404'd).
+    window.setTimeout(() => {
+      try {
+        openSmokeVenmoReturnToIonic(links);
+      } catch {
+        // User can tap Return to Ionic.
+      }
+    }, 400);
   }
 
   onPaymentPending(result: PaymentResult): void {

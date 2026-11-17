@@ -467,9 +467,11 @@ export class UsBankAccountPaymentComponent implements AfterViewInit, OnDestroy {
     this.busyChange.emit(true);
 
     try {
+      const checkout = this.checkout();
       const result = await this.achAdapter.confirmPayment(
-        this.checkout()?.successUrl,
+        checkout?.successUrl,
         this.ownerId,
+        { allowExternalHttps: checkout?.allowExternalHttpsReturnUrl === true },
       );
       if (this.destroyed) {
         return;

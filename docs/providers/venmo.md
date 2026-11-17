@@ -2,12 +2,14 @@
 
 Opt-in Venmo for `@easy-payments/angular` — Full Checkout, Payment Buttons Only, and Headless Checkout.
 
-Venmo reuses the **PayPal JavaScript SDK** (`enable-funding=venmo` + official Venmo Buttons with `fundingSource: 'venmo'` / `Buttons().isEligible()`) and the same **Orders v2** create/capture backend as PayPal. There are **no separate Venmo Nest routes**.
+Venmo reuses the **PayPal JavaScript SDK** (`enable-funding=venmo` + official Venmo Buttons with `fundingSource: 'venmo'` / `Buttons().isEligible()`) and the same **Orders v2** create/capture backend pattern as PayPal for normal browser checkout.
 
-Verified against current PayPal docs:
+Official PayPal references:
 
+- [Pay with Venmo eligibility and supported browsers](https://developer.paypal.com/v5/venmo/overview)
+- [Orders API — Sample JSON order request 4: Pay with Venmo](https://developer.paypal.com/whats-an-order/)
+- [Venmo Sandbox testing](https://developer.paypal.com/platforms/checkout/pay-with-venmo/test)
 - [Pay with Venmo integration](https://developer.paypal.com/docs/checkout/pay-with-venmo/integrate/)
-- [Test Venmo in sandbox](https://developer.paypal.com/docs/checkout/pay-with-venmo/test/)
 
 Easy Payments loads the unpinned CDN SDK already used for PayPal: `https://www.paypal.com/sdk/js` with `components=buttons`.
 
@@ -27,7 +29,7 @@ This repo does **not** use PayPal JS SDK v6 web components (`<venmo-button>`). T
 | Buyer / market | United States only |
 | Currency | USD (via PayPal `providers.paypal.currency`) |
 | SDK | PayPal JS Buttons + `enable-funding=venmo` |
-| Backend | Same `paypalCreateOrderUrl` / `paypalCaptureOrderUrl` as PayPal |
+| Backend | Same `paypalCreateOrderUrl` / `paypalCaptureOrderUrl` as PayPal for browser checkout |
 | Sandbox button visibility | Optional `sandboxBuyerCountry: 'US'` (never set in production) |
 
 ## Scope
@@ -116,7 +118,7 @@ await session.mount('venmo', containerEl);
 - Desktop QR and some post-purchase Venmo experiences are not sandbox-testable (see PayPal test docs).
 - Full Checkout selector uses the official Venmo wordmark; Buttons Only uses the SDK’s wordmark-only Venmo funding button.
 
-## Sandbox steps
+## Sandbox steps (browser)
 
 1. Use a PayPal **Sandbox** Client ID with Venmo enabled for the app.
 2. Configure `providers.venmo: { sandboxBuyerCountry: 'US' }` (demo/sandbox only).
@@ -129,6 +131,30 @@ await session.mount('venmo', containerEl);
 7. Confirm create → approve → capture; outcomes tagged `method: 'venmo'`.
 8. Cancel mid-flow and confirm a single cancel event and retryable button.
 9. Optional decline amounts from PayPal’s Venmo sandbox table (`12.34` insufficient funds, etc.).
+
+## Android Sandbox example (Ionic / Capacitor)
+
+**Android Sandbox example** — EP Ionic smoke when Venmo is ineligible in the Capacitor WebView but Chrome on the same device can show the official button. This is **not** the normal browser checkout above.
+
+### Two taps (shopper view)
+
+1. **Continue with Venmo in Chrome** in the Ionic app — opens the Sandbox Venmo checkout in Chrome with a short-lived attempt id.
+2. **Pay with Venmo** — the official PayPal Venmo button on that Chrome page (product, total, Venmo button, cancel). No invented Venmo URL and no auto-click of the SDK button.
+
+### Return to Ionic
+
+After approve or cancel, Chrome shows **Return to Ionic** (verified HTTPS App Link as `href`; Android uses an Intent so Chrome does not treat the App Link as a marketing-site web page). Ionic reconciles the same attempt and PayPal order with Nest; approval and capture stay separate; success only after a completed capture. Cancel clears the attempt; repeated returns do not emit a second success.
+
+### Observed PayPal Sandbox Orders v2 response (current flow)
+
+When this integration creates a Sandbox order with `payment_source.venmo`, the **observed** create-order response was:
+
+- `status`: `PAYER_ACTION_REQUIRED`
+- HATEOAS `links`: **only** `rel: "self"` (no `payer-action` or `approve` buyer URL)
+
+Because of that observed response, the current Android Sandbox handoff **does not open a PayPal-returned approval URL**. It opens the simplified Chrome page and starts buyer approval with the **official Venmo Buttons** against the Nest-bound order. If PayPal later returns a documented `payer-action` / `approve` link for the same create shape, the handoff prefers that URL; it still never invents a Venmo destination.
+
+Also see [Ionic / Capacitor compatibility](../ionic-capacitor-compatibility.md).
 
 ## Production checklist
 
@@ -145,3 +171,4 @@ await session.mount('venmo', containerEl);
 | Venmo button missing | `providers.venmo`, PayPal clientId, `enable-funding`, `isEligible()`, US buyer / sandbox `buyer-country=US` |
 | SDK load fights PayPal | Both share one script; Venmo opt-in reloads with `enable-funding=venmo` |
 | Capture tagged as PayPal | Use Venmo method surface (not PayPal-only Buttons) so capture uses `method: 'venmo'` |
+| Ionic WebView: no Venmo button | Expected when `isEligible()` is false; use the Android Sandbox Chrome handoff example above |

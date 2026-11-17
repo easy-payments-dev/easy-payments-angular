@@ -607,3 +607,122 @@ h2 {
   color: #64748b;
   font: 500 0.95rem/1.4 inherit;
 }
+
+/* Ionic Smoke — dedicated Venmo Sandbox Chrome checkout (ep_smoke_venmo=1). */
+.smoke-venmo {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  font-family: system-ui, sans-serif;
+  color: #0f172a;
+}
+
+.smoke-venmo__header {
+  margin-bottom: 20px;
+}
+
+.smoke-venmo__eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0369a1;
+}
+
+.smoke-venmo h1 {
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+}
+
+.smoke-venmo__lede,
+.smoke-venmo__boot,
+.smoke-venmo__trace {
+  margin: 10px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.smoke-venmo__checkout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.smoke-venmo__product {
+  padding: 4px 0 8px;
+}
+
+.smoke-venmo__product h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.smoke-venmo__total {
+  margin: 6px 0 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.smoke-venmo__buttons {
+  min-height: 48px;
+}
+
+.smoke-venmo__error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.smoke-venmo__return {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.smoke-venmo__return h2 {
+  font-size: 1.2rem;
+}
+
+.smoke-venmo__return-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-weight: 650;
+  text-decoration: none;
+  text-align: center;
+}
+
+.smoke-venmo__return-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.smoke-venmo__cancel {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.smoke-venmo__trace {
+  font-size: 12px;
+  word-break: break-all;
+}

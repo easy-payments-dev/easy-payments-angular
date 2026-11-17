@@ -45,7 +45,7 @@
           (cancel)="onApplePayCancel($event)"
           (error)="onApplePayError($event)"
           (started)="onPaymentStarted('apple-pay')"
-          (busyChange)="onProviderBusy($event)"
+          (busyChange)="onProviderBusy('apple-pay', $event)"
         />
       </ng-template>
 
@@ -66,9 +66,10 @@
   }
 
   <!--
-    Keep real provider panels mounted (clipped when inactive / outcome visible)
-    so SDKs and Elements are not destroyed mid-flow. Remount via providerMountKey
-    only after Continue / Try again / Return to checkout.
+    Wallet/button providers (PayPal, Google Pay, …) may stay mounted while clipped.
+    Stripe Payment Element panels mount only when selected (see show*Panel) so
+    Klarna/Afterpay/Cash App do not race ready timeouts. Remount via
+    providerMountKey after Continue / Try again / Return to checkout.
   -->
   <section
     class="ep-checkout__detail"
@@ -92,7 +93,7 @@
             (cancel)="onStripeCancel($event)"
             (error)="onStripeError($event)"
             (started)="onPaymentStarted('card')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('card', $event)"
           />
         </div>
       }
@@ -114,7 +115,7 @@
             (cancel)="onPayPalCancel($event)"
             (error)="onPayPalError($event)"
             (started)="onPaymentStarted('paypal')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('paypal', $event)"
           />
         </div>
       }
@@ -136,7 +137,7 @@
             (cancel)="onGooglePayCancel($event)"
             (error)="onGooglePayError($event)"
             (started)="onPaymentStarted('google-pay')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('google-pay', $event)"
           />
         </div>
       }
@@ -158,7 +159,7 @@
             (cancel)="onApplePayCancel($event)"
             (error)="onApplePayError($event)"
             (started)="onPaymentStarted('apple-pay')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('apple-pay', $event)"
           />
         </div>
       }
@@ -180,7 +181,7 @@
             (cancel)="onKlarnaCancel($event)"
             (error)="onKlarnaError($event)"
             (started)="onPaymentStarted('klarna')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('klarna', $event)"
             (returning)="onKlarnaReturning($event)"
           />
         </div>
@@ -203,7 +204,7 @@
             (cancel)="onAffirmCancel($event)"
             (error)="onAffirmError($event)"
             (started)="onPaymentStarted('affirm')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('affirm', $event)"
             (returning)="onAffirmReturning($event)"
           />
         </div>
@@ -227,7 +228,7 @@
             (cancel)="onUsBankAccountCancel($event)"
             (error)="onUsBankAccountError($event)"
             (started)="onPaymentStarted('us-bank-account')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('us-bank-account', $event)"
           />
         </div>
       }
@@ -249,7 +250,7 @@
             (cancel)="onCashAppPayCancel($event)"
             (error)="onCashAppPayError($event)"
             (started)="onPaymentStarted('cash-app-pay')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('cash-app-pay', $event)"
             (returning)="onCashAppPayReturning($event)"
           />
         </div>
@@ -272,7 +273,7 @@
             (cancel)="onAfterpayCancel($event)"
             (error)="onAfterpayError($event)"
             (started)="onPaymentStarted('afterpay')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('afterpay', $event)"
             (returning)="onAfterpayReturning($event)"
           />
         </div>
@@ -295,7 +296,7 @@
             (cancel)="onVenmoCancel($event)"
             (error)="onVenmoError($event)"
             (started)="onPaymentStarted('venmo')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('venmo', $event)"
           />
         </div>
       }
@@ -317,7 +318,7 @@
             (cancel)="onZipCancel($event)"
             (error)="onZipError($event)"
             (started)="onPaymentStarted('zip')"
-            (busyChange)="onProviderBusy($event)"
+            (busyChange)="onProviderBusy('zip', $event)"
           />
         </div>
       }

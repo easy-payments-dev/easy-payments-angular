@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { KlarnaPaymentComponent } from './klarna-payment.component';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
+import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentProduct, PaymentResult, ResolvedPaymentTheme } from '../../models';
 import {
@@ -25,6 +26,7 @@ import { resetTestLocation, setTestLocation } from '../../testing/test-history';
     <easy-klarna-payment
       [product]="product()"
       [resolvedTheme]="theme()"
+      [checkout]="checkout()"
       (success)="onSuccess($event)"
       (cancel)="onCancel($event)"
       (error)="onError($event)"
@@ -41,6 +43,9 @@ class HostComponent {
     quantity: 1,
   });
   readonly theme = signal<ResolvedPaymentTheme>('light');
+  readonly checkout = signal<
+    import('../../models').CheckoutOptions | undefined
+  >(undefined);
 
   successCount = 0;
   lastSuccess: PaymentResult | null = null;
@@ -99,7 +104,10 @@ describe('KlarnaPaymentComponent session reuse', () => {
 
     await TestBed.configureTestingModule({
       imports: [HostComponent],
-      providers: [{ provide: KlarnaAdapter, useValue: adapter }],
+      providers: [
+        provideEasyPayments({ enableMockMode: false, providers: {} }),
+        { provide: KlarnaAdapter, useValue: adapter },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(HostComponent);
@@ -198,6 +206,102 @@ describe('KlarnaPaymentComponent session reuse', () => {
     expect(sessionStorage.getItem(KLARNA_PENDING_STORAGE_KEY)).toBeNull();
   });
 
+  it('passes App Link successUrl into confirmPayment when allowExternalHttpsReturnUrl is set', async () => {
+    setTestLocation('/home');
+    fixture.componentInstance.checkout.set({
+      successUrl: 'https://www.easy-payments.dev/capacitor-return',
+      allowExternalHttpsReturnUrl: true,
+    });
+    fixture.detectChanges();
+
+    adapter.confirmPayment.and.resolveTo({
+      status: 'success',
+      method: 'klarna',
+      provider: 'klarna',
+      transactionId: 'pi_app_link',
+    });
+
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+    await klarnaCmp.onPay();
+
+    const [returnUrl] = adapter.confirmPayment.calls.mostRecent().args;
+    expect(returnUrl).toBeTruthy();
+    const parsed = new URL(returnUrl!);
+    expect(parsed.origin).toBe('https://www.easy-payments.dev');
+    expect(parsed.pathname).toBe('/capacitor-return');
+    expect(parsed.searchParams.get('ep_method')).toBe('klarna');
+    expect(parsed.searchParams.get('ep_attempt')).toMatch(/^[a-f0-9]{16}$/);
+    expect(returnUrl).not.toContain('localhost');
+  });
+
+  it('does not remount Klarna when checkout is rebound with the same configuration', async () => {
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const createCallsAfterMount = adapter.createPaymentSession.calls.count();
+    const mountCallsAfterMount = adapter.mountPaymentElement.calls.count();
+    expect(createCallsAfterMount).toBeGreaterThan(0);
+    expect(mountCallsAfterMount).toBeGreaterThan(0);
+
+    // Simulate an unstable host binding that allocates a new options object every CD.
+    for (let i = 0; i < 8; i++) {
+      fixture.componentInstance.checkout.set({
+        successUrl: 'https://www.easy-payments.dev/capacitor-return',
+        allowExternalHttpsReturnUrl: true,
+      });
+      fixture.detectChanges();
+      await Promise.resolve();
+    }
+    await fixture.whenStable();
+
+    expect(adapter.createPaymentSession.calls.count()).toBe(createCallsAfterMount);
+    expect(adapter.mountPaymentElement.calls.count()).toBe(mountCallsAfterMount);
+  });
+
+  it('retries Payment Element mount after SDK_LOAD_FAILED via Try again', async () => {
+    adapter.mountPaymentElement.and.rejectWith(
+      new PaymentError({
+        code: 'SDK_LOAD_FAILED',
+        message: 'Klarna Payment Element failed to become ready.',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.destroy();
+    fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+    expect(klarnaCmp.uiState()).toBe('error');
+    expect(fixture.componentInstance.lastError?.code).toBe('SDK_LOAD_FAILED');
+
+    adapter.mountPaymentElement.and.resolveTo();
+    adapter.createPaymentSession.calls.reset();
+    adapter.mountPaymentElement.calls.reset();
+    adapter.createPaymentSession.and.resolveTo({ clientSecret: 'pi_klarna_retry' });
+
+    await klarnaCmp.onRetryMount();
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(adapter.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(adapter.mountPaymentElement).toHaveBeenCalledTimes(1);
+    expect(klarnaCmp.uiState()).toBe('ready');
+    expect(klarnaCmp.canPay()).toBeTrue();
+  });
+
   it('allows a retry after a failed confirm and emits each terminal outcome once', async () => {
     adapter.confirmPayment.and.rejectWith(
       new PaymentError({ code: 'PAYMENT_FAILED', message: 'declined', method: 'klarna', provider: 'klarna' }),
@@ -268,6 +372,56 @@ describe('KlarnaPaymentComponent session reuse', () => {
     expect(fixture.componentInstance.successCount).toBe(0);
     expect(fixture.componentInstance.lastError).toBeNull();
   });
+
+  it('keeps canPay false and no-ops onPay until uiState is ready', async () => {
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+    klarnaCmp.uiState.set('initializing');
+    expect(klarnaCmp.canPay()).toBeFalse();
+    await klarnaCmp.onPay();
+    expect(adapter.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('on visibility resume does not emit cancel and clears busy via status-check', async () => {
+    let resolveConfirm!: (r: PaymentResult) => void;
+    adapter.confirmPayment.and.returnValue(new Promise((resolve) => (resolveConfirm = resolve)));
+    adapter.retrieveReturningPayment.and.resolveTo({
+      status: 'processing',
+      method: 'klarna',
+      provider: 'klarna',
+      message: 'Checking payment status…',
+      metadata: { statusCheck: true },
+    });
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+    const klarnaCmp = fixture.debugElement.query(By.directive(KlarnaPaymentComponent))
+      .componentInstance as KlarnaPaymentComponent;
+    (klarnaCmp as unknown as { lastClientSecret: string | null }).lastClientSecret = 'pi_klarna_secret_1';
+
+    const busy: boolean[] = [];
+    klarnaCmp.busyChange.subscribe((value) => busy.push(value));
+    const pay = klarnaCmp.onPay();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(fixture.componentInstance.lastCancel).toBeNull();
+    expect(fixture.componentInstance.lastSuccess?.status).toBe('processing');
+    expect(fixture.componentInstance.lastSuccess?.metadata?.['statusCheck']).toBeTrue();
+    expect(busy.includes(false)).toBeTrue();
+
+    resolveConfirm({ status: 'success', method: 'klarna', provider: 'klarna', transactionId: 'late' });
+    await pay;
+    expect(fixture.componentInstance.successCount).toBe(1);
+  });
 });
 
 describe('KlarnaPaymentComponent during Stripe redirect return', () => {
@@ -306,7 +460,10 @@ describe('KlarnaPaymentComponent during Stripe redirect return', () => {
     await TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [HostComponent],
-      providers: [{ provide: KlarnaAdapter, useValue: adapter }],
+      providers: [
+        provideEasyPayments({ enableMockMode: false, providers: {} }),
+        { provide: KlarnaAdapter, useValue: adapter },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(HostComponent);

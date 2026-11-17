@@ -436,17 +436,20 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    const payGeneration = this.initGeneration;
     this.inlineError.set(null);
     this.uiState.set('processing');
     this.started.emit();
     this.busyChange.emit(true);
 
     try {
+      const checkout = this.checkout();
       const result = await this.stripeAdapter.confirmPayment(
-        this.checkout()?.successUrl,
+        checkout?.successUrl,
         this.ownerId,
+        { allowExternalHttps: checkout?.allowExternalHttpsReturnUrl === true },
       );
-      if (this.destroyed) {
+      if (this.destroyed || payGeneration !== this.initGeneration) {
         return;
       }
 
@@ -471,7 +474,7 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
         this.error.emit(paymentError);
       }
     } catch (err) {
-      if (this.destroyed) {
+      if (this.destroyed || payGeneration !== this.initGeneration) {
         return;
       }
       const paymentError = normalizeError(err, { method: 'card', provider: 'stripe' });
@@ -490,7 +493,7 @@ export class StripeCardPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);
     } finally {
-      if (!this.destroyed) {
+      if (!this.destroyed && payGeneration === this.initGeneration) {
         this.busyChange.emit(false);
       }
     }

@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { AffirmPaymentComponent } from './affirm-payment.component';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
+import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { PaymentError } from '../../errors/payment-error';
 import { PaymentProduct, PaymentResult, ResolvedPaymentTheme } from '../../models';
 import {
@@ -93,7 +94,10 @@ describe('AffirmPaymentComponent session reuse', () => {
 
     await TestBed.configureTestingModule({
       imports: [HostComponent],
-      providers: [{ provide: AffirmAdapter, useValue: adapter }],
+      providers: [
+        provideEasyPayments({ enableMockMode: false, providers: {} }),
+        { provide: AffirmAdapter, useValue: adapter },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(HostComponent);
@@ -228,7 +232,10 @@ describe('AffirmPaymentComponent during Stripe redirect return', () => {
     await TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [HostComponent],
-      providers: [{ provide: AffirmAdapter, useValue: adapter }],
+      providers: [
+        provideEasyPayments({ enableMockMode: false, providers: {} }),
+        { provide: AffirmAdapter, useValue: adapter },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(HostComponent);

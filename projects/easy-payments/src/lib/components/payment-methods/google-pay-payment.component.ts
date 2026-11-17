@@ -36,6 +36,7 @@ import {
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
 import { clampGooglePayButtonRadius } from '../../utils/button-border-radius';
+import { listenForVisibleResume } from '../../utils/visible-resume';
 
 @Component({
   selector: 'easy-google-pay-payment',
@@ -226,6 +227,8 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   private buttonMountId: string | null = null;
   /** Ownership token for this host's in-flight Google Pay attempt. */
   private readonly payOwnerId = createPaymentOwnerId('google-pay');
+  private detachResumeListen: (() => void) | null = null;
+  private resumeReconcileStarted = false;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -277,6 +280,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.renderGeneration += 1;
     this.renderKey = null;
+    this.detachVisibleResume();
     const mountId = this.buttonMountId;
     this.buttonMountId = null;
     // Ownership-scoped cleanup only — do not call adapter.destroy(), which would
@@ -400,8 +404,10 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     this.inlineError.set(null);
+    this.resumeReconcileStarted = false;
     this.started.emit();
     this.uiState.set('creating-session');
+    this.attachVisibleResume(generation);
 
     try {
       // Intermediate UI while PaymentIntent is created, then sheet opens.
@@ -411,7 +417,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
         checkout,
         this.payOwnerId,
       );
-      if (generation !== this.renderGeneration) {
+      if (generation !== this.renderGeneration || this.resumeReconcileStarted) {
         return;
       }
 
@@ -443,7 +449,7 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);
     } catch (err) {
-      if (generation !== this.renderGeneration) {
+      if (generation !== this.renderGeneration || this.resumeReconcileStarted) {
         return;
       }
 
@@ -462,6 +468,60 @@ export class GooglePayPaymentComponent implements AfterViewInit, OnDestroy {
       this.uiState.set('ready');
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.error.emit(paymentError);
+    } finally {
+      this.detachVisibleResume();
     }
+  }
+
+  private attachVisibleResume(generation: number): void {
+    this.detachVisibleResume();
+    this.detachResumeListen = listenForVisibleResume(() => {
+      void this.reconcileAfterResume(generation);
+    });
+  }
+
+  private detachVisibleResume(): void {
+    this.detachResumeListen?.();
+    this.detachResumeListen = null;
+  }
+
+  /**
+   * App resumed while the Google sheet / confirm may still be hung — never emit cancel
+   * from resume alone. Abandon releases only this attempt's ownership.
+   * Status-check only when a Stripe confirm request was already sent.
+   */
+  private async reconcileAfterResume(generation: number): Promise<void> {
+    if (generation !== this.renderGeneration || this.resumeReconcileStarted) {
+      return;
+    }
+    const state = this.uiState();
+    if (state !== 'creating-session' && state !== 'awaiting-sheet' && state !== 'processing') {
+      return;
+    }
+    if (!this.googlePayAdapter.isProcessing(this.payOwnerId)) {
+      return;
+    }
+
+    this.resumeReconcileStarted = true;
+    const inflight = this.googlePayAdapter.abandonInFlight(this.payOwnerId);
+    this.detachVisibleResume();
+
+    if (inflight?.confirmationStarted && inflight.clientSecret) {
+      // Stripe confirm was sent; outcome unknown — host status-check, no fake cancel.
+      this.uiState.set('processing');
+      this.success.emit({
+        status: 'processing',
+        method: 'google-pay',
+        provider: 'googlePay',
+        sessionId: inflight.paymentIntentId,
+        message: this.msgs().checkingPaymentStatus,
+        metadata: { statusCheck: true },
+      });
+      return;
+    }
+
+    // Sheet abandoned / failed before confirmation — unlock retry; other methods may proceed.
+    this.uiState.set('ready');
+    this.inlineError.set(this.msgs().googlePayIncomplete);
   }
 }

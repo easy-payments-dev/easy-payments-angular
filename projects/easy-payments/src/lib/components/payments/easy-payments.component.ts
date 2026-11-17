@@ -268,6 +268,8 @@ export class EasyPaymentsComponent {
   private readonly processingMethod = signal<PaymentMethod | null>(null);
   /** Real provider is mid-flow (3DS / PayPal approval / Google Pay sheet). */
   readonly providerBusy = signal(false);
+  /** Which method last set `providerBusy` — ignores busy from mounted-but-inactive panels. */
+  private busyOwnerMethod: PaymentMethod | null = null;
 
   readonly viewState = signal<CheckoutViewState>('checkout');
   readonly lastResult = signal<PaymentResult | null>(null);
@@ -427,7 +429,14 @@ export class EasyPaymentsComponent {
     return true;
   });
 
-  readonly showStripePanel = computed(() => this.hasRealCardMethod());
+  /**
+   * Stripe Payment Element panels mount only when selected (or mid-flow for that method).
+   * Mounting every available PE host concurrently (Klarna + Afterpay + Cash App + …)
+   * races Stripe iframes and times out as SDK_LOAD_FAILED before the customer taps Pay.
+   */
+  readonly showStripePanel = computed(
+    () => this.hasRealCardMethod() && this.shouldMountProviderPanel('card'),
+  );
   readonly showPayPalPanel = computed(() => this.hasRealPayPalMethod());
   readonly showGooglePayPanel = computed(() => this.hasRealGooglePayMethod());
 
@@ -475,11 +484,21 @@ export class EasyPaymentsComponent {
       this.selectedMethod() === 'apple-pay',
   );
 
-  readonly showKlarnaPanel = computed(() => this.hasRealKlarnaMethod());
-  readonly showAffirmPanel = computed(() => this.hasRealAffirmMethod());
-  readonly showUsBankAccountPanel = computed(() => this.hasRealUsBankAccountMethod());
-  readonly showCashAppPayPanel = computed(() => this.hasRealCashAppPayMethod());
-  readonly showAfterpayPanel = computed(() => this.hasRealAfterpayMethod());
+  readonly showKlarnaPanel = computed(
+    () => this.hasRealKlarnaMethod() && this.shouldMountProviderPanel('klarna'),
+  );
+  readonly showAffirmPanel = computed(
+    () => this.hasRealAffirmMethod() && this.shouldMountProviderPanel('affirm'),
+  );
+  readonly showUsBankAccountPanel = computed(
+    () => this.hasRealUsBankAccountMethod() && this.shouldMountProviderPanel('us-bank-account'),
+  );
+  readonly showCashAppPayPanel = computed(
+    () => this.hasRealCashAppPayMethod() && this.shouldMountProviderPanel('cash-app-pay'),
+  );
+  readonly showAfterpayPanel = computed(
+    () => this.hasRealAfterpayMethod() && this.shouldMountProviderPanel('afterpay'),
+  );
   readonly showVenmoPanel = computed(() => this.hasRealVenmoMethod());
   readonly showZipPanel = computed(() => this.hasRealZipMethod());
 
@@ -601,12 +620,12 @@ export class EasyPaymentsComponent {
       this.hostContext.setReturnPhase('pending', method);
       this.viewState.set('processing');
       this.updateSelectedMethod(method);
-      this.providerBusy.set(true);
+      this.markProviderBusy(method);
     } else if (typeof window !== 'undefined' && isAchReturnAttempt()) {
       // ACH return: panel recovers via retrievePaymentIntent (no second confirm).
       this.viewState.set('processing');
       this.updateSelectedMethod('us-bank-account');
-      this.providerBusy.set(true);
+      this.markProviderBusy('us-bank-account');
       this.paymentAttempt = 'active';
     }
 
@@ -853,7 +872,7 @@ export class EasyPaymentsComponent {
   private releaseStripeReturn(): void {
     this.stripeReturnMethod = null;
     this.hostContext.setReturnPhase('none');
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.viewState.set('checkout');
     // The provisional selection was set before outputs were subscribed; revert it silently
     // and let default selection run as on a fresh load.
@@ -873,7 +892,7 @@ export class EasyPaymentsComponent {
 
     this.viewState.set('processing');
     this.updateSelectedMethod(method);
-    this.providerBusy.set(true);
+    this.markProviderBusy(method);
 
     const label =
       method === 'affirm'
@@ -934,7 +953,7 @@ export class EasyPaymentsComponent {
     } finally {
       this.stripeReturnMethod = null;
       if (!this.destroyed) {
-        this.providerBusy.set(false);
+        this.clearProviderBusy();
         // After cancel/error the panel may create a fresh PaymentIntent for retry.
         // After success/pending, keep a non-creating phase so panels do not recreate —
         // but do not leave `owner` (which forces Affirm/Klarna into perpetual Processing UI).
@@ -965,8 +984,39 @@ export class EasyPaymentsComponent {
     return this.loading() && this.processingMethod() === method;
   }
 
-  onProviderBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+  /**
+   * Accept busy only from the selected method (or the current busy owner).
+   * Stripe PE panels mount only when selected; Zip/PayPal may still prepare while clipped.
+   */
+  onProviderBusy(method: PaymentMethod, busy: boolean): void {
+    if (busy) {
+      const selected = this.selectedMethod();
+      if (
+        selected !== null &&
+        selected !== method &&
+        this.busyOwnerMethod !== method
+      ) {
+        return;
+      }
+      this.busyOwnerMethod = method;
+      this.providerBusy.set(true);
+      return;
+    }
+    if (this.busyOwnerMethod !== null && this.busyOwnerMethod !== method) {
+      return;
+    }
+    this.clearProviderBusy();
+  }
+
+  /** Clears strip lock and forgets which method owned it. */
+  private clearProviderBusy(): void {
+    this.busyOwnerMethod = null;
+    this.providerBusy.set(false);
+  }
+
+  private markProviderBusy(method: PaymentMethod): void {
+    this.busyOwnerMethod = method;
+    this.providerBusy.set(true);
   }
 
   onStripeSuccess(result: PaymentResult): void {
@@ -1043,10 +1093,10 @@ export class EasyPaymentsComponent {
       if (this.viewState() === 'checkout') {
         this.viewState.set('processing');
       }
-      this.providerBusy.set(true);
+      this.markProviderBusy('klarna');
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
   }
 
   onAffirmSuccess(result: PaymentResult): void {
@@ -1102,10 +1152,10 @@ export class EasyPaymentsComponent {
       if (this.viewState() === 'checkout') {
         this.viewState.set('processing');
       }
-      this.providerBusy.set(true);
+      this.markProviderBusy('cash-app-pay');
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
   }
 
   onAfterpaySuccess(result: PaymentResult): void {
@@ -1133,10 +1183,10 @@ export class EasyPaymentsComponent {
       if (this.viewState() === 'checkout') {
         this.viewState.set('processing');
       }
-      this.providerBusy.set(true);
+      this.markProviderBusy('afterpay');
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
   }
 
   onVenmoSuccess(result: PaymentResult): void {
@@ -1169,10 +1219,10 @@ export class EasyPaymentsComponent {
       if (this.viewState() === 'checkout') {
         this.viewState.set('processing');
       }
-      this.providerBusy.set(true);
+      this.markProviderBusy('affirm');
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
   }
 
   async onPay(method: PaymentMethod): Promise<void> {
@@ -1248,11 +1298,19 @@ export class EasyPaymentsComponent {
     this.lastResult.set(null);
     this.lastError.set(null);
     this.processingMethod.set(null);
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.terminalSuccessEmitted = false;
     this.paymentAttempt = 'idle';
     this.hostContext.setReturnPhase('none');
     this.providerMountKey.update((value) => value + 1);
+  }
+
+  /**
+   * Mount at most one Stripe Payment Element host at a time.
+   * Selected method always mounts; processingMethod covers brief mid-flow edges.
+   */
+  private shouldMountProviderPanel(method: PaymentMethod): boolean {
+    return this.selectedMethod() === method || this.processingMethod() === method;
   }
 
   /** Provider panels call this when a real attempt starts. Tile selection does not. */
@@ -1336,7 +1394,7 @@ export class EasyPaymentsComponent {
     this.success.emit(result);
     this.lastResult.set(result);
     this.lastError.set(null);
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
 
     if (this.resolvedSuccessBehavior() === 'confirmation') {
       this.viewState.set('success');
@@ -1360,7 +1418,7 @@ export class EasyPaymentsComponent {
     this.pending.emit(result);
     this.lastResult.set(result);
     this.lastError.set(null);
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.processingMethod.set(result.method);
     this.viewState.set(
       result.metadata?.['statusCheck'] === true ? 'status-check' : 'pending',
@@ -1374,7 +1432,7 @@ export class EasyPaymentsComponent {
     this.cancel.emit(result);
     this.lastResult.set(result);
     this.lastError.set(null);
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.viewState.set('cancelled');
   }
 
@@ -1402,7 +1460,7 @@ export class EasyPaymentsComponent {
         warnProviderDiagnostic(error.provider ?? error.method ?? 'checkout', error.code);
       }
       this.lastError.set(error);
-      this.providerBusy.set(false);
+      this.clearProviderBusy();
       this.processingMethod.set(null);
       if (this.viewState() === 'processing') {
         this.viewState.set('checkout');
@@ -1411,7 +1469,7 @@ export class EasyPaymentsComponent {
     }
     this.lastError.set(error);
     this.lastResult.set(null);
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.viewState.set('error');
   }
 }

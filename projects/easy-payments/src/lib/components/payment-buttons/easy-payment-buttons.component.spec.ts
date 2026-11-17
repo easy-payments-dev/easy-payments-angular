@@ -83,6 +83,20 @@ describe('EasyPaymentButtonsComponent', () => {
     expect(host.querySelector('[data-testid="easy-payment-buttons-root"]')).toBeTruthy();
   });
 
+  it('scopes providerBusy to the selected method (Zip prepare must not lock card)', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'zip']);
+    await render(fixture);
+    fixture.componentInstance.selectMethod('card');
+    fixture.componentInstance.onZipBusy(true);
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    fixture.componentInstance.onCardBusy(true);
+    expect(fixture.componentInstance.providerBusy()).toBeTrue();
+    fixture.componentInstance.onZipBusy(false);
+    expect(fixture.componentInstance.providerBusy()).toBeTrue();
+    fixture.componentInstance.onCardBusy(false);
+    expect(fixture.componentInstance.providerBusy()).toBeFalse();
+  });
+
   it('supports all six payment method IDs in developer order', async () => {
     const methods = [
       'affirm',

@@ -45,6 +45,7 @@ import {
 } from '../../i18n';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
+import { listenForVisibleResume } from '../../utils/visible-resume';
 
 @Component({
   selector: 'easy-klarna-payment',
@@ -101,7 +102,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-klarna__status" role="status">{{ msgs().awaitingProviderPayment }}</p>
       }
 
-      @if (uiState() !== 'success' || chrome() !== 'minimal') {
+      @if (uiState() === 'error') {
+        <button type="button" class="ep-klarna__pay" (click)="onRetryMount()">
+          {{ msgs().errorTryAgain }}
+        </button>
+      } @else if (uiState() !== 'success' || chrome() !== 'minimal') {
         <button
           type="button"
           class="ep-klarna__pay"
@@ -271,6 +276,8 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   /** Ensures success/cancel/error emit at most once per payment attempt (incl. redirect return). */
   private terminalEmitted = false;
   private destroyed = false;
+  private detachResumeListen: (() => void) | null = null;
+  private resumeReconcileStarted = false;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -328,6 +335,7 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.initGeneration += 1;
+    this.detachVisibleResume();
     this.sessionKey = null;
     this.lastClientSecret = null;
     this.lastMountedLocale = null;
@@ -338,17 +346,36 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
     return this.uiState() === 'ready' && !this.klarnaAdapter.isConfirming(this.ownerId);
   }
 
+  /** Remount after SDK_LOAD_FAILED / ready timeout without leaving the selected method. */
+  async onRetryMount(): Promise<void> {
+    if (this.destroyed || this.uiState() !== 'error') {
+      return;
+    }
+    this.terminalEmitted = false;
+    this.sessionKey = null;
+    this.lastClientSecret = null;
+    this.lastMountedLocale = null;
+    this.inlineError.set(null);
+    const product = this.product();
+    const checkout = this.checkout();
+    const locale = this.i18n?.effectiveLocale() ?? 'en';
+    await this.ensureSession(product, checkout, locale, this.resolveReturnPhase());
+  }
+
   async onPay(): Promise<void> {
     if (!this.canPay()) {
       return;
     }
 
+    const payGeneration = this.initGeneration;
     // New attempt: a previous cancel/error must not block retry from this panel.
     this.terminalEmitted = false;
+    this.resumeReconcileStarted = false;
     this.inlineError.set(null);
     this.uiState.set('processing');
     this.started.emit();
     this.busyChange.emit(true);
+    this.attachVisibleResume(payGeneration);
 
     const attemptId = createStripeReturnAttemptId();
     try {
@@ -362,19 +389,28 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
           this.hostContext?.describeReturnOrigin(attemptId) ?? { attemptId },
         );
       }
+      const checkout = this.checkout();
       const returnUrl = buildStripeReturnUrl(
         'klarna',
-        this.checkout()?.successUrl,
+        checkout?.successUrl,
         undefined,
         attemptId,
+        { allowExternalHttps: checkout?.allowExternalHttpsReturnUrl === true },
       );
       const result = await this.klarnaAdapter.confirmPayment(returnUrl, this.ownerId);
+
+      if (this.destroyed || payGeneration !== this.initGeneration || this.resumeReconcileStarted) {
+        return;
+      }
 
       // If Klarna redirected, this page unloads and confirmPayment never settles here.
       clearStripePendingReturnFor(attemptId);
       this.emitTerminal(result);
     } catch (err) {
       clearStripePendingReturnFor(attemptId);
+      if (this.destroyed || payGeneration !== this.initGeneration || this.resumeReconcileStarted) {
+        return;
+      }
       const paymentError = normalizeError(err, { method: 'klarna', provider: 'klarna' });
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.emitTerminal({
@@ -390,10 +426,74 @@ export class KlarnaPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.emitErrorOnce(paymentError);
     } finally {
-      if (!this.destroyed) {
+      this.detachVisibleResume();
+      if (!this.destroyed && payGeneration === this.initGeneration && !this.resumeReconcileStarted) {
         this.busyChange.emit(false);
       }
     }
+  }
+
+  private attachVisibleResume(payGeneration: number): void {
+    this.detachVisibleResume();
+    this.detachResumeListen = listenForVisibleResume(() => {
+      void this.reconcileAfterResume(payGeneration);
+    });
+  }
+
+  private detachVisibleResume(): void {
+    this.detachResumeListen?.();
+    this.detachResumeListen = null;
+  }
+
+  /**
+   * Document became visible while confirm may still be hung (blank Custom Tab / sheet).
+   * Never emits cancel from resume alone — retrieve when possible, else status-check.
+   */
+  private async reconcileAfterResume(payGeneration: number): Promise<void> {
+    if (
+      this.destroyed ||
+      payGeneration !== this.initGeneration ||
+      this.resumeReconcileStarted ||
+      this.terminalEmitted
+    ) {
+      return;
+    }
+    if (this.uiState() !== 'processing' && !this.klarnaAdapter.isConfirming(this.ownerId)) {
+      return;
+    }
+
+    this.resumeReconcileStarted = true;
+    this.detachVisibleResume();
+    // Redirect confirm often never settles on Capacitor — drop a hung gate hold.
+    this.confirmationGate.clear();
+    this.uiState.set('awaiting');
+
+    const secret = this.lastClientSecret;
+    if (secret) {
+      try {
+        const result = await this.klarnaAdapter.retrieveReturningPayment(secret);
+        if (this.destroyed || payGeneration !== this.initGeneration || this.terminalEmitted) {
+          return;
+        }
+        this.emitTerminal(result);
+        this.busyChange.emit(false);
+        return;
+      } catch {
+        // Fall through to status-check.
+      }
+    }
+
+    if (this.destroyed || payGeneration !== this.initGeneration || this.terminalEmitted) {
+      return;
+    }
+    this.emitTerminal({
+      status: 'processing',
+      method: 'klarna',
+      provider: 'klarna',
+      message: this.msgs().checkingPaymentStatus,
+      metadata: { statusCheck: true },
+    });
+    this.busyChange.emit(false);
   }
 
   private async applyTheme(theme: ResolvedPaymentTheme): Promise<void> {

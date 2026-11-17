@@ -1,17 +1,25 @@
-import { inject, Injectable } from '@angular/core';
+import { Inject, Injectable, Optional } from '@angular/core';
 import { EasyPaymentsConfig } from './easy-payments.config';
-import { EASY_PAYMENTS_CONFIG } from './provide-easy-payments';
+import { EASY_PAYMENTS_CONFIG } from './easy-payments-config.token';
 
 /**
  * Mutable runtime config so demos (and hosts) can switch mock ↔ real Stripe
  * without rebuilding the injector tree.
+ *
+ * Provided only via {@link provideEasyPayments} (not `providedIn: 'root'`) so the
+ * service and `EASY_PAYMENTS_CONFIG` token share one injector registration — required
+ * for Ionic/Capacitor production bundles where a root `inject()` of the config token
+ * can throw NG0203.
+ *
+ * Uses constructor `@Inject` (not `inject()`) for the same reason.
  */
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class EasyPaymentsConfigService {
   private config: EasyPaymentsConfig;
 
-  constructor() {
-    const initial = inject(EASY_PAYMENTS_CONFIG, { optional: true });
+  constructor(
+    @Optional() @Inject(EASY_PAYMENTS_CONFIG) initial: EasyPaymentsConfig | null,
+  ) {
     this.config = initial
       ? structuredClone(initial)
       : { providers: {}, enableMockMode: true };

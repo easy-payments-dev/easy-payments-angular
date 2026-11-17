@@ -206,7 +206,8 @@ export class ZipPaymentComponent implements OnDestroy {
 
     effect(() => {
       const product = this.product();
-      untracked(() => void this.prepare(product));
+      const checkout = this.checkout();
+      untracked(() => void this.prepare(product, checkout));
     });
 
     effect(() => {
@@ -241,7 +242,10 @@ export class ZipPaymentComponent implements OnDestroy {
     }
   }
 
-  private async prepare(product: PaymentProduct): Promise<void> {
+  private async prepare(
+    product: PaymentProduct,
+    checkout?: CheckoutOptions,
+  ): Promise<void> {
     const generation = ++this.prepareGeneration;
     this.inlineError.set(null);
     this.setupBlocked.set(false);
@@ -286,7 +290,7 @@ export class ZipPaymentComponent implements OnDestroy {
 
     this.uiState.set('preparing');
     try {
-      await this.zipAdapter.prepareCheckout(product);
+      await this.zipAdapter.prepareCheckout(product, checkout);
       if (this.destroyed || generation !== this.prepareGeneration) {
         return;
       }

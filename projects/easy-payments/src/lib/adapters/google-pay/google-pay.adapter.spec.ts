@@ -3,6 +3,7 @@ import { PLATFORM_ID } from '@angular/core';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { provideEasyPayments } from '../../config/provide-easy-payments';
 import { BackendService } from '../../services/backend.service';
+import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
 import { PaymentError } from '../../errors/payment-error';
 import { GooglePayAdapter } from './google-pay.adapter';
@@ -259,6 +260,71 @@ describe('GooglePayAdapter', () => {
     );
   });
 
+  it('starts loadPaymentData without waiting for PaymentIntent create to finish', async () => {
+    let resolveCreate!: (value: {
+      provider: 'stripe';
+      clientSecret: string;
+      paymentIntentId: string;
+    }) => void;
+    let resolveLoad!: (value: {
+      paymentMethodData: {
+        tokenizationData: { token: string };
+        info: { cardNetwork: string; cardDetails: string };
+      };
+    }) => void;
+    backend.createStripePayment.and.returnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    paymentsClient.loadPaymentData.and.returnValue(
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+    const createPaymentMethod = jasmine
+      .createSpy('createPaymentMethod')
+      .and.resolveTo({ paymentMethod: { id: 'pm_1' } });
+    const confirmCardPayment = jasmine.createSpy('confirmCardPayment').and.resolveTo({
+      paymentIntent: { id: 'pi_1', status: 'succeeded' },
+    });
+    stripeSdk.load.and.resolveTo({
+      createPaymentMethod,
+      confirmCardPayment,
+    } as never);
+
+    const pay = adapter.payWithGooglePay({
+      id: 'premium-plan',
+      name: 'Premium Plan',
+      amount: 99.99,
+      currency: 'USD',
+    });
+    for (let i = 0; i < 10 && !paymentsClient.loadPaymentData.calls.any(); i++) {
+      await Promise.resolve();
+    }
+    expect(paymentsClient.loadPaymentData).toHaveBeenCalled();
+    expect(backend.createStripePayment).toHaveBeenCalled();
+    expect(confirmCardPayment).not.toHaveBeenCalled();
+
+    resolveLoad({
+      paymentMethodData: {
+        tokenizationData: { token: JSON.stringify({ id: 'tok_gpay' }) },
+        info: { cardNetwork: 'VISA', cardDetails: '4242' },
+      },
+    });
+    await Promise.resolve();
+    expect(confirmCardPayment).not.toHaveBeenCalled();
+
+    resolveCreate({
+      provider: 'stripe',
+      clientSecret: 'pi_secret',
+      paymentIntentId: 'pi_1',
+    });
+    await expectAsync(pay).toBeResolvedTo(
+      jasmine.objectContaining({ status: 'success', transactionId: 'pi_1' }),
+    );
+  });
+
   it('normalizes sheet cancellation', async () => {
     backend.createStripePayment.and.resolveTo({
       provider: 'stripe',
@@ -277,15 +343,152 @@ describe('GooglePayAdapter', () => {
     ).toBeRejectedWith(jasmine.objectContaining({ code: 'PAYMENT_CANCELLED' }));
   });
 
+  it('does not hold StripeConfirmationGate while the Google sheet is open', async () => {
+    let rejectLoad!: (reason?: unknown) => void;
+    backend.createStripePayment.and.resolveTo({
+      provider: 'stripe',
+      clientSecret: 'pi_secret',
+      paymentIntentId: 'pi_1',
+    });
+    paymentsClient.loadPaymentData.and.returnValue(
+      new Promise((_resolve, reject) => {
+        rejectLoad = reject;
+      }),
+    );
+    const gate = TestBed.inject(StripeConfirmationGate);
+
+    const pay = adapter.payWithGooglePay(
+      { id: 'premium-plan', name: 'P', amount: 99.99, currency: 'USD' },
+      undefined,
+      'owner-sheet',
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(adapter.isProcessing('owner-sheet')).toBeTrue();
+    expect(gate.isHeld()).toBeFalse();
+
+    // Card may acquire while Google sheet is still open (no Stripe confirm yet).
+    expect(() => gate.acquire('card:next', 'card', 'stripe')).not.toThrow();
+    gate.clear();
+
+    rejectLoad({ statusCode: 'CANCELED' });
+    await expectAsync(pay).toBeRejectedWith(
+      jasmine.objectContaining({ code: 'PAYMENT_CANCELLED' }),
+    );
+    expect(gate.isHeld()).toBeFalse();
+  });
+
+  it('abandonInFlight before confirmation releases ownership so Card can acquire the gate', async () => {
+    let rejectLoad!: (reason?: unknown) => void;
+    backend.createStripePayment.and.resolveTo({
+      provider: 'stripe',
+      clientSecret: 'pi_secret',
+      paymentIntentId: 'pi_1',
+    });
+    paymentsClient.loadPaymentData.and.returnValue(
+      new Promise((_resolve, reject) => {
+        rejectLoad = reject;
+      }),
+    );
+    const gate = TestBed.inject(StripeConfirmationGate);
+
+    const pay = adapter.payWithGooglePay(
+      { id: 'premium-plan', name: 'P', amount: 99.99, currency: 'USD' },
+      undefined,
+      'owner-a',
+    );
+    // PI create runs in parallel with the hung sheet; flush until create settles into inflight.
+    for (let i = 0; i < 20 && !backend.createStripePayment.calls.any(); i++) {
+      await Promise.resolve();
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(adapter.isProcessing('owner-a')).toBeTrue();
+
+    const inflight = adapter.abandonInFlight('owner-a');
+    expect(inflight?.clientSecret).toBe('pi_secret');
+    expect(inflight?.confirmationStarted).toBeFalse();
+    expect(adapter.isProcessing('owner-a')).toBeFalse();
+    expect(gate.isHeld()).toBeFalse();
+    expect(() => gate.acquire('card:after-gpay', 'card', 'stripe')).not.toThrow();
+    gate.clear();
+
+    rejectLoad({ statusCode: 'CANCELED' });
+    await expectAsync(pay).toBeRejectedWith(
+      jasmine.objectContaining({ message: jasmine.stringMatching(/interrupted/i) }),
+    );
+    // Late sheet rejection must not leave or re-take the gate.
+    expect(gate.isHeld()).toBeFalse();
+  });
+
+  it('abandonInFlight after confirmation started releases only that attempt; late settle cannot unlock a newer hold', async () => {
+    let resolveConfirm!: (value: unknown) => void;
+    backend.createStripePayment.and.resolveTo({
+      provider: 'stripe',
+      clientSecret: 'pi_secret',
+      paymentIntentId: 'pi_1',
+    });
+    paymentsClient.loadPaymentData.and.resolveTo({
+      paymentMethodData: {
+        tokenizationData: { token: JSON.stringify({ id: 'tok_1' }) },
+        info: { cardNetwork: 'VISA', cardDetails: '4242' },
+      },
+    });
+    const createPaymentMethod = jasmine
+      .createSpy('createPaymentMethod')
+      .and.resolveTo({ paymentMethod: { id: 'pm_1' } });
+    const confirmCardPayment = jasmine.createSpy('confirmCardPayment').and.returnValue(
+      new Promise((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+    stripeSdk.load.and.resolveTo({
+      createPaymentMethod,
+      confirmCardPayment,
+    } as never);
+    const gate = TestBed.inject(StripeConfirmationGate);
+
+    const pay = adapter.payWithGooglePay(
+      { id: 'premium-plan', name: 'P', amount: 99.99, currency: 'USD' },
+      undefined,
+      'owner-confirm',
+    );
+    // Wait until Stripe confirm is in flight (gate held).
+    for (let i = 0; i < 20 && !confirmCardPayment.calls.any(); i++) {
+      await Promise.resolve();
+    }
+    expect(confirmCardPayment).toHaveBeenCalled();
+    expect(gate.isHeldBy('google-pay:owner-confirm')).toBeTrue();
+
+    const inflight = adapter.abandonInFlight('owner-confirm');
+    expect(inflight?.confirmationStarted).toBeTrue();
+    expect(gate.isHeld()).toBeFalse();
+
+    const releaseCard = gate.acquire('card:next', 'card', 'stripe');
+    resolveConfirm({ paymentIntent: { id: 'pi_1', status: 'succeeded' } });
+    await expectAsync(pay).toBeRejectedWith(
+      jasmine.objectContaining({ message: jasmine.stringMatching(/interrupted/i) }),
+    );
+    // Late Google Pay settle must not drop Card's hold.
+    expect(gate.isHeldBy('card:next')).toBeTrue();
+    releaseCard();
+  });
+
   it('prevents duplicate payment attempts', async () => {
     let resolveCreate!: (value: {
       provider: 'stripe';
       clientSecret: string;
       paymentIntentId: string;
     }) => void;
+    let rejectLoad!: (reason?: unknown) => void;
     backend.createStripePayment.and.returnValue(
       new Promise((resolve) => {
         resolveCreate = resolve;
+      }),
+    );
+    paymentsClient.loadPaymentData.and.returnValue(
+      new Promise((_resolve, reject) => {
+        rejectLoad = reject;
       }),
     );
 
@@ -295,6 +498,8 @@ describe('GooglePayAdapter', () => {
       amount: 99.99,
       currency: 'USD',
     });
+    await Promise.resolve();
+    await Promise.resolve();
     const second = adapter.payWithGooglePay({
       id: 'premium-plan',
       name: 'P',
@@ -308,7 +513,7 @@ describe('GooglePayAdapter', () => {
       clientSecret: 'pi_secret',
       paymentIntentId: 'pi_1',
     });
-    paymentsClient.loadPaymentData.and.rejectWith({ statusCode: 'CANCELED' });
+    rejectLoad({ statusCode: 'CANCELED' });
     await expectAsync(first).toBeRejected();
   });
 

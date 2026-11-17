@@ -51,6 +51,22 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   private readonly gate = inject(StripeConfirmationGate);
   /** Owners (button mounts) with a Google Pay flow in flight. */
   private readonly processingOwners = new Set<string>();
+  /** Bumped on abandon so a hung `loadPaymentData` cannot confirm after resume unlock. */
+  private readonly payEpochByOwner = new Map<string, number>();
+  /**
+   * In-flight PI while the Google sheet / Stripe confirm may still be open.
+   * `confirmationStarted` is true only after a Stripe confirm request is sent.
+   */
+  private readonly inflightByOwner = new Map<
+    string,
+    {
+      clientSecret: string | null;
+      paymentIntentId?: string;
+      confirmationStarted: boolean;
+    }
+  >();
+  /** Attempt-scoped Stripe gate releasers — only set once confirmCardPayment begins. */
+  private readonly gateReleaseByOwner = new Map<string, () => void>();
   /**
    * Per-host official button mounts. Destroying one host must not clear another's DOM.
    * Keyed by opaque mount ids owned by GooglePayPaymentComponent instances.
@@ -267,7 +283,9 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   /**
    * Full click flow: trusted PaymentIntent → Google sheet → Stripe confirm.
    * PaymentIntent is created only on user click (not on mount/theme).
-   * A concurrent attempt from another host is rejected before any PaymentIntent exists.
+   * StripeConfirmationGate is acquired only when a Stripe confirm request is about
+   * to be sent — not while the Google sheet is open — so an abandoned / failed
+   * sheet cannot leave Card/Klarna stuck on PROVIDER_UNAVAILABLE.
    */
   async payWithGooglePay(
     product: PaymentProduct,
@@ -282,19 +300,46 @@ export class GooglePayAdapter extends BaseProviderAdapter {
         provider: 'googlePay',
       });
     }
+    // Exclusive sheet/flow across hosts without holding the Stripe confirm gate.
+    if (this.processingOwners.size > 0) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message:
+          'Another payment is already being confirmed on this page. Wait for it to finish, then try again.',
+        method: 'google-pay',
+        provider: 'googlePay',
+      });
+    }
 
-    const release = this.gate.acquire(`google-pay:${ownerId}`, 'google-pay', 'googlePay');
+    const epoch = (this.payEpochByOwner.get(ownerId) ?? 0) + 1;
+    this.payEpochByOwner.set(ownerId, epoch);
+
     this.processingOwners.add(ownerId);
+    this.inflightByOwner.set(ownerId, { clientSecret: null, confirmationStarted: false });
     try {
       const quantity = product.quantity ?? 1;
       const totalPrice = formatGooglePayTotalPrice(product.amount, quantity);
       const currencyCode = product.currency.trim().toUpperCase();
 
-      // 1) Create PaymentIntent with trusted server price (catalog), not browser amount alone.
-      const session = await this.createPaymentSession(product, checkout);
-
-      // 2) Open official Google Pay sheet with the same displayed total.
-      const client = await this.ensurePaymentsClient();
+      // 1) Open the Google Pay sheet from the user gesture as soon as the client is ready.
+      //    Do not await PaymentIntent creation before loadPaymentData — that network gap
+      //    breaks the trusted click and can force a Chrome popup (OR_BIBED_15 / blocked sheet).
+      //    Sheet total still uses the local catalog display amount; PI is trusted at confirm.
+      // Prefer the already-warmed client from button mount so we do not await SDK load here.
+      const client = this.paymentsClient ?? (await this.ensurePaymentsClient());
+      if (this.payEpochByOwner.get(ownerId) !== epoch) {
+        throw this.abandonedError();
+      }
+      const sessionPromise = this.createPaymentSession(product, checkout).then((session) => {
+        if (this.payEpochByOwner.get(ownerId) === epoch) {
+          this.inflightByOwner.set(ownerId, {
+            clientSecret: session.clientSecret,
+            paymentIntentId: session.paymentIntentId,
+            confirmationStarted: false,
+          });
+        }
+        return session;
+      });
       let paymentData: GooglePaymentData;
       try {
         paymentData = await client.loadPaymentData(
@@ -304,15 +349,88 @@ export class GooglePayAdapter extends BaseProviderAdapter {
           }),
         );
       } catch (error) {
+        // Abandon the in-flight PI create; ignore its result if the sheet failed/cancelled.
+        void sessionPromise.catch(() => undefined);
+        if (this.payEpochByOwner.get(ownerId) !== epoch) {
+          throw this.abandonedError();
+        }
         throw mapGooglePayError(error);
       }
 
-      // 3) Confirm via Stripe using the gateway token (no raw card data handled by Easy Payments).
-      return await this.confirmWithStripeToken(paymentData, session.clientSecret, session.paymentIntentId);
+      if (this.payEpochByOwner.get(ownerId) !== epoch) {
+        void sessionPromise.catch(() => undefined);
+        throw this.abandonedError();
+      }
+
+      const session = await sessionPromise;
+      if (this.payEpochByOwner.get(ownerId) !== epoch) {
+        throw this.abandonedError();
+      }
+
+      // 2) Acquire Stripe gate only for gateway confirmation (token → confirmCardPayment).
+      const release = this.gate.acquire(`google-pay:${ownerId}`, 'google-pay', 'googlePay');
+      this.gateReleaseByOwner.set(ownerId, release);
+      const current = this.inflightByOwner.get(ownerId);
+      if (current) {
+        this.inflightByOwner.set(ownerId, { ...current, confirmationStarted: true });
+      }
+      try {
+        const result = await this.confirmWithStripeToken(
+          paymentData,
+          session.clientSecret,
+          session.paymentIntentId,
+        );
+        if (this.payEpochByOwner.get(ownerId) !== epoch) {
+          throw this.abandonedError();
+        }
+        return result;
+      } finally {
+        this.gateReleaseByOwner.delete(ownerId);
+        release();
+      }
     } finally {
-      this.processingOwners.delete(ownerId);
+      if (this.payEpochByOwner.get(ownerId) === epoch) {
+        this.processingOwners.delete(ownerId);
+        this.inflightByOwner.delete(ownerId);
+      }
+    }
+  }
+
+  /**
+   * Clear hung sheet / confirm ownership after the app resumes without settlement.
+   * Releases only this attempt's Stripe gate hold (if confirm had started).
+   * Does not emit cancel — callers unlock or status-check. Late sheet results are ignored.
+   */
+  abandonInFlight(ownerId: string): {
+    clientSecret: string | null;
+    paymentIntentId?: string;
+    confirmationStarted: boolean;
+  } | null {
+    const inflight = this.inflightByOwner.get(ownerId) ?? null;
+    this.payEpochByOwner.set(ownerId, (this.payEpochByOwner.get(ownerId) ?? 0) + 1);
+    this.processingOwners.delete(ownerId);
+    this.inflightByOwner.delete(ownerId);
+    const release = this.gateReleaseByOwner.get(ownerId);
+    if (release) {
+      this.gateReleaseByOwner.delete(ownerId);
       release();
     }
+    return inflight
+      ? {
+          clientSecret: inflight.clientSecret,
+          paymentIntentId: inflight.paymentIntentId,
+          confirmationStarted: inflight.confirmationStarted,
+        }
+      : null;
+  }
+
+  private abandonedError(): PaymentError {
+    return new PaymentError({
+      code: 'PAYMENT_FAILED',
+      message: 'Google Pay was interrupted before completion.',
+      method: 'google-pay',
+      provider: 'googlePay',
+    });
   }
 
   buildPaymentDataRequest(input: {
@@ -555,6 +673,7 @@ export class GooglePayAdapter extends BaseProviderAdapter {
   async destroy(): Promise<void> {
     this.destroyButtonMount();
     this.processingOwners.clear();
+    this.inflightByOwner.clear();
   }
 }
 

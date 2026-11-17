@@ -5,6 +5,7 @@ import { PaymentError } from '../../errors/payment-error';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
 import { BrowserGuard } from '../../utils/browser-guard';
 import { mapStripeError } from './stripe-error.mapper';
+import { StripeConfirmationGate } from './stripe-confirmation-gate';
 import { StripeSdkLoader } from './stripe-sdk.loader';
 import {
   clearStripePendingReturn,
@@ -235,6 +236,7 @@ export class StripeRedirectRecoveryService {
   private readonly configService = inject(EasyPaymentsConfigService);
   private readonly browser = inject(BrowserGuard);
   private readonly sdkLoader = inject(StripeSdkLoader);
+  private readonly confirmationGate = inject(StripeConfirmationGate);
 
   private stripe: Stripe | null = null;
   private loadPromise: Promise<Stripe> | null = null;
@@ -368,6 +370,8 @@ export class StripeRedirectRecoveryService {
     if (!this.browser.isBrowser) {
       return Promise.resolve('not-owner');
     }
+    // App Link / redirect return: prior confirmPayment often never settled — free the gate.
+    this.confirmationGate.clear();
     this.adoptEpoch();
     const epoch = StripeRedirectRecoveryService.mutationEpoch;
     const search = pageSearch();

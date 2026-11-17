@@ -566,6 +566,11 @@ interface CheckoutOptions {
   successUrl?: string;
   cancelUrl?: string;
   successBehavior?: CheckoutSuccessBehavior;
+  /**
+   * When true, absolute https successUrl may target another origin
+   * (Capacitor App Links / Universal Links). Default false.
+   */
+  allowExternalHttpsReturnUrl?: boolean;
   customer?: {
     email?: string;
     name?: string;
@@ -583,7 +588,7 @@ interface CheckoutOptions {
 Notes:
 
 - `successUrl` / `cancelUrl` are **merchant hints**. Easy Payments does **not** auto-redirect on them.
-- Stripe return URLs built from `successUrl` must be same-origin `http:` or `https:`, or a relative path resolved against the current page. `javascript:`, `data:`, `file:`, `blob:`, protocol-relative URLs, and cross-origin destinations throw `CONFIG_INVALID` and are not sent to Stripe. `localhost` and `127.0.0.1` are different origins.
+- Stripe return URLs built from `successUrl` must be same-origin `http:` or `https:`, or a relative path resolved against the current page — **unless** `allowExternalHttpsReturnUrl: true`, which permits an absolute `https:` App Link / Universal Link on another origin (Capacitor leave-app BNPL). Browser checkouts should leave the flag unset. `javascript:`, `data:`, `file:`, `blob:`, protocol-relative URLs, and cross-origin `http:` still throw `CONFIG_INVALID`. `localhost` and `127.0.0.1` are different origins.
 - `successBehavior` on `checkout` overrides the `successBehavior` input when present.
 - `customer` / `shipping` fields feed Buttons Only Direct readiness and Stripe Direct confirm params when `[bnplConfirmMode]` is `auto` or `direct`. They are **not** sent to create-payment backends in this release. Full Checkout and Headless ignore Direct orchestration and keep Payment Element / existing flows.
 - Country codes must be **ISO 3166-1 alpha-2**. Do not log raw customer PII from these fields.

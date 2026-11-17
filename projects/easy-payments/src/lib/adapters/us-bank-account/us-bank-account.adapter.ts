@@ -22,6 +22,7 @@ import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeElementSession, StripeElementSessionStore } from '../stripe/stripe-element-sessions';
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
+import { waitForPaymentElementReady } from '../stripe/wait-for-payment-element-ready';
 import { logAchLifecycle } from './us-bank-account-lifecycle';
 import {
   ACH_CONFIRM_HANG_MS,
@@ -268,7 +269,15 @@ export class UsBankAccountAdapter extends BaseProviderAdapter {
       session.elements = elements;
       session.paymentElement = elements.create('payment', US_BANK_ACCOUNT_PAYMENT_ELEMENT_OPTIONS);
       session.paymentElement.mount(container);
+      await waitForPaymentElementReady(session.paymentElement, {
+        method: 'us-bank-account',
+        provider: 'usBankAccount',
+        message: 'US bank account Payment Element failed to become ready.',
+      });
     } catch (error) {
+      if (error instanceof PaymentError) {
+        throw error;
+      }
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
         message: 'US bank account Payment Element failed to initialize.',
@@ -289,7 +298,11 @@ export class UsBankAccountAdapter extends BaseProviderAdapter {
     });
   }
 
-  async confirmPayment(returnUrl?: string, ownerId?: string): Promise<PaymentResult> {
+  async confirmPayment(
+    returnUrl?: string,
+    ownerId?: string,
+    options?: { allowExternalHttps?: boolean },
+  ): Promise<PaymentResult> {
     const session = this.sessions.get(ownerId);
     if (session.confirming) {
       throw new PaymentError({
@@ -331,7 +344,9 @@ export class UsBankAccountAdapter extends BaseProviderAdapter {
       // Prefer in-page completion via redirect: 'if_required'. When confirmPayment hangs
       // (next-action / remount), reconcile the SAME client secret via retrieve only.
       const resolvedReturnUrl = this.browser.isBrowser
-        ? buildAchReturnUrl(returnUrl?.trim() || undefined)
+        ? buildAchReturnUrl(returnUrl?.trim() || undefined, undefined, {
+            allowExternalHttps: options?.allowExternalHttps === true,
+          })
         : returnUrl?.trim() || undefined;
 
       logAchLifecycle('confirm_started', {

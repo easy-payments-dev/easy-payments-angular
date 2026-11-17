@@ -22,6 +22,7 @@ import { StripeConfirmationGate } from '../stripe/stripe-confirmation-gate';
 import { StripeElementSession, StripeElementSessionStore } from '../stripe/stripe-element-sessions';
 import { mapStripeError } from '../stripe/stripe-error.mapper';
 import { StripeSdkLoader } from '../stripe/stripe-sdk.loader';
+import { waitForPaymentElementReady } from '../stripe/wait-for-payment-element-ready';
 import { StripeRedirectRecoveryService } from '../stripe/stripe-redirect-recovery.service';
 import { buildAffirmDirectConfirmParams } from '../../bnpl/bnpl-direct-confirm-params';
 import type { BnplDirectConfirmationRequest } from '../../bnpl/bnpl-direct-confirm.types';
@@ -274,7 +275,15 @@ export class AffirmAdapter extends BaseProviderAdapter {
       session.elements = elements;
       session.paymentElement = elements.create('payment', AFFIRM_PAYMENT_ELEMENT_OPTIONS);
       session.paymentElement.mount(container);
+      await waitForPaymentElementReady(session.paymentElement, {
+        method: 'affirm',
+        provider: 'affirm',
+        message: 'Affirm Payment Element failed to become ready.',
+      });
     } catch (error) {
+      if (error instanceof PaymentError) {
+        throw error;
+      }
       throw new PaymentError({
         code: 'SDK_LOAD_FAILED',
         message: 'Affirm Payment Element failed to initialize.',
@@ -426,6 +435,10 @@ export class AffirmAdapter extends BaseProviderAdapter {
   /**
    * Delegates to shared Stripe BNPL redirect recovery (parent owns the flow).
    */
+  async retrieveReturningPayment(clientSecret: string): Promise<PaymentResult> {
+    return this.redirectRecovery.retrieveReturningPayment('affirm', clientSecret);
+  }
+
   consumeStripeReturn(): Promise<PaymentResult | null> {
     return this.redirectRecovery.consumeReturn();
   }

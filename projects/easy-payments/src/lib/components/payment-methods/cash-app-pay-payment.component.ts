@@ -46,6 +46,7 @@ import {
   type EasyPaymentsResolvedLocale,
 } from '../../i18n';
 import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-message.component';
+import { listenForVisibleResume } from '../../utils/visible-resume';
 
 @Component({
   selector: 'easy-cash-app-pay-payment',
@@ -102,7 +103,11 @@ import { CheckoutSecurityMessageComponent } from '../checkout/checkout-security-
         <p class="ep-cash-app-pay__status" role="status">{{ msgs().awaitingProviderPayment }}</p>
       }
 
-      @if (uiState() !== 'success' || chrome() !== 'minimal') {
+      @if (uiState() === 'error') {
+        <button type="button" class="ep-cash-app-pay__pay" (click)="onRetryMount()">
+          {{ msgs().errorTryAgain }}
+        </button>
+      } @else if (uiState() !== 'success' || chrome() !== 'minimal') {
         <button
           type="button"
           class="ep-cash-app-pay__pay"
@@ -271,6 +276,8 @@ export class CashAppPayPaymentComponent implements AfterViewInit, OnDestroy {
   /** Ensures success/cancel/error emit at most once per payment attempt (incl. redirect return). */
   private terminalEmitted = false;
   private destroyed = false;
+  private detachResumeListen: (() => void) | null = null;
+  private resumeReconcileStarted = false;
 
   readonly amountLabel = computed(() =>
     this.i18n
@@ -338,22 +345,39 @@ export class CashAppPayPaymentComponent implements AfterViewInit, OnDestroy {
     return this.uiState() === 'ready' && !this.cashAppPayAdapter.isConfirming(this.ownerId);
   }
 
+  /** Remount after SDK_LOAD_FAILED / ready timeout without leaving the selected method. */
+  async onRetryMount(): Promise<void> {
+    if (this.destroyed || this.uiState() !== 'error') {
+      return;
+    }
+    this.terminalEmitted = false;
+    this.sessionKey = null;
+    this.lastClientSecret = null;
+    this.lastMountedLocale = null;
+    this.inlineError.set(null);
+    const product = this.product();
+    const checkout = this.checkout();
+    const locale = this.i18n?.effectiveLocale() ?? 'en';
+    await this.ensureSession(product, checkout, locale, this.resolveReturnPhase());
+  }
+
   async onPay(): Promise<void> {
     if (!this.canPay()) {
       return;
     }
 
+    const payGeneration = this.initGeneration;
     // New attempt: a previous cancel/error must not block retry from this panel.
     this.terminalEmitted = false;
+    this.resumeReconcileStarted = false;
     this.inlineError.set(null);
     this.uiState.set('processing');
     this.started.emit();
     this.busyChange.emit(true);
+    this.attachVisibleResume(payGeneration);
 
     const attemptId = createStripeReturnAttemptId();
     try {
-      // While another host is confirming, its pending marker must stay intact;
-      // confirmPayment below rejects this attempt before anything reaches Stripe.
       if (!this.confirmationGate.isHeld()) {
         markStripePendingReturn(
           'cash-app-pay',
@@ -362,19 +386,27 @@ export class CashAppPayPaymentComponent implements AfterViewInit, OnDestroy {
           this.hostContext?.describeReturnOrigin(attemptId) ?? { attemptId },
         );
       }
+      const checkout = this.checkout();
       const returnUrl = buildStripeReturnUrl(
         'cash-app-pay',
-        this.checkout()?.successUrl,
+        checkout?.successUrl,
         undefined,
         attemptId,
+        { allowExternalHttps: checkout?.allowExternalHttpsReturnUrl === true },
       );
       const result = await this.cashAppPayAdapter.confirmPayment(returnUrl, this.ownerId);
 
-      // If Cash App Pay redirected, this page unloads and confirmPayment never settles here.
+      if (this.destroyed || payGeneration !== this.initGeneration || this.resumeReconcileStarted) {
+        return;
+      }
+
       clearStripePendingReturnFor(attemptId);
       this.emitTerminal(result);
     } catch (err) {
       clearStripePendingReturnFor(attemptId);
+      if (this.destroyed || payGeneration !== this.initGeneration || this.resumeReconcileStarted) {
+        return;
+      }
       const paymentError = normalizeError(err, { method: 'cash-app-pay', provider: 'cashAppPay' });
       if (paymentError.code === 'PAYMENT_CANCELLED') {
         this.emitTerminal({
@@ -390,10 +422,70 @@ export class CashAppPayPaymentComponent implements AfterViewInit, OnDestroy {
       this.inlineError.set(localizePaymentError(paymentError.code, this.msgs()));
       this.emitErrorOnce(paymentError);
     } finally {
-      if (!this.destroyed) {
+      this.detachVisibleResume();
+      if (!this.destroyed && payGeneration === this.initGeneration && !this.resumeReconcileStarted) {
         this.busyChange.emit(false);
       }
     }
+  }
+
+  private attachVisibleResume(payGeneration: number): void {
+    this.detachVisibleResume();
+    this.detachResumeListen = listenForVisibleResume(() => {
+      void this.reconcileAfterResume(payGeneration);
+    });
+  }
+
+  private detachVisibleResume(): void {
+    this.detachResumeListen?.();
+    this.detachResumeListen = null;
+  }
+
+  private async reconcileAfterResume(payGeneration: number): Promise<void> {
+    if (
+      this.destroyed ||
+      payGeneration !== this.initGeneration ||
+      this.resumeReconcileStarted ||
+      this.terminalEmitted
+    ) {
+      return;
+    }
+    if (this.uiState() !== 'processing' && !this.cashAppPayAdapter.isConfirming(this.ownerId)) {
+      return;
+    }
+
+    this.resumeReconcileStarted = true;
+    this.detachVisibleResume();
+    // Redirect confirm often never settles on Capacitor — drop a hung gate hold.
+    this.confirmationGate.clear();
+    this.uiState.set('awaiting');
+
+    const secret = this.lastClientSecret;
+    if (secret) {
+      try {
+        const result = await this.cashAppPayAdapter.retrieveReturningPayment(secret);
+        if (this.destroyed || payGeneration !== this.initGeneration || this.terminalEmitted) {
+          return;
+        }
+        this.emitTerminal(result);
+        this.busyChange.emit(false);
+        return;
+      } catch {
+        // Fall through to status-check.
+      }
+    }
+
+    if (this.destroyed || payGeneration !== this.initGeneration || this.terminalEmitted) {
+      return;
+    }
+    this.emitTerminal({
+      status: 'processing',
+      method: 'cash-app-pay',
+      provider: 'cashAppPay',
+      message: this.msgs().checkingPaymentStatus,
+      metadata: { statusCheck: true },
+    });
+    this.busyChange.emit(false);
   }
 
   private async applyTheme(theme: ResolvedPaymentTheme): Promise<void> {

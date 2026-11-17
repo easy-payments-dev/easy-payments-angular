@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { EasyPaymentsConfigService } from '../../config/easy-payments-config.service';
 import { backendEndpointUrl } from '../../config/resolve-backend-url';
 import {
+  CheckoutOptions,
   PaymentContext,
   PaymentProduct,
   PaymentRequest,
@@ -90,6 +91,8 @@ export class ZipAdapter extends BaseProviderAdapter {
   private cancelHandler: ((result: PaymentResult) => void) | null = null;
   private errorHandler: ((error: PaymentError) => void) | null = null;
   private activeProduct: PaymentProduct | null = null;
+  /** Optional App Link / merchant return base for redirectConfirm/Cancel URLs. */
+  private activeCheckout: CheckoutOptions | null = null;
   /** True while Zip hosted checkout may still be open for the current attempt. */
   private checkoutOpen = false;
   private openGuardTimer: ReturnType<typeof setTimeout> | null = null;
@@ -241,9 +244,13 @@ export class ZipAdapter extends BaseProviderAdapter {
    * Prefetch signed authorize body. Must complete before the buyer click so
    * `openCheckout` can run synchronously in the click handler.
    */
-  async prepareCheckout(product: PaymentProduct): Promise<ZipPreparedCheckout> {
+  async prepareCheckout(
+    product: PaymentProduct,
+    checkout?: CheckoutOptions,
+  ): Promise<ZipPreparedCheckout> {
     this.clearOpenGuard();
     this.checkoutOpen = false;
+    this.activeCheckout = checkout ?? null;
 
     if (this.configService.getSnapshot().enableMockMode === true) {
       const prepared = this.buildMockPrepared(product);
@@ -284,8 +291,9 @@ export class ZipAdapter extends BaseProviderAdapter {
     }
 
     const metadata = assertMerchantMetadata(product.metadata, 'zip', 'zip');
-    const redirectConfirmUrl = buildZipReturnUrl('confirm');
-    const redirectCancelUrl = buildZipReturnUrl('cancel');
+    const returnBase = this.activeCheckout?.successUrl;
+    const redirectConfirmUrl = buildZipReturnUrl('confirm', returnBase);
+    const redirectCancelUrl = buildZipReturnUrl('cancel', returnBase);
     if (!redirectConfirmUrl || !redirectCancelUrl) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',

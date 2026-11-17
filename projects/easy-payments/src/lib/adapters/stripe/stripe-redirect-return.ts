@@ -127,13 +127,17 @@ export function isStripePendingReturnExpired(
 const STRIPE_RETURN_URL_MESSAGE =
   'Checkout successUrl must be a same-origin http(s) URL. Relative paths are resolved against the current page. Other schemes and cross-origin destinations are not allowed.';
 
-function invalidStripeReturnUrl(method: PaymentMethod): never {
+/** Capacitor / Ionic custom schemes cannot be Stripe return_url targets. */
+const STRIPE_RETURN_URL_CAPACITOR_MESSAGE =
+  'Checkout successUrl must be a same-origin http(s) URL. Capacitor custom schemes (capacitor://, ionic://) are not valid Stripe return destinations — use the WebView https://localhost origin for in-app recovery, or a public HTTPS App Link / Universal Link for flows that leave the app.';
+
+function invalidStripeReturnUrl(method: PaymentMethod, detail?: string): never {
   const provider: PaymentProviderName = isRedirectMethod(method)
     ? stripeRedirectProvider(method)
     : 'stripe';
   throw new PaymentError({
     code: 'CONFIG_INVALID',
-    message: STRIPE_RETURN_URL_MESSAGE,
+    message: detail?.trim() || STRIPE_RETURN_URL_MESSAGE,
     method,
     provider,
   });
@@ -150,6 +154,14 @@ function currentPageHref(locationHref?: string): string {
   return 'http://localhost/';
 }
 
+export interface ResolveStripeReturnUrlOptions {
+  /**
+   * Allow an absolute `https:` successUrl on a different origin (App Link /
+   * Universal Link). Browser checkouts should leave this unset/false.
+   */
+  allowExternalHttps?: boolean;
+}
+
 /**
  * Resolve a merchant return destination against the current page.
  * Does not add Stripe return markers and does not echo the supplied URL.
@@ -158,6 +170,7 @@ export function resolveSameOriginStripeReturnUrl(
   baseUrl: string | undefined,
   locationHref: string | undefined,
   method: PaymentMethod,
+  options?: ResolveStripeReturnUrlOptions,
 ): URL {
   let page: URL;
   try {
@@ -166,7 +179,13 @@ export function resolveSameOriginStripeReturnUrl(
     invalidStripeReturnUrl(method);
   }
   if (page.protocol !== 'http:' && page.protocol !== 'https:') {
-    invalidStripeReturnUrl(method);
+    const pageScheme = page.protocol.replace(/:$/, '');
+    invalidStripeReturnUrl(
+      method,
+      pageScheme === 'capacitor' || pageScheme === 'ionic'
+        ? STRIPE_RETURN_URL_CAPACITOR_MESSAGE
+        : STRIPE_RETURN_URL_MESSAGE,
+    );
   }
 
   const raw = baseUrl?.trim() ?? '';
@@ -181,7 +200,12 @@ export function resolveSameOriginStripeReturnUrl(
   if (schemeMatch) {
     const scheme = schemeMatch[1].toLowerCase();
     if (scheme !== 'http' && scheme !== 'https') {
-      invalidStripeReturnUrl(method);
+      invalidStripeReturnUrl(
+        method,
+        scheme === 'capacitor' || scheme === 'ionic'
+          ? STRIPE_RETURN_URL_CAPACITOR_MESSAGE
+          : STRIPE_RETURN_URL_MESSAGE,
+      );
     }
   }
 
@@ -191,15 +215,37 @@ export function resolveSameOriginStripeReturnUrl(
   } catch {
     invalidStripeReturnUrl(method);
   }
-  if (
-    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-    url.username ||
-    url.password ||
-    url.origin !== page.origin
-  ) {
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) {
     invalidStripeReturnUrl(method);
   }
+
+  if (url.origin !== page.origin) {
+    const allowExternal =
+      options?.allowExternalHttps === true || isTrustedExternalHttpsReturn(raw, page);
+    if (!allowExternal || url.protocol !== 'https:') {
+      invalidStripeReturnUrl(method);
+    }
+  }
   return url;
+}
+
+/**
+ * Adapter re-entry: component already built a stamped absolute https App Link URL.
+ * Detect that so confirmPayment can re-stamp without requiring the flag again.
+ */
+function isTrustedExternalHttpsReturn(raw: string, page: URL): boolean {
+  try {
+    const candidate = new URL(raw);
+    return (
+      candidate.protocol === 'https:' &&
+      candidate.origin !== page.origin &&
+      !candidate.username &&
+      !candidate.password &&
+      candidate.searchParams.has(STRIPE_RETURN_METHOD_PARAM)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Build a return_url that preserves merchant params and marks the Stripe redirect method. */
@@ -208,8 +254,9 @@ export function buildStripeReturnUrl(
   baseUrl?: string,
   locationHref?: string,
   attemptId?: string,
+  options?: ResolveStripeReturnUrlOptions,
 ): string {
-  const url = resolveSameOriginStripeReturnUrl(baseUrl, locationHref, method);
+  const url = resolveSameOriginStripeReturnUrl(baseUrl, locationHref, method, options);
   url.searchParams.set(STRIPE_RETURN_METHOD_PARAM, method);
   if (attemptId) {
     url.searchParams.set(STRIPE_RETURN_ATTEMPT_PARAM, attemptId);

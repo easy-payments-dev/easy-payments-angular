@@ -1,0 +1,7 @@
+{
+  "name": "ionic-capacitor-smoke",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}

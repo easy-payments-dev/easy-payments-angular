@@ -376,6 +376,8 @@ export class EasyPaymentButtonsComponent {
 
   readonly selectedMethod = signal<PaymentMethod | null>(null);
   readonly providerBusy = signal(false);
+  /** Which method last set `providerBusy` — ignores busy from non-selected panels. */
+  private busyOwnerMethod: PaymentMethod | null = null;
   readonly processingMethod = signal<PaymentMethod | null>(null);
   /** True while Buttons Only is running (or has locked) a Direct BNPL attempt — suppresses PE panels. */
   readonly bnplDirectActive = signal(false);
@@ -846,12 +848,12 @@ export class EasyPaymentButtonsComponent {
       this.stripeReturnRecovering = true;
       this.hostContext.setReturnPhase('pending', method);
       this.updateSelectedMethod(method);
-      this.providerBusy.set(true);
+      this.markProviderBusy(method);
     } else if (typeof window !== 'undefined' && isAchReturnAttempt()) {
       // ACH return: host recovers via retrievePaymentIntent (no second confirm).
       this.achReturnRecovering = true;
       this.updateSelectedMethod('us-bank-account');
-      this.providerBusy.set(true);
+      this.markProviderBusy('us-bank-account');
       this.paymentAttempt = 'active';
     }
 
@@ -1090,8 +1092,42 @@ export class EasyPaymentButtonsComponent {
     this.onPaymentStarted('card');
   }
 
+  /**
+   * Accept busy only from the selected method (or current busy owner).
+   * Prevents a background Zip prepare / inactive panel from locking CTAs.
+   */
+  onProviderBusy(method: PaymentMethod, busy: boolean): void {
+    if (busy) {
+      const selected = this.selectedMethod();
+      if (
+        selected !== null &&
+        selected !== method &&
+        this.busyOwnerMethod !== method
+      ) {
+        return;
+      }
+      this.busyOwnerMethod = method;
+      this.providerBusy.set(true);
+      return;
+    }
+    if (this.busyOwnerMethod !== null && this.busyOwnerMethod !== method) {
+      return;
+    }
+    this.clearProviderBusy();
+  }
+
+  private clearProviderBusy(): void {
+    this.busyOwnerMethod = null;
+    this.providerBusy.set(false);
+  }
+
+  private markProviderBusy(method: PaymentMethod): void {
+    this.busyOwnerMethod = method;
+    this.providerBusy.set(true);
+  }
+
   onCardBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('card', busy);
   }
 
   onCardSuccess(result: PaymentResult): void {
@@ -1111,7 +1147,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onKlarnaBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('klarna', busy);
   }
 
   onKlarnaSuccess(result: PaymentResult): void {
@@ -1131,7 +1167,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onAffirmBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('affirm', busy);
   }
 
   onAffirmSuccess(result: PaymentResult): void {
@@ -1151,7 +1187,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onUsBankAccountBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('us-bank-account', busy);
   }
 
   onUsBankAccountSuccess(result: PaymentResult): void {
@@ -1171,7 +1207,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onCashAppPayBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('cash-app-pay', busy);
   }
 
   onCashAppPaySuccess(result: PaymentResult): void {
@@ -1191,7 +1227,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onAfterpayBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('afterpay', busy);
   }
 
   onAfterpaySuccess(result: PaymentResult): void {
@@ -1211,7 +1247,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onZipBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('zip', busy);
   }
 
   onZipSuccess(result: PaymentResult): void {
@@ -1240,7 +1276,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onPayPalBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('paypal', busy);
   }
 
   onPayPalSuccess(result: PaymentResult): void {
@@ -1265,7 +1301,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onGooglePayBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('google-pay', busy);
   }
 
   onGooglePaySuccess(result: PaymentResult): void {
@@ -1290,7 +1326,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onApplePayBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('apple-pay', busy);
   }
 
   onApplePaySuccess(result: PaymentResult): void {
@@ -1335,7 +1371,7 @@ export class EasyPaymentButtonsComponent {
   }
 
   onVenmoBusy(busy: boolean): void {
-    this.providerBusy.set(busy);
+    this.onProviderBusy('venmo', busy);
   }
 
   onVenmoSuccess(result: PaymentResult): void {
@@ -1466,7 +1502,7 @@ export class EasyPaymentButtonsComponent {
     this.achReturnClaimed = true;
     if (!methods.includes('us-bank-account')) {
       this.achReturnRecovering = false;
-      this.providerBusy.set(false);
+      this.clearProviderBusy();
       this.paymentAttempt = 'idle';
       this.handlePaymentError(
         new PaymentError({
@@ -1488,7 +1524,7 @@ export class EasyPaymentButtonsComponent {
     }
     this.achReturnRecoveryStarted = true;
     this.updateSelectedMethod('us-bank-account');
-    this.providerBusy.set(true);
+    this.markProviderBusy('us-bank-account');
 
     try {
       const { clientSecret } = readAchReturnParams();
@@ -1538,7 +1574,7 @@ export class EasyPaymentButtonsComponent {
     } finally {
       this.achReturnRecovering = false;
       if (!this.destroyed) {
-        this.providerBusy.set(false);
+        this.clearProviderBusy();
       }
     }
   }
@@ -1548,7 +1584,7 @@ export class EasyPaymentButtonsComponent {
     this.stripeReturnRecovering = false;
     this.stripeReturnMethod = null;
     this.hostContext.setReturnPhase('none');
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     // The provisional selection was set before outputs were subscribed; revert it silently.
     this.selectedMethod.set(null);
   }
@@ -1565,7 +1601,7 @@ export class EasyPaymentButtonsComponent {
     this.stripeReturnRecoveryStarted = true;
 
     this.updateSelectedMethod(method);
-    this.providerBusy.set(true);
+    this.markProviderBusy(method);
 
     const label =
       method === 'affirm'
@@ -1628,7 +1664,7 @@ export class EasyPaymentButtonsComponent {
       this.stripeReturnRecovering = false;
       this.stripeReturnMethod = null;
       if (!this.destroyed) {
-        this.providerBusy.set(false);
+        this.clearProviderBusy();
         if (this.successAfterReturn) {
           // Keep the panel from creating a new PaymentIntent, but clear active-submit UX.
           // `processingMethod` remains set only for genuine pending (awaiting provider).
@@ -1747,7 +1783,7 @@ export class EasyPaymentButtonsComponent {
     if (!this.acceptTerminalEvent()) {
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.processingMethod.set(null);
     this.bnplDirectActive.set(false);
     this.success.emit(result);
@@ -1762,7 +1798,7 @@ export class EasyPaymentButtonsComponent {
     if (!this.acceptTerminalEvent()) {
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     // Keep processingMethod set so methodsLocked stays true (no retry / double charge).
     this.processingMethod.set(result.method);
     this.pending.emit(result);
@@ -1787,7 +1823,7 @@ export class EasyPaymentButtonsComponent {
     if (!this.acceptTerminalEvent()) {
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.processingMethod.set(null);
     this.bnplDirectActive.set(false);
     this.cancel.emit(result);
@@ -1798,7 +1834,7 @@ export class EasyPaymentButtonsComponent {
     if (!this.acceptTerminalEvent()) {
       return;
     }
-    this.providerBusy.set(false);
+    this.clearProviderBusy();
     this.processingMethod.set(null);
     this.bnplDirectActive.set(false);
     this.error.emit(error);
@@ -1921,7 +1957,7 @@ export class EasyPaymentButtonsComponent {
     this.bnplDirectActive.set(true);
     this.updateSelectedMethod(method);
     this.processingMethod.set(method);
-    this.providerBusy.set(true);
+    this.markProviderBusy(method);
     this.onPaymentStarted(method);
 
     const generation = ++this.directAttemptGeneration;
@@ -1958,11 +1994,12 @@ export class EasyPaymentButtonsComponent {
       }
 
       const returnUrl = buildStripeReturnUrl(
-        method,
-        checkout?.successUrl,
-        undefined,
-        attemptId,
-      );
+      method,
+      checkout?.successUrl,
+      undefined,
+      attemptId,
+      { allowExternalHttps: checkout?.allowExternalHttpsReturnUrl === true },
+    );
 
       confirmStarted = true;
       const result = await adapter.confirmDirectPayment(
@@ -2011,7 +2048,7 @@ export class EasyPaymentButtonsComponent {
         confirmStarted &&
         (paymentError.code === 'NETWORK_ERROR' || paymentError.code === 'UNKNOWN')
       ) {
-        this.providerBusy.set(false);
+        this.clearProviderBusy();
         if (this.acceptTerminalEvent()) {
           this.error.emit(paymentError);
           // Keep processingMethod so a second click cannot create another Intent.
@@ -2032,7 +2069,7 @@ export class EasyPaymentButtonsComponent {
       }
     } finally {
       if (!this.destroyed && generation === this.directAttemptGeneration) {
-        this.providerBusy.set(false);
+        this.clearProviderBusy();
         // Definitive cancel/error clears processingMethod inside handlers; ambiguous keeps it.
         if (this.paymentAttempt === 'idle') {
           this.bnplDirectActive.set(false);

@@ -14,6 +14,9 @@ import { resetTestLocation, setTestLocation } from '../../testing/test-history';
 import type { AvailablePaymentMethod } from '../../services/payment-orchestrator.service';
 import { resetProviderDiagnosticsForTests } from '../../diagnostics/provider-diagnostics';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { AfterpayAdapter } from '../../adapters/afterpay/afterpay.adapter';
+import { CashAppPayAdapter } from '../../adapters/cash-app-pay/cash-app-pay.adapter';
+import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { clearStripePendingReturn } from '../../adapters/stripe/stripe-redirect-return';
 import { EasyPaymentsComponent } from './easy-payments.component';
@@ -1791,6 +1794,25 @@ describe('EasyPaymentsComponent', () => {
   });
 
   describe('provider isolation', () => {
+    it('ignores Zip preparing busy while another method is selected', async () => {
+      fixture.componentRef.setInput('methods', ['card', 'zip', 'klarna']);
+      await render(fixture);
+      fixture.componentInstance.selectMethod('card');
+      fixture.detectChanges();
+
+      fixture.componentInstance.onProviderBusy('zip', true);
+      expect(fixture.componentInstance.providerBusy()).toBeFalse();
+
+      fixture.componentInstance.onProviderBusy('card', true);
+      expect(fixture.componentInstance.providerBusy()).toBeTrue();
+
+      fixture.componentInstance.onProviderBusy('zip', false);
+      expect(fixture.componentInstance.providerBusy()).toBeTrue();
+
+      fixture.componentInstance.onProviderBusy('card', false);
+      expect(fixture.componentInstance.providerBusy()).toBeFalse();
+    });
+
     it('keeps other methods usable when PayPal SDK loading fails', async () => {
       resetProviderDiagnosticsForTests();
       const warn = spyOn(console, 'warn');
@@ -2240,5 +2262,111 @@ describe('EasyPaymentsComponent real Stripe Card CTA appearance', () => {
       'Instance B',
     );
     fixtureB.destroy();
+  });
+});
+
+describe('EasyPaymentsComponent selected Stripe PE mounting', () => {
+  let fixture: ComponentFixture<EasyPaymentsComponent>;
+  let klarna: jasmine.SpyObj<KlarnaAdapter>;
+  let afterpay: jasmine.SpyObj<AfterpayAdapter>;
+  let cashApp: jasmine.SpyObj<CashAppPayAdapter>;
+
+  function stubBnplAdapter(
+    name: string,
+    provider: string,
+  ): jasmine.SpyObj<KlarnaAdapter> {
+    const adapter = jasmine.createSpyObj<KlarnaAdapter>(
+      name,
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'isConfirming',
+        'hasMountedElement',
+        'consumeStripeReturn',
+        'wasReturnConsumed',
+        'retrieveReturningPayment',
+      ],
+      {
+        provider: provider as KlarnaAdapter['provider'],
+        isMock: false,
+      },
+    );
+    adapter.initialize.and.resolveTo();
+    adapter.isAvailable.and.resolveTo(true);
+    adapter.ensureStripeLoaded.and.resolveTo({} as never);
+    adapter.createPaymentSession.and.resolveTo({ clientSecret: `pi_${provider}` });
+    adapter.mountPaymentElement.and.resolveTo();
+    adapter.updateAppearance.and.resolveTo();
+    adapter.destroy.and.resolveTo();
+    adapter.isConfirming.and.returnValue(false);
+    adapter.hasMountedElement.and.returnValue(true);
+    adapter.wasReturnConsumed.and.returnValue(false);
+    return adapter;
+  }
+
+  beforeEach(async () => {
+    klarna = stubBnplAdapter('KlarnaAdapter', 'klarna');
+    afterpay = stubBnplAdapter('AfterpayAdapter', 'afterpay') as unknown as jasmine.SpyObj<AfterpayAdapter>;
+    cashApp = stubBnplAdapter(
+      'CashAppPayAdapter',
+      'cashAppPay',
+    ) as unknown as jasmine.SpyObj<CashAppPayAdapter>;
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_pe_select' } },
+          backend: { createPaymentUrl: '/api/payments/create' },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: KlarnaAdapter, useValue: klarna },
+        { provide: AfterpayAdapter, useValue: afterpay },
+        { provide: CashAppPayAdapter, useValue: cashApp },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['klarna', 'afterpay', 'cash-app-pay']);
+  });
+
+  it('mounts only the selected Payment Element panel (not inactive BNPL hosts)', async () => {
+    await render(fixture);
+    applyInstanceAvailability(fixture, [
+      { method: 'klarna', available: true, status: 'available', isMock: false },
+      { method: 'afterpay', available: true, status: 'available', isMock: false },
+      { method: 'cash-app-pay', available: true, status: 'available', isMock: false },
+    ]);
+    fixture.componentInstance.selectMethod('klarna');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('easy-afterpay-payment')).toBeNull();
+    expect(fixture.nativeElement.querySelector('easy-cash-app-pay-payment')).toBeNull();
+    expect(klarna.mountPaymentElement).toHaveBeenCalled();
+    expect(afterpay.mountPaymentElement).not.toHaveBeenCalled();
+    expect(cashApp.mountPaymentElement).not.toHaveBeenCalled();
+
+    fixture.componentInstance.selectMethod('afterpay');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('easy-klarna-payment')).toBeNull();
+    expect(fixture.nativeElement.querySelector('easy-afterpay-payment')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('easy-cash-app-pay-payment')).toBeNull();
+    expect(afterpay.mountPaymentElement).toHaveBeenCalled();
+    expect(cashApp.mountPaymentElement).not.toHaveBeenCalled();
   });
 });
