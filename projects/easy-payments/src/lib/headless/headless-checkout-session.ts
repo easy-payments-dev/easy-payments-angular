@@ -835,21 +835,13 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           await this.paypal.destroyButtons(id);
         }
       }
-      if (this._state() === 'destroyed') {
-        throw new PaymentError({
-          code: 'PROVIDER_UNAVAILABLE',
-          message: 'Headless checkout session was destroyed during mount().',
-          method: 'paypal',
-          provider: 'paypal',
-        });
-      }
-      const paymentError =
-        error instanceof PaymentError
-          ? error
-          : mapPayPalError(error, 'PROVIDER_UNAVAILABLE', 'PayPal Buttons failed to initialize.');
-      this._lastError.set(paymentError);
-      this.emitError(paymentError);
-      throw paymentError;
+      this.failActiveMount(
+        error,
+        mountGen,
+        'paypal',
+        'PayPal Buttons failed to initialize.',
+        'paypal',
+      );
     }
   }
 
@@ -963,27 +955,14 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
         this.mountedMethod = null;
       }
-      if (this._state() === 'destroyed') {
-        throw new PaymentError({
-          code: 'PROVIDER_UNAVAILABLE',
-          message: 'Headless checkout session was destroyed during mount().',
-          method: 'zip',
-          provider: 'zip',
-        });
-      }
-      const paymentError =
-        error instanceof PaymentError
-          ? error
-          : new PaymentError({
-              code: 'PROVIDER_UNAVAILABLE',
-              message: 'Zip checkout failed to initialize.',
-              method: 'zip',
-              provider: 'zip',
-              originalError: error,
-            });
-      this._lastError.set(paymentError);
-      this.emitTerminalError(paymentError, this.confirmGeneration);
-      throw paymentError;
+      this.failActiveMount(
+        error,
+        mountGen,
+        'zip',
+        'Zip checkout failed to initialize.',
+        'generic',
+        true,
+      );
     }
   }
 
@@ -1048,21 +1027,13 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           await this.venmo.destroyButtons(id);
         }
       }
-      if (this._state() === 'destroyed') {
-        throw new PaymentError({
-          code: 'PROVIDER_UNAVAILABLE',
-          message: 'Headless checkout session was destroyed during mount().',
-          method: 'venmo',
-          provider: 'venmo',
-        });
-      }
-      const paymentError =
-        error instanceof PaymentError
-          ? error
-          : mapPayPalError(error, 'PROVIDER_UNAVAILABLE', 'Venmo Buttons failed to initialize.');
-      this._lastError.set(paymentError);
-      this.emitError(paymentError);
-      throw paymentError;
+      this.failActiveMount(
+        error,
+        mountGen,
+        'venmo',
+        'Venmo Buttons failed to initialize.',
+        'paypal',
+      );
     }
   }
 
@@ -2851,6 +2822,12 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       return;
     }
     this._selectedMethod.set(method);
+    // Clear the previous method's visible error when the buyer switches methods.
+    // Mount / confirm paths still own errors for the active attempt.
+    const priorError = this._lastError();
+    if (priorError && priorError.method && priorError.method !== method) {
+      this._lastError.set(null);
+    }
     if (!this.methodChange$.closed) {
       this.methodChange$.next({
         method,
@@ -2931,6 +2908,67 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         provider: this.providerOf(method),
       });
     }
+  }
+
+  /**
+   * Reject a mount attempt. Only the **active** mount generation may write
+   * `lastError` / emit `events.error`. Late Venmo/PayPal SDK failures after the
+   * shopper switched to Zip (or another method) must not pollute that surface.
+   */
+  private failActiveMount(
+    error: unknown,
+    mountGen: number,
+    method: HeadlessMountableMethod,
+    fallbackMessage: string,
+    mapper: 'paypal' | 'generic' = 'generic',
+    terminal = false,
+  ): never {
+    if (this._state() === 'destroyed') {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Headless checkout session was destroyed during mount().',
+        method,
+        provider: this.providerOf(method),
+      });
+    }
+
+    let paymentError: PaymentError;
+    if (error instanceof PaymentError) {
+      paymentError = error;
+    } else if (mapper === 'paypal') {
+      paymentError = mapPayPalError(error, 'PROVIDER_UNAVAILABLE', fallbackMessage);
+    } else {
+      paymentError = new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: fallbackMessage,
+        method,
+        provider: this.providerOf(method),
+        originalError: error,
+      });
+    }
+
+    // PayPal SDK loader always tags `method: 'paypal'` — re-scope for Venmo mounts.
+    const scoped =
+      paymentError.method === method && paymentError.provider === this.providerOf(method)
+        ? paymentError
+        : new PaymentError({
+            code: paymentError.code,
+            message: paymentError.message,
+            method,
+            provider: this.providerOf(method),
+            originalError: paymentError.originalError ?? paymentError,
+          });
+
+    if (mountGen === this.mountGeneration) {
+      this._lastError.set(scoped);
+      if (terminal) {
+        this.emitTerminalError(scoped, this.confirmGeneration);
+      } else {
+        this.emitError(scoped);
+      }
+    }
+
+    throw scoped;
   }
 
   private isConfirmStale(mountGen: number, confirmGen: number): boolean {

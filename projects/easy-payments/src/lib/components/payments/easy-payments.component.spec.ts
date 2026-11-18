@@ -1653,7 +1653,20 @@ describe('EasyPaymentsComponent', () => {
       expect(text).toContain('One year subscription');
     });
 
-    it('switches checkout headings at runtime en → es → pt → en without reload', async () => {
+    it('renders French title and subtitle for locale=fr', async () => {
+      fixture.componentRef.setInput('locale', 'fr');
+      fixture.componentRef.setInput('methods', ['card']);
+      await render(fixture);
+
+      const text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Finalisez votre achat');
+      expect(text).toContain('Choisissez votre moyen de paiement préféré');
+      expect(text).not.toContain('Complete your purchase');
+      expect(text).toContain('Premium Plan');
+      expect(text).toContain('One year subscription');
+    });
+
+    it('switches checkout headings at runtime en → es → pt → fr → en without reload', async () => {
       fixture.componentRef.setInput('methods', ['card']);
       fixture.componentRef.setInput('locale', 'en');
       await render(fixture);
@@ -1680,12 +1693,20 @@ describe('EasyPaymentsComponent', () => {
       expect(text).not.toContain('Completa tu compra');
       expect(text).toContain('Premium Plan');
 
+      fixture.componentRef.setInput('locale', 'fr');
+      await render(fixture);
+      text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Finalisez votre achat');
+      expect(text).toContain('Choisissez votre moyen de paiement préféré');
+      expect(text).not.toContain('Finalize sua compra');
+      expect(text).toContain('Premium Plan');
+
       fixture.componentRef.setInput('locale', 'en');
       await render(fixture);
       text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Complete your purchase');
       expect(text).toContain('Choose your preferred payment method');
-      expect(text).not.toContain('Finalize sua compra');
+      expect(text).not.toContain('Finalisez votre achat');
       expect(text).toContain('Premium Plan');
       expect(text).toContain('One year subscription');
     });

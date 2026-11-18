@@ -12,7 +12,17 @@ import {
   type PaymentProduct,
   type PaymentResult,
 } from '@easy-payments/angular';
+import {
+  EN_TRANSLATIONS,
+  ES_TRANSLATIONS,
+  FR_TRANSLATIONS,
+  PT_TRANSLATIONS,
+} from '../../../../easy-payments/src/lib/i18n';
 import { DEMO_HEADLESS_CHECKOUT_INSTANCE_ID } from './demo-headless-checkout-id';
+import {
+  headlessDemoCopyForLocale,
+  resolveHeadlessDemoCopy,
+} from './headless-demo.copy';
 import {
   isHeadlessDemoMountDeferred,
   isHeadlessDemoOfficialButtonMethod,
@@ -48,21 +58,27 @@ function methodStatus(
   const interaction: HeadlessMethodStatus['interaction'] =
     method === 'paypal'
       ? 'paypal-buttons'
-      : method === 'google-pay' || method === 'apple-pay'
-        ? 'wallet-button'
-        : 'confirm';
+      : method === 'venmo'
+        ? 'venmo-buttons'
+        : method === 'zip'
+          ? 'zip-checkout'
+          : method === 'google-pay' || method === 'apple-pay'
+            ? 'wallet-button'
+            : 'confirm';
   const provider =
-    method === 'paypal'
+    method === 'paypal' || method === 'venmo'
       ? 'paypal'
-      : method === 'klarna'
-        ? 'klarna'
-        : method === 'affirm'
-          ? 'affirm'
-          : method === 'google-pay'
-            ? 'googlePay'
-            : method === 'apple-pay'
-              ? 'applePay'
-              : 'stripe';
+      : method === 'zip'
+        ? 'zip'
+        : method === 'klarna'
+          ? 'klarna'
+          : method === 'affirm'
+            ? 'affirm'
+            : method === 'google-pay'
+              ? 'googlePay'
+              : method === 'apple-pay'
+                ? 'applePay'
+                : 'stripe';
   return {
     method,
     provider,
@@ -75,6 +91,39 @@ function methodStatus(
   };
 }
 
+describe('headless-demo copy dictionaries', () => {
+  it('covers Venmo and Zip chrome in en / es / pt / fr', () => {
+    for (const locale of ['en', 'es', 'pt', 'fr'] as const) {
+      const copy = headlessDemoCopyForLocale(locale);
+      expect(copy.providerSurfaceHeading.trim().length).toBeGreaterThan(0);
+      expect(copy.officialButton.trim().length).toBeGreaterThan(0);
+      expect(copy.lifecycleEventsHeading.trim().length).toBeGreaterThan(0);
+      expect(copy.available.trim().length).toBeGreaterThan(0);
+      expect(copy.unavailable.trim().length).toBeGreaterThan(0);
+      expect(copy.readinessReady.trim().length).toBeGreaterThan(0);
+      expect(copy.readinessLoading.trim().length).toBeGreaterThan(0);
+      expect(copy.recoveryRetryable.trim().length).toBeGreaterThan(0);
+      expect(copy.paymentMethodsHint).toContain('Venmo');
+      expect(copy.paymentMethodsHint).toContain('Zip');
+      expect(copy.mountNoticeOfficial).toContain('Venmo');
+      expect(copy.mountNoticeOfficial).toContain('Zip');
+      expect(copy.officialButtonHint.trim().length).toBeGreaterThan(0);
+    }
+    expect(resolveHeadlessDemoCopy('fr').providerSurfaceHeading).toBe(
+      headlessDemoCopyForLocale('fr').providerSurfaceHeading,
+    );
+    expect(headlessDemoCopyForLocale('es').officialButton).not.toBe(
+      headlessDemoCopyForLocale('en').officialButton,
+    );
+    expect(headlessDemoCopyForLocale('pt').lifecycleEventsHeading).not.toBe(
+      headlessDemoCopyForLocale('en').lifecycleEventsHeading,
+    );
+    expect(headlessDemoCopyForLocale('fr').available).not.toBe(
+      headlessDemoCopyForLocale('en').available,
+    );
+  });
+});
+
 describe('headless-demo-mount-policy', () => {
   it('classifies Stripe element vs official-button methods', () => {
     expect(isHeadlessDemoStripeElementMethod('card')).toBeTrue();
@@ -83,6 +132,8 @@ describe('headless-demo-mount-policy', () => {
     expect(isHeadlessDemoStripeElementMethod('cash-app-pay')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('afterpay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('paypal')).toBeTrue();
+    expect(isHeadlessDemoOfficialButtonMethod('venmo')).toBeTrue();
+    expect(isHeadlessDemoOfficialButtonMethod('zip')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('google-pay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('apple-pay')).toBeTrue();
     expect(isHeadlessDemoMountDeferred('paypal')).toBeFalse();
@@ -380,7 +431,8 @@ describe('HeadlessDemoPanel', () => {
       new PaymentError({
         code: 'AUTHENTICATION_REQUIRED',
         message: 'Additional authentication is required.',
-        method: 'klarna',
+        method: 'card',
+        provider: 'stripe',
       }),
     );
     state.set('error');
@@ -665,6 +717,203 @@ describe('HeadlessDemoPanel', () => {
     resolveMount({ method: 'card', unmount: staleUnmount });
     await pending;
     expect(staleUnmount).toHaveBeenCalled();
+  });
+
+  it('localizes Headless demo chrome for Venmo/Zip across locales without reload', async () => {
+    const fixture = await createPanel({
+      locale: 'en',
+      methods: ['venmo', 'zip', 'card'],
+    });
+    availableMethods.set([
+      methodStatus('venmo'),
+      methodStatus('zip'),
+      methodStatus('card'),
+    ]);
+    fixture.detectChanges();
+    const root = () => fixture.nativeElement as HTMLElement;
+    const sessionCallsBeforeLocale = createSession.calls.count();
+
+    expect(root().querySelector('#headless-demo-mount-heading')?.textContent).toContain(
+      'Provider surface',
+    );
+    expect(root().textContent).toContain('Official button');
+    expect(root().textContent).toContain('Lifecycle events');
+    expect(root().textContent).toContain('available');
+    expect(root().textContent).toContain('ready');
+
+    for (const locale of ['es', 'pt', 'fr'] as const) {
+      fixture.componentRef.setInput('locale', locale);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      availableMethods.set([
+        methodStatus('venmo'),
+        methodStatus('zip'),
+        methodStatus('card'),
+      ]);
+      fixture.detectChanges();
+      const copy = headlessDemoCopyForLocale(locale);
+      expect(root().querySelector('#headless-demo-mount-heading')?.textContent).toContain(
+        copy.providerSurfaceHeading,
+      );
+      expect(root().querySelector('#headless-demo-events-heading')?.textContent).toContain(
+        copy.lifecycleEventsHeading,
+      );
+      expect(root().textContent).toContain(copy.officialButton);
+      expect(root().textContent).toContain(copy.available);
+      expect(root().textContent).toContain(copy.readinessReady);
+      expect(root().textContent).toContain('Venmo');
+      expect(root().textContent).toContain('Zip');
+    }
+    // Locale-only changes must not recreate the Headless session / start a new payment.
+    expect(createSession.calls.count()).toBe(sessionCallsBeforeLocale);
+  });
+
+  it('localizes Zip CONFIG_MISSING, Venmo SDK failure, backend, and unknown errors across locales', async () => {
+    const fixture = await createPanel({
+      locale: 'en',
+      methods: ['zip', 'venmo', 'card', 'klarna'],
+    });
+    availableMethods.set([
+      methodStatus('zip'),
+      methodStatus('venmo'),
+      methodStatus('card'),
+      methodStatus('klarna'),
+    ]);
+    fixture.detectChanges();
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    await fixture.componentInstance.onSelectMethod('zip');
+    lastError.set(
+      new PaymentError({
+        code: 'CONFIG_MISSING',
+        message:
+          'Zip sandbox credentials are not configured on the server. Set ZIP_MERCHANT_ID…',
+        method: 'zip',
+        provider: 'zip',
+      }),
+    );
+    fixture.detectChanges();
+    expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+      'CONFIG_MISSING',
+    );
+    expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+      EN_TRANSLATIONS.zipUnavailable,
+    );
+    expect(root().textContent).not.toContain('ZIP_MERCHANT_ID');
+
+    for (const [locale, messages] of [
+      ['pt', PT_TRANSLATIONS],
+      ['es', ES_TRANSLATIONS],
+      ['fr', FR_TRANSLATIONS],
+    ] as const) {
+      fixture.componentRef.setInput('locale', locale);
+      fixture.detectChanges();
+      expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+        'CONFIG_MISSING',
+      );
+      expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+        messages.zipUnavailable,
+      );
+    }
+
+    fixture.componentRef.setInput('locale', 'pt');
+    fixture.detectChanges();
+    await fixture.componentInstance.onSelectMethod('venmo');
+    lastError.set(
+      new PaymentError({
+        code: 'SDK_LOAD_FAILED',
+        message: 'PayPal SDK script failed to load.',
+        method: 'venmo',
+        provider: 'venmo',
+      }),
+    );
+    fixture.detectChanges();
+    expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+      PT_TRANSLATIONS.errorDetailSdkLoad,
+    );
+    expect(root().textContent).not.toContain('PayPal SDK script failed');
+
+    lastError.set(
+      new PaymentError({
+        code: 'BACKEND_ERROR',
+        message: 'Klarna create-payment failed with HTTP 502',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    await fixture.componentInstance.onSelectMethod('klarna');
+    fixture.detectChanges();
+    // Method filter: klarna error while klarna selected.
+    lastError.set(
+      new PaymentError({
+        code: 'BACKEND_ERROR',
+        message: 'Klarna create-payment failed with HTTP 502',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.detectChanges();
+    expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+      PT_TRANSLATIONS.errorDetailBackend,
+    );
+    expect(root().textContent).not.toContain('HTTP 502');
+
+    lastError.set(
+      new PaymentError({
+        code: 'UNKNOWN',
+        message: 'malformed provider payload xyz',
+        method: 'klarna',
+        provider: 'klarna',
+      }),
+    );
+    fixture.detectChanges();
+    expect(root().querySelector('[data-testid="headless-demo-last-error"]')?.textContent).toContain(
+      PT_TRANSLATIONS.errorBody,
+    );
+    expect(root().textContent).not.toContain('malformed provider payload');
+  });
+
+  it('hides a late Venmo SDK_LOAD_FAILED after switching the UI selection to Zip', async () => {
+    const fixture = await createPanel({ methods: ['venmo', 'zip'] });
+    availableMethods.set([methodStatus('venmo'), methodStatus('zip')]);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.onSelectMethod('venmo');
+    fixture.detectChanges();
+    lastError.set(
+      new PaymentError({
+        code: 'SDK_LOAD_FAILED',
+        message: 'PayPal SDK script failed to load.',
+        method: 'venmo',
+        provider: 'venmo',
+      }),
+    );
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-last-error"]',
+      )?.textContent,
+    ).toContain('SDK_LOAD_FAILED');
+
+    await fixture.componentInstance.onSelectMethod('zip');
+    fixture.detectChanges();
+    // Late Venmo failure still sits on the session signal, but UI selection is Zip.
+    lastError.set(
+      new PaymentError({
+        code: 'SDK_LOAD_FAILED',
+        message: 'PayPal SDK script failed to load.',
+        method: 'venmo',
+        provider: 'venmo',
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-last-error"]',
+      ),
+    ).toBeNull();
+    expect(fixture.componentInstance.uiSelectedMethod()).toBe('zip');
   });
 
   it('keeps theme/locale on createSession and a listbox method structure', async () => {

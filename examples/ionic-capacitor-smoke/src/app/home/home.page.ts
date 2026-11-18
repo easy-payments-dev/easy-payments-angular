@@ -33,6 +33,7 @@ import {
   PaymentMethod,
   PaymentOrchestratorService,
   PaymentResult,
+  type EasyPaymentsLocale,
   type HeadlessCheckoutSession,
   type HeadlessMethodStatus,
   type MockPaymentOutcome,
@@ -96,6 +97,8 @@ export class HomePage implements AfterViewInit, OnDestroy {
   readonly product = SMOKE_PRODUCT;
   readonly methods = [...SMOKE_METHODS] as PaymentMethod[];
   readonly surface = signal<Surface>('full');
+  /** Same public `[locale]` / Headless `locale` as the Angular demo. */
+  readonly locale = signal<EasyPaymentsLocale>('auto');
   readonly mockOutcome = signal<MockPaymentOutcome>('success');
   readonly usingMock = signal(smokeEnv.useMockMode !== false);
   readonly platformLabel = `${Capacitor.getPlatform()}${Capacitor.isNativePlatform() ? ' (native)' : ' (web)'}`;
@@ -140,6 +143,7 @@ export class HomePage implements AfterViewInit, OnDestroy {
     // CDP / emulator automation hook (smoke app only).
     (globalThis as unknown as { __epSmoke?: object }).__epSmoke = {
       setSurface: (value: Surface) => this.onSurfaceChange(value),
+      setLocale: (value: EasyPaymentsLocale) => this.onLocaleChange(value),
       setOutcome: (value: MockPaymentOutcome) => this.onMockOutcomeChange(value),
       toggleMode: () => this.toggleMode(),
       /** Confirm-style Headless mock (card / klarna / affirm) — wallets use DEMO button click. */
@@ -157,6 +161,7 @@ export class HomePage implements AfterViewInit, OnDestroy {
         }
         return {
           surface: this.surface(),
+          locale: this.locale(),
           outcome: this.mockOutcome(),
           usingMock: this.usingMock(),
           lastEvent: this.lastEvent(),
@@ -211,6 +216,19 @@ export class HomePage implements AfterViewInit, OnDestroy {
     this.mockOutcome.set(outcome);
     this.mock.setOutcome(outcome);
     this.pushLog(`mock outcome → ${outcome}`);
+  }
+
+  async onLocaleChange(value: string | number | undefined): Promise<void> {
+    const next = (value as EasyPaymentsLocale) || 'auto';
+    const allowed: readonly EasyPaymentsLocale[] = ['auto', 'en', 'es', 'pt', 'fr'];
+    if (!(allowed as readonly string[]).includes(next)) {
+      return;
+    }
+    this.locale.set(next);
+    this.pushLog(`locale → ${next}`);
+    if (this.surface() === 'headless') {
+      await this.mountHeadless();
+    }
   }
 
   async toggleMode(): Promise<void> {
@@ -595,6 +613,7 @@ export class HomePage implements AfterViewInit, OnDestroy {
       methods: this.methods,
       checkout: this.checkout,
       checkoutInstanceId: 'ionic-smoke-headless',
+      locale: this.locale(),
     });
     this.headlessSession = session;
     this.headlessSubs.add(session.events.success.subscribe((r: PaymentResult) => this.onSuccess(r)));

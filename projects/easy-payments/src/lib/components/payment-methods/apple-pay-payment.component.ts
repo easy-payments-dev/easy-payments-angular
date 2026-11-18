@@ -32,6 +32,7 @@ import {
   interpolate,
   localizePaymentError,
   toStripeElementsLocale,
+  type EasyPaymentsResolvedLocale,
 } from '../../i18n';
 
 @Component({
@@ -301,7 +302,7 @@ export class ApplePayPaymentComponent implements AfterViewInit, OnDestroy {
     product: PaymentProduct,
     checkout: CheckoutOptions | undefined,
     theme: ResolvedPaymentTheme,
-    locale: 'en' | 'es' | 'pt',
+    locale: EasyPaymentsResolvedLocale,
     borderRadiusPx: number | null = null,
   ): Promise<void> {
     const validation = validatePaymentProduct(product);

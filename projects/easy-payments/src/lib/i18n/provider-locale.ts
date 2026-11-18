@@ -10,6 +10,8 @@ export function toStripeElementsLocale(locale: EasyPaymentsResolvedLocale): stri
       return 'es';
     case 'pt':
       return 'pt-BR';
+    case 'fr':
+      return 'fr';
     case 'en':
     default:
       return 'en';
@@ -26,6 +28,8 @@ export function toPayPalSdkLocale(locale: EasyPaymentsResolvedLocale): string {
       return 'es_ES';
     case 'pt':
       return 'pt_BR';
+    case 'fr':
+      return 'fr_FR';
     case 'en':
     default:
       return 'en_US';
@@ -43,6 +47,8 @@ export function toGooglePayButtonLocale(locale: EasyPaymentsResolvedLocale): str
       return 'es';
     case 'pt':
       return 'pt';
+    case 'fr':
+      return 'fr';
     case 'en':
     default:
       return 'en';
@@ -59,11 +65,16 @@ export function toStripeBnplLocale(locale: EasyPaymentsResolvedLocale): string {
       return 'es-ES';
     case 'pt':
       return 'pt-BR';
+    case 'fr':
+      return 'fr-FR';
     case 'en':
     default:
       return 'en-US';
   }
 }
+
+/** Klarna purchase countries where French is a documented preferred language. */
+const KLARNA_FRENCH_COUNTRIES = new Set(['FR', 'BE', 'CA', 'CH', 'LU']);
 
 /**
  * Stripe Klarna `payment_method_options.klarna.preferred_locale`.
@@ -86,6 +97,12 @@ export function toKlarnaPreferredLocale(
     // Portuguese is not a standard Klarna locale for most other countries (e.g. US).
     return `en-${country}`;
   }
+  if (locale === 'fr') {
+    if (KLARNA_FRENCH_COUNTRIES.has(country)) {
+      return `fr-${country}`;
+    }
+    return `en-${country}`;
+  }
   return `en-${country}`;
 }
 
@@ -93,6 +110,7 @@ export function toKlarnaPreferredLocale(
  * Stripe Affirm `payment_method_options.affirm.preferred_locale`.
  * Affirm’s documented US/CA page languages are limited (typically `en_US` / `en_CA` / `fr_CA`).
  * Easy Payments does not invent unsupported Affirm locales for `es` / `pt`.
+ * French maps to `fr_CA` only for Canada; US stays `en_US`.
  * @see https://docs.stripe.com/api/payment_intents/create#create_payment_intent-payment_method_options-affirm-preferred_locale
  */
 export function toAffirmPreferredLocale(
@@ -101,7 +119,7 @@ export function toAffirmPreferredLocale(
 ): string {
   const country = purchaseCountry.trim().toUpperCase() || 'US';
   if (country === 'CA') {
-    return 'en_CA';
+    return locale === 'fr' ? 'fr_CA' : 'en_CA';
   }
   void locale;
   return 'en_US';

@@ -1433,7 +1433,8 @@
         <div class="config-section__body">
           <p class="hint">
             Public <code>[locale]</code> input. Auto uses the browser language
-            (<code>es-*</code> → Spanish, <code>pt-*</code> → Portuguese, otherwise English).
+            (<code>es-*</code> → Spanish, <code>pt-*</code> → Portuguese,
+            <code>fr-*</code> → French, otherwise English).
             A custom Card CTA label overrides the localized idle string when set.
           </p>
           <fieldset class="choice-group">
@@ -1477,6 +1478,16 @@
                 (change)="setLocale('pt')"
               />
               <span>Português</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="locale"
+                value="fr"
+                [checked]="locale() === 'fr'"
+                (change)="setLocale('fr')"
+              />
+              <span>Français</span>
             </label>
           </fieldset>
           <p class="hint">

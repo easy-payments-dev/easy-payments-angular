@@ -66,7 +66,7 @@ Official docs:
 
 ## Localization
 
-Easy Payments passes the resolved locale into Stripe Elements (`en` / `es` / `pt-BR`). That localizes Stripe Elements chrome. Wallet sheets and issuer UIs may still follow device / bank language — see [localization.md](../localization.md).
+Easy Payments passes the resolved locale into Stripe Elements (`en` / `es` / `pt-BR` / `fr`). That localizes Stripe Elements chrome. Wallet sheets and issuer UIs may still follow device / bank language — see [localization.md](../localization.md).
 
 ## Testing
 

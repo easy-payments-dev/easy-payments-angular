@@ -18,6 +18,8 @@ import {
   PaymentError,
   interpolate,
   isAnyStripeBnplReturnAttempt,
+  localizePaymentError,
+  normalizeError,
   resolveEffectiveLocale,
   resolveMessages,
   type EasyPaymentsLocale,
@@ -32,6 +34,7 @@ import {
 } from '@easy-payments/angular';
 import { formatMoney } from '../../../../easy-payments/src/lib/utils/format-money';
 import { DEMO_HEADLESS_CHECKOUT_INSTANCE_ID } from './demo-headless-checkout-id';
+import { resolveHeadlessDemoCopy } from './headless-demo.copy';
 import {
   isHeadlessDemoOfficialButtonMethod,
   isHeadlessDemoRecoveryRetryable,
@@ -81,19 +84,22 @@ export class HeadlessDemoPanel {
   private appliedFingerprint: string | null = null;
 
   readonly bootStatus = signal<'idle' | 'starting' | 'ready' | 'failed'>('idle');
-  readonly bootError = signal<string | null>(null);
+  readonly bootError = signal<PaymentError | null>(null);
   readonly activeSession = signal<HeadlessCheckoutSession | null>(null);
   readonly lifecycleEvents = signal<string[]>([]);
   readonly mountPhase = signal<MountPhase>('idle');
-  readonly mountError = signal<string | null>(null);
-  readonly mountNotice = signal<string | null>(null);
-  readonly configSkipMessage = signal<string | null>(null);
+  readonly mountError = signal<PaymentError | null>(null);
+  readonly showOfficialMountNotice = signal(false);
+  readonly configSkipPending = signal(false);
   readonly pendingConfigFingerprint = signal<string | null>(null);
   readonly uiSelectedMethod = signal<PaymentMethod | null>(null);
   readonly confirmInFlight = signal(false);
   readonly recoveryPhase = signal<RecoveryPhase>('idle');
-  readonly recoveryMessage = signal<string | null>(null);
-  readonly lastActionError = signal<string | null>(null);
+  readonly recoveryMessageKey = signal<
+    'none' | 'verifying' | 'unrelated' | 'retryable' | 'custom'
+  >('none');
+  readonly recoveryCustomMessage = signal<string | null>(null);
+  readonly lastActionError = signal<PaymentError | null>(null);
 
   readonly methodLabels = PAYMENT_METHOD_LABELS;
 
@@ -101,8 +107,98 @@ export class HeadlessDemoPanel {
   readonly sessionState = computed(() => this.activeSession()?.state() ?? null);
   readonly selectedMethod = computed(() => this.activeSession()?.selectedMethod() ?? null);
   readonly availableMethods = computed(() => this.activeSession()?.availableMethods() ?? []);
-  readonly lastError = computed(() => this.activeSession()?.lastError() ?? null);
+  /**
+   * Prefer the active UI selection so a late Venmo/PayPal SDK failure cannot
+   * keep showing under Zip (or another method) after a successful switch.
+   */
+  readonly lastError = computed(() => {
+    const error = this.activeSession()?.lastError() ?? null;
+    if (!error) {
+      return null;
+    }
+    const selected = this.uiSelectedMethod() ?? this.selectedMethod();
+    if (selected && error.method && error.method !== selected) {
+      return null;
+    }
+    return error;
+  });
   readonly lastResult = computed(() => this.activeSession()?.lastResult() ?? null);
+  readonly copy = computed(() => resolveHeadlessDemoCopy(this.locale()));
+  readonly libraryMessages = computed(() =>
+    resolveMessages(resolveEffectiveLocale(this.locale()), this.translations()),
+  );
+
+  /** Buyer-facing last error: stable code + localized body (raw API text stays in diagnostics). */
+  readonly lastErrorDisplay = computed(() => {
+    const error = this.lastError();
+    if (!error) {
+      return null;
+    }
+    return {
+      code: error.code,
+      message: localizePaymentError(error.code, this.libraryMessages(), {
+        method: error.method,
+      }),
+    };
+  });
+
+  readonly bootErrorDisplay = computed(() => {
+    const error = this.bootError();
+    if (!error) {
+      return null;
+    }
+    return localizePaymentError(error.code, this.libraryMessages(), {
+      method: error.method,
+    });
+  });
+
+  readonly mountErrorDisplay = computed(() => {
+    const error = this.mountError();
+    if (!error) {
+      return null;
+    }
+    return {
+      code: error.code,
+      message: localizePaymentError(error.code, this.libraryMessages(), {
+        method: error.method,
+      }),
+    };
+  });
+
+  readonly lastActionErrorDisplay = computed(() => {
+    const error = this.lastActionError();
+    if (!error) {
+      return null;
+    }
+    return localizePaymentError(error.code, this.libraryMessages(), {
+      method: error.method,
+    });
+  });
+
+  readonly configSkipMessage = computed(() =>
+    this.configSkipPending() ? this.copy().configSkipInFlight : null,
+  );
+
+  readonly mountNotice = computed(() =>
+    this.showOfficialMountNotice() ? this.copy().mountNoticeOfficial : null,
+  );
+
+  readonly recoveryMessage = computed(() => {
+    const key = this.recoveryMessageKey();
+    const copy = this.copy();
+    switch (key) {
+      case 'verifying':
+        return copy.recoveringReturn;
+      case 'unrelated':
+        return copy.recoveryUnrelated;
+      case 'retryable':
+        return copy.recoveryRetryable;
+      case 'custom':
+        return this.recoveryCustomMessage();
+      default:
+        return null;
+    }
+  });
 
   readonly isInitializing = computed(
     () => this.bootStatus() === 'starting' || this.sessionState() === 'initializing',
@@ -197,13 +293,20 @@ export class HeadlessDemoPanel {
   readonly canRetryRecovery = computed(() => this.recoveryPhase() === 'retryable');
 
   readonly mountAriaLabel = computed(() => {
+    const copy = this.copy();
     const method = this.uiSelectedMethod();
     if (!method) {
-      return 'Official provider mount';
+      return copy.mountAriaGeneric;
     }
-    return `Official provider mount for ${this.methodLabels[method] ?? method}`;
+    const label = this.methodLabels[method] ?? method;
+    return copy.mountAriaForMethod.replace('{{method}}', label);
   });
 
+  /**
+   * Session recreate fingerprint — product / methods / theme only.
+   * Locale and translation overrides update demo chrome + buyer error copy in place
+   * without destroying the session or starting another payment attempt.
+   */
   private readonly configFingerprint = computed(() => {
     const product = this.product();
     return JSON.stringify({
@@ -215,8 +318,6 @@ export class HeadlessDemoPanel {
       quantity: product.quantity ?? 1,
       methods: [...this.methods()],
       theme: this.theme(),
-      locale: this.locale(),
-      translations: this.translations(),
     });
   });
 
@@ -247,7 +348,7 @@ export class HeadlessDemoPanel {
       return;
     }
     this.pendingConfigFingerprint.set(null);
-    this.configSkipMessage.set(null);
+    this.configSkipPending.set(false);
     this.appliedFingerprint = null;
     await this.applyCheckoutConfig(pending);
   }
@@ -276,21 +377,43 @@ export class HeadlessDemoPanel {
     if (entry.available && entry.readiness === 'ready') {
       return '';
     }
+    const copy = this.copy();
+    // Loading notes from the library are English diagnostics — prefer localized copy.
+    if (entry.readiness === 'loading') {
+      return entry.method === 'apple-pay'
+        ? copy.reasonApplePayLoading
+        : copy.reasonStillChecking;
+    }
     if (entry.readinessNote?.trim()) {
       return entry.readinessNote.trim();
     }
     if (entry.diagnosticCode?.trim()) {
       return entry.diagnosticCode.trim();
     }
-    if (entry.readiness === 'loading') {
-      return entry.method === 'apple-pay'
-        ? 'Apple Pay eligibility is confirmed after mounting the Express Checkout Element.'
-        : 'Still checking provider availability.';
-    }
     if (entry.readiness === 'misconfigured') {
-      return 'Provider configuration is incomplete for this method.';
+      return copy.reasonMisconfigured;
     }
-    return 'Not available in the current browser / provider configuration.';
+    return copy.reasonNotAvailable;
+  }
+
+  readinessLabel(readiness: HeadlessMethodStatus['readiness']): string {
+    const copy = this.copy();
+    switch (readiness) {
+      case 'ready':
+        return copy.readinessReady;
+      case 'loading':
+        return copy.readinessLoading;
+      case 'unavailable':
+        return copy.readinessUnavailable;
+      case 'misconfigured':
+        return copy.readinessMisconfigured;
+      default:
+        return readiness;
+    }
+  }
+
+  availabilityLabel(available: boolean): string {
+    return available ? this.copy().available : this.copy().unavailable;
   }
 
   canSelectMethod(entry: HeadlessMethodStatus): boolean {
@@ -322,7 +445,7 @@ export class HeadlessDemoPanel {
 
     const op = ++this.mountGeneration;
     this.mountError.set(null);
-    this.mountNotice.set(null);
+    this.showOfficialMountNotice.set(false);
     this.lastActionError.set(null);
     this.uiSelectedMethod.set(method);
 
@@ -359,9 +482,7 @@ export class HeadlessDemoPanel {
       this.mountPhase.set('mounted');
 
       if (isHeadlessDemoOfficialButtonMethod(method)) {
-        this.mountNotice.set(
-          'Use the official provider control above to pay. The demo never calls confirm() for PayPal, Google Pay, or Apple Pay.',
-        );
+        this.showOfficialMountNotice.set(true);
       }
     } catch (error) {
       if (op !== this.mountGeneration) {
@@ -369,7 +490,7 @@ export class HeadlessDemoPanel {
       }
       this.mountHandle = null;
       this.mountPhase.set('failed');
-      this.mountError.set(formatPublicError(error));
+      this.mountError.set(normalizeError(error, { method }));
     }
   }
 
@@ -393,7 +514,7 @@ export class HeadlessDemoPanel {
       if (op !== this.confirmGeneration) {
         return;
       }
-      this.lastActionError.set(formatPublicError(error));
+      this.lastActionError.set(normalizeError(error, { method }));
     } finally {
       if (op === this.confirmGeneration) {
         this.confirmInFlight.set(false);
@@ -405,20 +526,18 @@ export class HeadlessDemoPanel {
     if (fingerprint === this.appliedFingerprint && this.activeSession()) {
       if (this.pendingConfigFingerprint() === fingerprint) {
         this.pendingConfigFingerprint.set(null);
-        this.configSkipMessage.set(null);
+        this.configSkipPending.set(false);
       }
       return;
     }
 
     if (this.appliedFingerprint !== null && this.paymentLocked()) {
       this.pendingConfigFingerprint.set(fingerprint);
-      this.configSkipMessage.set(
-        'Checkout configuration changed while a payment or return recovery is in progress. Apply the pending update after this attempt settles — do not replace an active payment.',
-      );
+      this.configSkipPending.set(true);
       return;
     }
 
-    this.configSkipMessage.set(null);
+    this.configSkipPending.set(false);
     this.pendingConfigFingerprint.set(null);
     this.appliedFingerprint = fingerprint;
     await this.startSession();
@@ -435,11 +554,12 @@ export class HeadlessDemoPanel {
     this.uiSelectedMethod.set(null);
     this.mountPhase.set('idle');
     this.mountError.set(null);
-    this.mountNotice.set(null);
+    this.showOfficialMountNotice.set(false);
     this.lastActionError.set(null);
     this.confirmInFlight.set(false);
     this.recoveryPhase.set('idle');
-    this.recoveryMessage.set(null);
+    this.recoveryMessageKey.set('none');
+    this.recoveryCustomMessage.set(null);
 
     await this.clearMountHandle();
     await this.destroyActiveSession();
@@ -485,7 +605,11 @@ export class HeadlessDemoPanel {
       if (generation !== this.bootGeneration) {
         return;
       }
-      this.bootError.set(formatPublicError(error, 'Headless session failed to initialize.'));
+      this.bootError.set(
+        normalizeError(error, {
+          method: undefined,
+        }),
+      );
       this.bootStatus.set('failed');
       if (created && this.activeSession() !== created) {
         this.activeSession.set(created);
@@ -503,7 +627,8 @@ export class HeadlessDemoPanel {
 
     if (!maybeReturn) {
       this.recoveryPhase.set('idle');
-      this.recoveryMessage.set(null);
+      this.recoveryMessageKey.set('none');
+      this.recoveryCustomMessage.set(null);
       // Still probe once — returns null for non-owners / absent returns without claiming.
       try {
         const result = await session.recoverReturn();
@@ -512,7 +637,8 @@ export class HeadlessDemoPanel {
         }
         if (result) {
           this.recoveryPhase.set('settled');
-          this.recoveryMessage.set(formatRecoveryResult(result));
+          this.recoveryMessageKey.set('custom');
+          this.recoveryCustomMessage.set(formatRecoveryResult(result));
           this.pushLifecycleLine(
             `recoverReturn · ${result.status} · ${result.method}${
               result.metadata?.['authorizationOnly'] === true ? ' · authorizationOnly' : ''
@@ -529,7 +655,8 @@ export class HeadlessDemoPanel {
     }
 
     this.recoveryPhase.set('recovering');
-    this.recoveryMessage.set('Verifying Klarna/Affirm return with Stripe…');
+    this.recoveryMessageKey.set('verifying');
+    this.recoveryCustomMessage.set(null);
 
     try {
       const result = await session.recoverReturn();
@@ -539,14 +666,14 @@ export class HeadlessDemoPanel {
 
       if (!result) {
         this.recoveryPhase.set('settled');
-        this.recoveryMessage.set(
-          'No Headless-owned return for this checkout identity (unrelated or absent). Other checkout modes were not claimed.',
-        );
+        this.recoveryMessageKey.set('unrelated');
+        this.recoveryCustomMessage.set(null);
         return;
       }
 
       this.recoveryPhase.set('settled');
-      this.recoveryMessage.set(formatRecoveryResult(result));
+      this.recoveryMessageKey.set('custom');
+      this.recoveryCustomMessage.set(formatRecoveryResult(result));
       this.pushLifecycleLine(
         `recoverReturn · ${result.status} · ${result.method}${
           result.metadata?.['authorizationOnly'] === true ? ' · authorizationOnly' : ''
@@ -561,20 +688,26 @@ export class HeadlessDemoPanel {
   }
 
   private handleRecoveryFailure(error: unknown): void {
-    const message = formatPublicError(error, 'Return recovery failed.');
-    this.lastActionError.set(message);
-    this.pushLifecycleLine(`recoverReturn · error · ${message}`);
+    const paymentError = normalizeError(error);
+    this.lastActionError.set(paymentError);
+    this.pushLifecycleLine(
+      `recoverReturn · error · ${paymentError.code}: ${sanitizeLifecycleLine(paymentError.message)}`,
+    );
 
     if (isHeadlessDemoRecoveryRetryable(error)) {
       this.recoveryPhase.set('retryable');
-      this.recoveryMessage.set(
-        'Transient verification failure. Pending return data was preserved — retry recoverReturn() without confirming again or creating a new PaymentIntent.',
-      );
+      this.recoveryMessageKey.set('retryable');
+      this.recoveryCustomMessage.set(null);
       return;
     }
 
     this.recoveryPhase.set('settled');
-    this.recoveryMessage.set(message);
+    this.recoveryMessageKey.set('custom');
+    this.recoveryCustomMessage.set(
+      `${paymentError.code} — ${localizePaymentError(paymentError.code, this.libraryMessages(), {
+        method: paymentError.method,
+      })}`,
+    );
   }
 
   private pushLifecycleLine(line: string): void {
@@ -671,26 +804,17 @@ export class HeadlessDemoPanel {
     this.lifecycleEvents.set([]);
     this.mountPhase.set('idle');
     this.mountError.set(null);
-    this.mountNotice.set(null);
+    this.showOfficialMountNotice.set(false);
     this.uiSelectedMethod.set(null);
     this.confirmInFlight.set(false);
     this.recoveryPhase.set('idle');
-    this.recoveryMessage.set(null);
+    this.recoveryMessageKey.set('none');
+    this.recoveryCustomMessage.set(null);
     this.lastActionError.set(null);
     this.pendingConfigFingerprint.set(null);
-    this.configSkipMessage.set(null);
+    this.configSkipPending.set(false);
     this.appliedFingerprint = null;
   }
-}
-
-function formatPublicError(error: unknown, fallback = 'Operation failed.'): string {
-  if (error instanceof PaymentError) {
-    return sanitizeLifecycleLine(`${error.code}: ${error.message}`);
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return sanitizeLifecycleLine(error.message);
-  }
-  return fallback;
 }
 
 /** Strip accidental secrets/tokens from demo-visible event/error text. */

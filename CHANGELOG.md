@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (1.3.0)
+
+### Localization
+
+- Added French (`fr`) to `[locale]` / Headless `locale` (`auto` \| `en` \| `es` \| `pt` \| `fr`)
+- Browser auto-detect maps `fr-*` → French; default remains `auto` with English fallback for unsupported tags
+- Built-in French dictionary for Easy Payments-owned UI (same keys as English)
+- Provider locale hints: Stripe Elements `fr`, PayPal `fr_FR`, Google Pay `buttonLocale=fr`, Klarna `fr-{country}` where supported, Affirm `fr_CA` for Canada
+
 ## 1.2.1
 
 Documentation and package metadata release announcing the official website. **No runtime or public API changes.**
