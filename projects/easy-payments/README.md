@@ -460,7 +460,7 @@ Locale changes **how** amounts are displayed (`Intl` number/currency formatting)
 | `'easy-payments' is not a known element` | Import `EasyPaymentsComponent` in the host component's `imports` array (standalone). Ensure `provideEasyPayments(...)` is in `app.config.ts`. |
 | No payment methods appear | Configure the matching `providers` + backend URLs, and include those methods in `[methods]`. |
 | Stripe / wallets fail in production | Use live publishable keys server-side secrets, HTTPS, and Stripe Payment Method Domains for wallets. |
-| Wrong language | Set `locale` explicitly (`en` / `es` / `pt`) instead of `auto`, or check the browser language list. |
+| Wrong language | Set `locale` explicitly (`en` / `es` / `pt` / `fr`) instead of `auto`, or check the browser language list. |
 | Amount looks like cents | Amounts are **major units** (`99` = $99.00), not Stripe-style cents. |
 
 Full walkthrough: **[docs/getting-started.md](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/getting-started.md)**
@@ -499,7 +499,7 @@ Localization behavior and hard limits (wallet sheets, Klarna/Affirm hosted pages
 | `appearance` | `'default' \| 'transparent'` | `'default'` | Independent of theme |
 | `maxWidth` | `number \| string \| null` | `640` | Clamped **320–1200** |
 | `successBehavior` | `'confirmation' \| 'event-only'` | `'confirmation'` | Overridable via `checkout` |
-| `locale` | `'auto' \| 'en' \| 'es' \| 'pt'` | `'auto'` | UI locale |
+| `locale` | `'auto' \| 'en' \| 'es' \| 'pt' \| 'fr'` | `'auto'` | UI locale |
 | `translations` | `Partial<EasyPaymentsTranslations>` | `{}` | Partial string overrides |
 
 | Output | Payload |
@@ -727,7 +727,7 @@ A browser `success` event is not fulfillment. The NestJS app in `server/` is a l
 
 **Can I choose method order?** Yes — `methods` array order. No separate `order` property.  
 
-**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt`) and optional `[translations]`. See [localization](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md).
+**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt` / `fr`) and optional `[translations]`. See [localization](https://github.com/easy-payments-dev/easy-payments-angular/blob/master/docs/localization.md).
 
 **Does locale convert currency?** No — display formatting only.  
 

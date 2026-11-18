@@ -32,6 +32,22 @@
       </ion-segment>
     </ion-item>
 
+    <ion-item>
+      <ion-select
+        label="Locale"
+        interface="popover"
+        [value]="locale()"
+        (ionChange)="onLocaleChange($event.detail.value)"
+        data-testid="smoke-locale"
+      >
+        <ion-select-option value="auto">Auto</ion-select-option>
+        <ion-select-option value="en">English</ion-select-option>
+        <ion-select-option value="es">Español</ion-select-option>
+        <ion-select-option value="pt">Português</ion-select-option>
+        <ion-select-option value="fr">Français</ion-select-option>
+      </ion-select>
+    </ion-item>
+
     @if (usingMock()) {
       <ion-item>
         <ion-select
@@ -83,6 +99,7 @@
         [product]="product"
         [methods]="methods"
         [checkout]="checkout"
+        [locale]="locale()"
         (success)="onSuccess($event)"
         (cancel)="onCancel($event)"
         (error)="onError($event)"
@@ -95,6 +112,7 @@
         [product]="product"
         [methods]="methods"
         [checkout]="checkout"
+        [locale]="locale()"
         (success)="onSuccess($event)"
         (cancel)="onCancel($event)"
         (error)="onError($event)"

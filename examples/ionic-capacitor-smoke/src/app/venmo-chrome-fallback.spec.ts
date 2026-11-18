@@ -120,16 +120,16 @@ describe('venmo-chrome-fallback', () => {
   });
 
   it('persists pending attempt markers', () => {
+    const data = new Map<string, string>();
     const store = {
-      data: new Map<string, string>(),
       getItem(key: string) {
-        return this.data.get(key) ?? null;
+        return data.get(key) ?? null;
       },
       setItem(key: string, value: string) {
-        this.data.set(key, value);
+        data.set(key, value);
       },
       removeItem(key: string) {
-        this.data.delete(key);
+        data.delete(key);
       },
     } as unknown as Storage;
 

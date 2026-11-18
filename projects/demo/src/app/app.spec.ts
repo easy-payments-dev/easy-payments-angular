@@ -84,8 +84,14 @@ describe('demo-locale-persistence', () => {
     expect(readPersistedDemoLocale(storage)).toBe('es');
   });
 
+  it('persists and restores fr', () => {
+    persistDemoLocale('fr', storage);
+    expect(storage.getItem(DEMO_LOCALE_STORAGE_KEY)).toBe('fr');
+    expect(readPersistedDemoLocale(storage)).toBe('fr');
+  });
+
   it('ignores invalid values', () => {
-    storage.setItem(DEMO_LOCALE_STORAGE_KEY, 'fr');
+    storage.setItem(DEMO_LOCALE_STORAGE_KEY, 'de');
     expect(readPersistedDemoLocale(storage)).toBeNull();
   });
 

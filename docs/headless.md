@@ -90,7 +90,7 @@ export class CheckoutComponent implements OnDestroy {
       methods: ['card', 'klarna', 'affirm', 'paypal', 'google-pay', 'apple-pay'],
       checkoutInstanceId: 'merchant-checkout-id', // required for Klarna/Affirm redirects
       theme: 'light',
-      locale: 'en',
+      locale: 'fr', // same public locales as Full Checkout / Buttons Only
     });
     this.session = session;
 

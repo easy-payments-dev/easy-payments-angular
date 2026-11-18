@@ -21,6 +21,9 @@ export function normalizeLanguageTag(tag: string | null | undefined): EasyPaymen
   if (base === 'pt') {
     return 'pt';
   }
+  if (base === 'fr') {
+    return 'fr';
+  }
   if (base === 'en') {
     return 'en';
   }
@@ -85,7 +88,12 @@ export function resolveEffectiveLocale(
     return detectBrowserLocale(options?.languages, options?.language);
   }
 
-  if (requested === 'en' || requested === 'es' || requested === 'pt') {
+  if (
+    requested === 'en' ||
+    requested === 'es' ||
+    requested === 'pt' ||
+    requested === 'fr'
+  ) {
     return requested;
   }
 

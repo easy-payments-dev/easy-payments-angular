@@ -482,7 +482,7 @@ Locale changes **how** amounts are displayed (`Intl` number/currency formatting)
 | No payment methods appear | Configure the matching `providers` + backend URLs, and include those methods in `[methods]`. Inspect `EasyPaymentsDiagnosticsService` readiness. |
 | Only some methods missing | Expected under provider isolation — fix that provider’s config, then `reinitialize()` + refresh availability. |
 | Stripe / wallets fail in production | Use live publishable keys, server-side secrets, HTTPS, and Stripe Payment Method Domains for wallets. |
-| Wrong language | Set `locale` explicitly (`en` / `es` / `pt`) instead of `auto`, or check the browser language list. |
+| Wrong language | Set `locale` explicitly (`en` / `es` / `pt` / `fr`) instead of `auto`, or check the browser language list. |
 | Amount looks like cents | Amounts are **major units** (`99` = $99.00), not Stripe-style cents. |
 | `visualStyle` did not change Stripe/PayPal UI | Expected — provider SDK chrome is out of scope. |
 
@@ -506,7 +506,7 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 | `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | Optional Card / US bank account (and other library) selector label overrides |
 | `maxWidth` | `number \| string \| null` | `640` | Clamped **320–1200** |
 | `successBehavior` | `'confirmation' \| 'event-only'` | `'confirmation'` | Overridable via `checkout` |
-| `locale` | `'auto' \| 'en' \| 'es' \| 'pt'` | `'auto'` | UI locale |
+| `locale` | `'auto' \| 'en' \| 'es' \| 'pt' \| 'fr'` | `'auto'` | UI locale |
 | `translations` | `Partial<EasyPaymentsTranslations>` | `{}` | Partial string overrides |
 
 | Output | Payload |
@@ -1212,7 +1212,7 @@ A browser `success` event is not fulfillment. The NestJS app in `server/` is a l
 
 **Can I choose method order?** Yes — `methods` array order. No separate `order` property.
 
-**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt`) and optional `[translations]`. See [localization](docs/localization.md).
+**How do I localize the UI?** `[locale]` (`auto` / `en` / `es` / `pt` / `fr`) and optional `[translations]`. See [localization](docs/localization.md).
 
 **Does locale convert currency?** No — display formatting only.
 

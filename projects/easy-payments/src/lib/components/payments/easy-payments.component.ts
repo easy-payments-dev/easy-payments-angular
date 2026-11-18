@@ -212,7 +212,7 @@ export class EasyPaymentsComponent {
   readonly successBehavior = input<CheckoutSuccessBehavior>('confirmation');
 
   /**
-   * UI locale. `auto` detects from the browser (es-*, pt-*, en-* → matching base;
+   * UI locale. `auto` detects from the browser (es-*, pt-*, fr-*, en-* → matching base;
    * anything else → English). Defaults to `auto`.
    */
   readonly locale = input<EasyPaymentsLocale>('auto');

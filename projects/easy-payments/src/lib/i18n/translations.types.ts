@@ -1,6 +1,6 @@
 /**
  * Full Easy Payments-owned UI dictionary.
- * English is canonical; es/pt must implement the same shape.
+ * English is canonical; es/pt/fr must implement the same shape.
  */
 export interface EasyPaymentsTranslations {
   checkoutAriaLabel: string;

@@ -1,6 +1,6 @@
 # Localization
 
-Since **v1.1.0**, Easy Payments ships built-in UI localization for checkout chrome owned by the library. v1.2.0 keeps the same locales.
+Since **v1.1.0**, Easy Payments ships built-in UI localization for checkout chrome owned by the library. **v1.3.0** adds French (`fr`) alongside English, Spanish, and Portuguese.
 
 Supported `[locale]` values:
 
@@ -10,11 +10,12 @@ Supported `[locale]` values:
 | `en` | English |
 | `es` | Spanish |
 | `pt` | Portuguese |
+| `fr` | French |
 
 ```html
 <easy-payments
   [product]="product"
-  locale="es"
+  locale="fr"
   (success)="onSuccess($event)"
   (cancel)="onCancel($event)"
   (error)="onError($event)"
@@ -27,10 +28,11 @@ Supported `[locale]` values:
 
 With `locale="auto"` (or when the input is omitted):
 
-1. Read `navigator.languages` (then `navigator.language`) when available  
+1. Read `navigator.languages` (then `navigator.language`) when available
 2. Normalize the first usable tag:
    - `es`, `es-MX`, `es-ES`, … → **`es`**
    - `pt`, `pt-BR`, `pt-PT`, … → **`pt`**
+   - `fr`, `fr-FR`, `fr-CA`, … → **`fr`**
    - `en`, `en-US`, … → **`en`**
    - anything else → **`en`**
 3. On SSR / environments without `navigator`, fall back to **`en`**
@@ -41,15 +43,15 @@ With `locale="auto"` (or when the input is omitted):
 
 Easy Payments-owned UI strings, including:
 
-- Checkout title / subtitle  
-- Payment method labels and selection chrome  
-- Order summary / totals copy (not merchant product name/description)  
-- Processing, success, error, and cancelled screens  
-- Localized **normalized** error details (by `PaymentError.code`)  
-- Pay / continue / try-again style actions  
-- Method panel helper text owned by the library  
+- Checkout title / subtitle
+- Payment method labels and selection chrome
+- Order summary / totals copy (not merchant product name/description)
+- Processing, success, error, and cancelled screens
+- Localized **normalized** error details (by `PaymentError.code`)
+- Pay / continue / try-again style actions
+- Method panel helper text owned by the library
 
-English is the canonical dictionary. Spanish and Portuguese implement the same key set.
+English is the canonical dictionary. Spanish, Portuguese, and French implement the same key set.
 
 Merchant-provided `product.name` / `product.description` are **never** auto-translated.
 
@@ -63,11 +65,11 @@ Easy Payments maps the effective locale into **official** provider options where
 
 | Surface | Mapping | What it affects |
 |---------|---------|-----------------|
-| Stripe Elements / Payment Element / Express Checkout | `en` → `en`, `es` → `es`, `pt` → `pt-BR` | Stripe-owned Elements chrome |
-| Google Pay official button | `en` / `es` / `pt` → `buttonLocale` | Google Pay **button** text only |
-| PayPal JS SDK | `en` → `en_US`, `es` → `es_ES`, `pt` → `pt_BR` | PayPal Buttons UI (SDK reload on change) |
-| Klarna (Stripe) | `payment_method_options.klarna.preferred_locale` e.g. `es-US` | Klarna-hosted page **when Stripe accepts** that language+country pair |
-| Affirm (Stripe) | `payment_method_options.affirm.preferred_locale` e.g. `en_US` | Affirm page languages officially supported for the market (US typically English) |
+| Stripe Elements / Payment Element / Express Checkout | `en` → `en`, `es` → `es`, `pt` → `pt-BR`, `fr` → `fr` | Stripe-owned Elements chrome |
+| Google Pay official button | `en` / `es` / `pt` / `fr` → `buttonLocale` | Google Pay **button** text only |
+| PayPal JS SDK | `en` → `en_US`, `es` → `es_ES`, `pt` → `pt_BR`, `fr` → `fr_FR` | PayPal Buttons UI (SDK reload on change) |
+| Klarna (Stripe) | `payment_method_options.klarna.preferred_locale` e.g. `es-US`, `fr-FR` | Klarna-hosted page **when Stripe accepts** that language+country pair (French for FR/BE/CA/CH/LU; otherwise English for that country) |
+| Affirm (Stripe) | `payment_method_options.affirm.preferred_locale` e.g. `en_US`, `fr_CA` | Affirm page languages officially supported for the market (`fr_CA` when locale is French and purchase country is CA; US stays English) |
 
 Optional merchant overrides:
 
@@ -91,17 +93,17 @@ Do **not** expect Easy Payments to hack provider iframes, wallet sheets, or undo
 
 Use `[translations]` with a **partial** object. Resolution order per key:
 
-1. Your override  
-2. Dictionary for the effective locale (`en` / `es` / `pt`)  
-3. English fallback  
+1. Your override
+2. Dictionary for the effective locale (`en` / `es` / `pt` / `fr`)
+3. English fallback
 
 ```ts
 import type { EasyPaymentsTranslationOverrides } from '@easy-payments/angular';
 
 readonly translations: EasyPaymentsTranslationOverrides = {
-  successTitle: '¡Listo!',
-  successContinue: 'Volver a la tienda',
-  payWithCard: 'Pagar con tarjeta',
+  successTitle: 'Commande confirmée !',
+  successContinue: 'Retour à la boutique',
+  payWithCard: 'Payer par carte',
 };
 ```
 
@@ -111,9 +113,9 @@ readonly translations: EasyPaymentsTranslationOverrides = {
 
 Checkout amounts are formatted with `Intl.NumberFormat` using the active locale for **display only**.
 
-- `product.amount` is **not** changed  
-- `product.currency` is **not** converted  
-- There is **no** FX / currency conversion in Easy Payments  
+- `product.amount` is **not** changed
+- `product.currency` is **not** converted
+- There is **no** FX / currency conversion in Easy Payments
 
 Reminder: `amount` uses **major currency units** (`99` = $99.00 USD), not cents.
 
@@ -121,7 +123,7 @@ Reminder: `amount` uses **major currency units** (`99` = $99.00 USD), not cents.
 
 ## Related
 
-- [Getting Started](./getting-started.md)  
-- [Provider Setup](./providers/stripe.md) (and sibling provider guides)  
-- [API Reference](./api.md)  
-- [CHANGELOG](../CHANGELOG.md) (`1.2.0`, with 1.1.0 and 1.0.0 retained)
+- [Getting Started](./getting-started.md)
+- [Provider Setup](./providers/stripe.md) (and sibling provider guides)
+- [API Reference](./api.md)
+- [CHANGELOG](../CHANGELOG.md)

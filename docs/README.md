@@ -4,7 +4,7 @@
 |-------|-------------|
 | [Getting Started](./getting-started.md) | Install, Quick Starts (Full Checkout · Buttons Only · Headless), compatibility |
 | [Migration 1.1 → 1.2](./migration-1.1-to-1.2.md) | Upgrading from 1.1.0 to 1.2.0 |
-| [Localization](./localization.md) | Locales (`auto` / `en` / `es` / `pt`), provider limits, overrides |
+| [Localization](./localization.md) | Locales (`auto` / `en` / `es` / `pt` / `fr`), provider limits, overrides |
 | [Configuration](./configuration.md) | Theme, appearance, width, methods, events |
 | [API Reference](./api.md) | Complete public API (including Buttons Only) |
 | [Headless Checkout](./headless.md) | Merchant Headless session API + redirect recovery |

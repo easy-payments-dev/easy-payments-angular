@@ -60,7 +60,7 @@ Official docs:
 |----|---------------|
 | Easy Payments chrome | Yes |
 | Stripe Payment Element | Yes — Elements `locale` |
-| Affirm authorization page | Limited — Affirm’s documented page languages for US/CA are primarily English (and French for Canada). Easy Payments does **not** invent unsupported Affirm locales for `es` / `pt`. |
+| Affirm authorization page | Limited — Affirm’s documented page languages for US/CA are primarily English (and French for Canada). Easy Payments maps `[locale]="fr"` + Canada to `fr_CA`; US stays English. It does **not** invent unsupported Affirm locales for `es` / `pt`. |
 
 ## Testing
 

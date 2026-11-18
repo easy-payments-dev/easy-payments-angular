@@ -61,6 +61,7 @@ Easy Payments loads the PayPal JS SDK with:
 | `en` | `en_US` |
 | `es` | `es_ES` |
 | `pt` | `pt_BR` |
+| `fr` | `fr_FR` |
 
 Runtime locale changes unload/reload the SDK script for the new locale (no duplicate conflicting scripts).
 

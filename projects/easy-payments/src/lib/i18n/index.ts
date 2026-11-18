@@ -27,4 +27,5 @@ export { localizePaymentError } from './localize-payment-error';
 export { EasyPaymentsI18nService } from './easy-payments-i18n.service';
 export { EN_TRANSLATIONS } from './en';
 export { ES_TRANSLATIONS } from './es';
+export { FR_TRANSLATIONS } from './fr';
 export { PT_TRANSLATIONS } from './pt';

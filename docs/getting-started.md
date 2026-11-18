@@ -10,7 +10,7 @@ Upgrading from 1.1.0? See **[migration-1.1-to-1.2.md](./migration-1.1-to-1.2.md)
 
 Methods: Card · PayPal · Apple Pay · Google Pay · Klarna · Affirm. Samsung Pay is not supported.
 
-Built-in UI locales: **`auto` · `en` · `es` · `pt`**.
+Built-in UI locales: **`auto` · `en` · `es` · `pt` · `fr`**.
 
 You mainly:
 
@@ -291,7 +291,7 @@ export class AppComponent {
 | `appearance` | `'default' \| 'transparent'` |
 | `maxWidth` | Default `640`, clamped 320–1200 |
 | `successBehavior` | `'confirmation' \| 'event-only'` |
-| `locale` | `'auto' \| 'en' \| 'es' \| 'pt'` (default `auto`) |
+| `locale` | `'auto' \| 'en' \| 'es' \| 'pt' \| 'fr'` (default `auto`) |
 | `translations` | Partial string overrides |
 
 | Output | Notes |
@@ -383,7 +383,7 @@ export class AppComponent {
 ## Localization
 
 - Default `locale="auto"` follows the browser language when possible.
-- Force a language with `locale="en"`, `locale="es"`, or `locale="pt"`.
+- Force a language with `locale="en"`, `locale="es"`, `locale="pt"`, or `locale="fr"`.
 - Override individual strings with `[translations]`.
 - Locale formats money for **display only** — it does **not** convert currency.
 

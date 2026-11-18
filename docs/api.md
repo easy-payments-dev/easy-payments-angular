@@ -26,7 +26,7 @@ Standalone component. Selector: `easy-payments`.
 | `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | No | see [Selector labels](#selector-labels) | Optional plain-text overrides for Full Checkout method tiles (`card`, `usBankAccount`, …). Blank/omitted keys keep localized defaults. Accessible names follow the visible label. Does not change confirm CTAs. |
 | `maxWidth` | `number \| string \| null \| undefined` | `640` | No | clamped to **320–1200** px | Max checkout width. Component stays `width: 100%` up to this cap. Invalid values fall back to `640`. |
 | `successBehavior` | `CheckoutSuccessBehavior` | `'confirmation'` | No | `confirmation`, `event-only` | Built-in success UI vs emit-only. Overridden by `checkout.successBehavior` when set. |
-| `locale` | `EasyPaymentsLocale` | `'auto'` | No | `auto`, `en`, `es`, `pt` | UI locale. `auto` detects from the browser (`es-*`→es, `pt-*`→pt, `en-*`→en, else English). See [localization.md](./localization.md). |
+| `locale` | `EasyPaymentsLocale` | `'auto'` | No | `auto`, `en`, `es`, `pt`, `fr` | UI locale. `auto` detects from the browser (`es-*`→es, `pt-*`→pt, `fr-*`→fr, `en-*`→en, else English). See [localization.md](./localization.md). |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | partial dictionary keys | Partial overrides for Easy Payments-owned strings. Priority: override → locale dictionary → English. |
 
 #### Selector labels
@@ -275,7 +275,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip layout plus optional library-selector chrome (`selectorBackgroundColor`, `selectorTextColor`, font, padding, hover/selected/disabled/loading/focus, `selectorLabels`, `showSelectorIcon`). Official PayPal / Google Pay / Apple Pay buttons are not restyled. See [Button customization](#buttons-only-button-customization). |
 | `selectorVisibility` | `'library' \| 'merchant'` | `'library'` | No | `merchant` hides Card / Klarna / Affirm selectors so the host calls `requestPayment(method)`. Wallet SDK slots stay visible. |
 | `theme` | `PaymentTheme` | `'system'` | No | `light` \| `dark` \| `system`. |
-| `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `auto` (same resolver as checkout). French (`fr`) is planned for Phase 5 — not implemented yet. |
+| `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `fr` \| `auto` (same resolver as checkout). |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens (including theme `--ep-cta-*` used by Klarna/Affirm confirm CTAs). Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
 | `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button only (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |

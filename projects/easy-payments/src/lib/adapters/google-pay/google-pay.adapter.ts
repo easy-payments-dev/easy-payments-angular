@@ -195,7 +195,7 @@ export class GooglePayAdapter extends BaseProviderAdapter {
     options: {
       theme: ResolvedPaymentTheme;
       onClick: () => void | Promise<void>;
-      /** ISO 639-1 button locale (en / es / pt). Affects button text only. */
+      /** ISO 639-1 button locale (en / es / pt / fr). Affects button text only. */
       buttonLocale?: string;
       /**
        * Buttons Only strip: official logo-only button for a compact footprint.

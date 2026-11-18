@@ -8,7 +8,7 @@ import type { EasyPaymentsLocale } from '@easy-payments/angular';
 
 export const DEMO_LOCALE_STORAGE_KEY = 'easy-payments-demo-locale';
 
-const ALLOWED: readonly EasyPaymentsLocale[] = ['auto', 'en', 'es', 'pt'];
+const ALLOWED: readonly EasyPaymentsLocale[] = ['auto', 'en', 'es', 'pt', 'fr'];
 
 export function readPersistedDemoLocale(storage?: Storage): EasyPaymentsLocale | null {
   const store =
