@@ -171,6 +171,40 @@ Same shape as Klarna with `"provider": "affirm"`. Catalog-priced. Optional metad
 
 ---
 
+### Link (Stripe Express Checkout)
+
+`POST /api/payments/link/create` → **201**
+
+```json
+{
+  "provider": "link",
+  "productId": "premium-plan",
+  "quantity": 1,
+  "currency": "USD"
+}
+```
+
+Catalog-priced. Creates a PaymentIntent with `payment_method_types: ['link', 'card']` (Stripe requires both). Response: `{ provider: 'link', clientSecret, paymentIntentId? }`.
+
+---
+
+### Amazon Pay (Stripe Express Checkout)
+
+`POST /api/payments/amazon-pay/create` → **201**
+
+```json
+{
+  "provider": "amazonPay",
+  "productId": "premium-plan",
+  "quantity": 1,
+  "currency": "USD"
+}
+```
+
+Catalog-priced. Creates a PaymentIntent with `payment_method_types: ['amazon_pay']`. Response: `{ provider: 'amazonPay', clientSecret, paymentIntentId? }`. Enable Amazon Pay in the Dashboard and register Payment Method Domains before ECE checkout works.
+
+---
+
 ### Catalog (demo helper)
 
 | Method | Path | Purpose |
@@ -191,6 +225,8 @@ Not required for production merchants that already have a catalog API.
 | `paypalCaptureOrderUrl` | `/api/payments/paypal/capture` |
 | `klarnaCreatePaymentUrl` | `/api/payments/klarna/create` |
 | `affirmCreatePaymentUrl` | `/api/payments/affirm/create` |
+| `linkCreatePaymentUrl` | `/api/payments/link/create` |
+| `amazonPayCreatePaymentUrl` | `/api/payments/amazon-pay/create` |
 | `baseUrl` | Optional. Prefixes relative endpoints only. |
 
 ### `backend.baseUrl`

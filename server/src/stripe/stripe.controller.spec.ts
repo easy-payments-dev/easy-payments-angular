@@ -13,6 +13,7 @@ describe('StripeController', () => {
     createCashAppPayPaymentIntent: jest.Mock;
     createAfterpayPaymentIntent: jest.Mock;
     createLinkPaymentIntent: jest.Mock;
+    createAmazonPayPaymentIntent: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -24,6 +25,7 @@ describe('StripeController', () => {
       createCashAppPayPaymentIntent: jest.fn(),
       createAfterpayPaymentIntent: jest.fn(),
       createLinkPaymentIntent: jest.fn(),
+      createAmazonPayPaymentIntent: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -188,6 +190,27 @@ describe('StripeController', () => {
       provider: 'link',
       clientSecret: 'pi_link_secret',
       paymentIntentId: 'pi_link_1',
+    });
+  });
+
+  it('creates an Amazon Pay PaymentIntent via the dedicated endpoint', async () => {
+    service.createAmazonPayPaymentIntent.mockResolvedValue({
+      provider: 'amazonPay',
+      clientSecret: 'pi_amazon_pay_secret',
+      paymentIntentId: 'pi_amazon_pay_1',
+    });
+
+    await expect(
+      controller.createAmazonPayPaymentIntent({
+        provider: 'amazonPay',
+        productId: 'premium-plan',
+        quantity: 1,
+        currency: 'USD',
+      }),
+    ).resolves.toEqual({
+      provider: 'amazonPay',
+      clientSecret: 'pi_amazon_pay_secret',
+      paymentIntentId: 'pi_amazon_pay_1',
     });
   });
 });

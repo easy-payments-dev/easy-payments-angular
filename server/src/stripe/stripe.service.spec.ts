@@ -535,4 +535,40 @@ describe('StripeService', () => {
       }),
     );
   });
+
+  it('creates an Amazon Pay PaymentIntent with payment_method_types amazon_pay', async () => {
+    createMock.mockResolvedValue({
+      id: 'pi_amazon_pay',
+      client_secret: 'pi_amazon_pay_secret',
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StripeService, { provide: ConfigService, useValue: mockConfig() }],
+    }).compile();
+    const service = module.get(StripeService);
+
+    const result = await service.createAmazonPayPaymentIntent({
+      provider: 'amazonPay',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+
+    expect(result).toEqual({
+      provider: 'amazonPay',
+      clientSecret: 'pi_amazon_pay_secret',
+      paymentIntentId: 'pi_amazon_pay',
+    });
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 9900,
+        currency: 'usd',
+        payment_method_types: ['amazon_pay'],
+        metadata: expect.objectContaining({
+          productId: 'premium-plan',
+          paymentMethod: 'amazon-pay',
+        }),
+      }),
+    );
+  });
 });

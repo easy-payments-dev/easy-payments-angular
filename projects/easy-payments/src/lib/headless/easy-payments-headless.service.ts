@@ -17,6 +17,7 @@ import { ZipAdapter } from '../adapters/zip/zip.adapter';
 import { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { LinkAdapter } from '../adapters/link/link.adapter';
+import { AmazonPayAdapter } from '../adapters/amazon-pay/amazon-pay.adapter';
 import { UsBankAccountAdapter } from '../adapters/us-bank-account/us-bank-account.adapter';
 import { StripeRedirectRecoveryService } from '../adapters/stripe/stripe-redirect-recovery.service';
 import type { PaymentMethod } from '../models/payment-method.model';
@@ -58,6 +59,7 @@ export class EasyPaymentsHeadless {
   private readonly googlePay = inject(GooglePayAdapter);
   private readonly applePay = inject(ApplePayAdapter);
   private readonly link = inject(LinkAdapter);
+  private readonly amazonPay = inject(AmazonPayAdapter);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
 
   createSession(options: HeadlessSessionOptions): HeadlessCheckoutSession {
@@ -106,6 +108,7 @@ export class EasyPaymentsHeadless {
         googlePay: this.googlePay,
         applePay: this.applePay,
         link: this.link,
+        amazonPay: this.amazonPay,
         zip: this.zip,
         stripeRedirectRecovery: this.stripeRedirectRecovery,
       });

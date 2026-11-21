@@ -41,5 +41,9 @@ describe('selector-label helpers', () => {
     expect(resolveSelectorLabelOverride({ link: '' }, 'link')).toBeNull();
     expect(resolveSelectorLabelOverride({ link: '   ' }, 'link')).toBeNull();
     expect(resolveSelectorLabelOverride({ card: 'Credit / Debit' }, 'link')).toBeNull();
+    expect(
+      resolveSelectorLabelOverride({ amazonPay: 'Checkout with Amazon Pay' }, 'amazon-pay'),
+    ).toBe('Checkout with Amazon Pay');
+    expect(resolveSelectorLabelOverride({ amazonPay: '' }, 'amazon-pay')).toBeNull();
   });
 });

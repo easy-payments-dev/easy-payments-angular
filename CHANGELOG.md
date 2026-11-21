@@ -12,6 +12,17 @@
 - EN / ES / PT / FR library copy; locale passed to Stripe Elements
 - Angular demo includes Link; Ionic smoke includes Link for web/Test checks — native Capacitor Link confirmation not claimed as verified
 
+### Amazon Pay (opt-in)
+
+- Dedicated `'amazon-pay'` method via Stripe **Express Checkout Element** (official Amazon Pay button)
+- Explicit opt-in: `providers.amazonPay: {}` + `'amazon-pay'` in `methods` + Stripe `publishableKey` + `backend.amazonPayCreatePaymentUrl`
+- Server creates PaymentIntent with `payment_method_types: ['amazon_pay']`; catalog amount is authoritative
+- Official Amazon Pay acceptance marks on library-owned selectors; ECE button stays under Amazon/Stripe branding rules
+- Available in Full Checkout, Buttons Only (success emits once), and Headless (wallet-button; no `confirm()`)
+- EN / ES / PT / FR library copy; locale passed to Stripe Elements; errors re-localize without restarting payment
+- Requires Dashboard Amazon Pay activation + Payment Method Domains; US presentment USD (EMEA currencies per Stripe)
+- Angular demo includes Amazon Pay; Ionic/Capacitor native confirmation not claimed as verified
+
 ### Zip (experimental)
 
 - Zip US Gateway + JS SDK remains available as an **explicit opt-in** (`methods` includes `'zip'` + `providers.zip` + Zip backend URLs)

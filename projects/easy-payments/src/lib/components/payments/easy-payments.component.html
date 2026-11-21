@@ -188,6 +188,28 @@
       }
     }
 
+    @if (showAmazonPayPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!amazonPayPanelActive()"
+          [attr.aria-hidden]="!amazonPayPanelActive()"
+          [inert]="!amazonPayPanelActive()"
+        >
+          <easy-amazon-pay-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onAmazonPaySuccess($event)"
+            (cancel)="onAmazonPayCancel($event)"
+            (error)="onAmazonPayError($event)"
+            (started)="onPaymentStarted('amazon-pay')"
+            (busyChange)="onProviderBusy('amazon-pay', $event)"
+          />
+        </div>
+      }
+    }
+
     @if (showKlarnaPanel()) {
       @for (key of providerMountKeys(); track key) {
         <div

@@ -6,6 +6,7 @@ import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-accoun
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
 import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
 import { CreateLinkPaymentIntentDto } from './dto/create-link-payment-intent.dto';
+import { CreateAmazonPayPaymentIntentDto } from './dto/create-amazon-pay-payment-intent.dto';
 import { StripeService } from './stripe.service';
 
 @Controller('api/payments')
@@ -80,5 +81,15 @@ export class StripeController {
   @HttpCode(201)
   createLinkPaymentIntent(@Body() body: CreateLinkPaymentIntentDto) {
     return this.stripeService.createLinkPaymentIntent(body);
+  }
+
+  /**
+   * Amazon Pay via Stripe PaymentIntent (`payment_method_types: ['amazon_pay']`):
+   * POST http://localhost:3000/api/payments/amazon-pay/create
+   */
+  @Post('amazon-pay/create')
+  @HttpCode(201)
+  createAmazonPayPaymentIntent(@Body() body: CreateAmazonPayPaymentIntentDto) {
+    return this.stripeService.createAmazonPayPaymentIntent(body);
   }
 }

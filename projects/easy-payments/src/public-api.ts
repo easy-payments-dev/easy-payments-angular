@@ -38,6 +38,7 @@ export type {
   EasyPaymentsProviderConfig,
   GooglePayProviderConfig,
   KlarnaProviderConfig,
+  AmazonPayProviderConfig,
   LinkProviderConfig,
   PayPalProviderConfig,
   ProviderConfigStatus,
@@ -95,6 +96,7 @@ export type {
   CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
+  CreateAmazonPayPaymentResponse,
   CreateLinkPaymentResponse,
   CreatePaymentRequest,
   CreatePaymentResponse,
@@ -103,6 +105,7 @@ export type {
   CreateUsBankAccountPaymentResponse,
   CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
+  AmazonPayCreatePaymentRequest,
   LinkCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
@@ -117,6 +120,7 @@ export {
   toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
+  toAmazonPayCreatePaymentRequest,
   toLinkCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
@@ -179,6 +183,9 @@ export { ApplePayAdapter } from './lib/adapters/apple-pay/apple-pay.adapter';
 export type { ApplePayAvailabilityState } from './lib/adapters/apple-pay/apple-pay.types';
 export { LinkAdapter } from './lib/adapters/link/link.adapter';
 export type { LinkAvailabilityState } from './lib/adapters/link/link.types';
+export { AmazonPayAdapter } from './lib/adapters/amazon-pay/amazon-pay.adapter';
+export type { AmazonPayAvailabilityState } from './lib/adapters/amazon-pay/amazon-pay.types';
+export { AmazonPayPaymentComponent } from './lib/components/payment-methods/amazon-pay-payment.component';
 export type { EasyPaymentsAppearance } from './lib/models/easy-payments-appearance.model';
 export type { EasyPaymentsVisualStyle } from './lib/models/easy-payments-visual-style.model';
 

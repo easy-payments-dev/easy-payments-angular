@@ -21,6 +21,7 @@ Setup requirements for every payment method exposed by `@easy-payments/angular` 
 | `cash-app-pay` | Stripe Cash App Pay | Opt-in | Opt-in | Opt-in | [cash-app-pay.md](./providers/cash-app-pay.md) |
 | `afterpay` | Stripe Afterpay/Clearpay | Opt-in | Opt-in | Opt-in | [afterpay.md](./providers/afterpay.md) |
 | `link` | Stripe Link (Express Checkout Element) | Opt-in | Opt-in | Opt-in | [link.md](./providers/link.md) |
+| `amazon-pay` | Stripe Amazon Pay (Express Checkout Element) | Opt-in | Opt-in | Opt-in | [amazon-pay.md](./providers/amazon-pay.md) |
 | `zip` | Zip US Gateway + JS SDK (**experimental**) | Opt-in | Opt-in | Opt-in | [zip.md](./providers/zip.md) |
 
 \* Klarna and Affirm appear in the Buttons Only **default** `[methods]` list; they still need Stripe + their create URLs to become available.
@@ -234,6 +235,35 @@ provideEasyPayments({
   },
   backend: {
     linkCreatePaymentUrl: 'https://api.example.com/payments/link/create',
+  },
+});
+```
+
+---
+
+## Amazon Pay (`amazon-pay`) — opt-in
+
+| | |
+|--|--|
+| **Provider** | Stripe Express Checkout Element (official Amazon Pay button) |
+| **Modes** | Full · Buttons · Headless (`wallet-button`; **no** `confirm()`) — opt-in |
+| **Merchant** | Stripe account in a supported country; enable Amazon Pay; register Payment Method Domains |
+| **Public** | `providers.amazonPay: {}` + Stripe `publishableKey` |
+| **Server-only** | Stripe secret |
+| **Backend** | `backend.amazonPayCreatePaymentUrl` → `{ provider: 'amazonPay', clientSecret }` with PI types `['amazon_pay']` |
+| **Constraints** | Catalog amount authoritative. US presentment **USD**; EMEA currencies per Stripe. HTTPS + domain registration |
+| **Mock / sandbox / prod** | Stripe Test Amazon Pay sandbox account via ECE; HTTPS + domain registration for real ECE |
+| **Unavailable** | Hidden until configured; ECE `ready` gates the official button; `PROVIDER_UNAVAILABLE` |
+| **Guide** | [providers/amazon-pay.md](./providers/amazon-pay.md) · [Amazon Pay](https://docs.stripe.com/payments/amazon-pay) |
+
+```ts
+provideEasyPayments({
+  providers: {
+    stripe: { publishableKey: 'pk_test_...' },
+    amazonPay: {},
+  },
+  backend: {
+    amazonPayCreatePaymentUrl: 'https://api.example.com/payments/amazon-pay/create',
   },
 });
 ```

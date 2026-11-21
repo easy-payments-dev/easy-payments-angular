@@ -19,7 +19,8 @@ export function resolveSelectorLabelOverride(
       method !== 'afterpay' &&
       method !== 'venmo' &&
       method !== 'zip' &&
-      method !== 'link')
+      method !== 'link' &&
+      method !== 'amazon-pay')
   ) {
     return null;
   }
@@ -28,7 +29,9 @@ export function resolveSelectorLabelOverride(
       ? 'usBankAccount'
       : method === 'cash-app-pay'
         ? 'cashAppPay'
-        : method;
+        : method === 'amazon-pay'
+          ? 'amazonPay'
+          : method;
   return sanitizeSelectorLabel(labels[key]);
 }
 

@@ -111,6 +111,7 @@ describe('payment method presentation', () => {
       'afterpay',
       'zip',
       'link',
+      'amazon-pay',
     ]);
   });
 
@@ -124,6 +125,19 @@ describe('payment method presentation', () => {
     expect(light.markIncludesName).toBeFalse();
     expect(light.markUrl).toContain('data:image/svg+xml');
     expect(dark.markUrl).toBe(light.markUrl);
+  });
+
+  it('uses official Amazon Pay acceptance marks for light and dark themes', () => {
+    const light = getPaymentMethodPresentation('amazon-pay', 'light');
+    const dark = getPaymentMethodPresentation('amazon-pay', 'dark');
+    expect(light.label).toBe('Amazon Pay');
+    expect(dark.label).toBe('Amazon Pay');
+    expect(light.source).toBe('official-bundled');
+    expect(dark.source).toBe('official-bundled');
+    expect(light.markIncludesName).toBeTrue();
+    expect(light.markUrl).toContain('data:image/png');
+    expect(dark.markUrl).toContain('data:image/png');
+    expect(dark.markUrl).not.toBe(light.markUrl);
   });
 
   it('uses official Zip wordmarks for light and dark themes', () => {

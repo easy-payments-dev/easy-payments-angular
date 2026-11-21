@@ -141,6 +141,7 @@ export interface EasyPaymentButtonsSelectorLabels {
    * payment button branding or text inside the payment panel.
    */
   link?: string;
+  amazonPay?: string;
 }
 
 /** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay / Afterpay triggers. Wallets stay official SDK buttons. */

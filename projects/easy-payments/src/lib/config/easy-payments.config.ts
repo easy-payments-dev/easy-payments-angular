@@ -115,6 +115,18 @@ export type ZipProviderConfig = Record<string, never>;
 export type LinkProviderConfig = Record<string, never>;
 
 /**
+ * Amazon Pay via Stripe Express Checkout Element (official Amazon Pay button).
+ * Opt in with `providers.amazonPay: {}` and `'amazon-pay'` in `methods`.
+ * Requires Stripe publishableKey + backend.amazonPayCreatePaymentUrl (server creates
+ * PaymentIntent with `payment_method_types: ['amazon_pay']`).
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ *
+ * @see https://docs.stripe.com/payments/amazon-pay
+ * @see https://docs.stripe.com/elements/express-checkout-element
+ */
+export type AmazonPayProviderConfig = Record<string, never>;
+
+/**
  * Venmo via the PayPal JS SDK (`enable-funding=venmo` + official Venmo Buttons).
  * Opt in with `providers.venmo: {}` (or with sandboxBuyerCountry for sandbox).
  * Requires PayPal `clientId` + backend paypalCreateOrderUrl / paypalCaptureOrderUrl
@@ -196,6 +208,12 @@ export interface EasyPaymentsBackendConfig {
    */
   linkCreatePaymentUrl?: string;
   /**
+   * Creates an Amazon Pay Stripe PaymentIntent (`payment_method_types: ['amazon_pay']`).
+   * Returns clientSecret. Required for real Amazon Pay. Catalog amount is authoritative.
+   * Does not replace createPaymentUrl (card / Apple Pay remain card-only).
+   */
+  amazonPayCreatePaymentUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -215,6 +233,7 @@ export interface EasyPaymentsProviderConfig {
   venmo?: VenmoProviderConfig;
   zip?: ZipProviderConfig;
   link?: LinkProviderConfig;
+  amazonPay?: AmazonPayProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -240,6 +259,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   venmo: 'Venmo',
   zip: 'Zip',
   link: 'Link',
+  amazonPay: 'Amazon Pay',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -258,6 +278,8 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
     'configuration missing (requires providers.venmo + PayPal clientId + paypal create/capture URLs)',
   zip: 'configuration missing (requires providers.zip + zipCreateCheckoutUrl + zipVerifyReturnUrl)',
   link: 'configuration missing (requires Stripe publishableKey + linkCreatePaymentUrl)',
+  amazonPay:
+    'configuration missing (requires Stripe publishableKey + amazonPayCreatePaymentUrl)',
 };
 
 export type ProviderConfigStatus =

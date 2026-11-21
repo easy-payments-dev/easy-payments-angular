@@ -53,7 +53,8 @@
             slot.kind === 'cash-app-pay-selector' ||
             slot.kind === 'afterpay-selector' ||
             slot.kind === 'zip-selector' ||
-            slot.kind === 'link-selector')
+            slot.kind === 'link-selector' ||
+            slot.kind === 'amazon-pay-selector')
         ) {
           <button
             type="button"
@@ -542,6 +543,44 @@
         [isMock]="true"
         [loading]="processingMethod() === 'link'"
         (pay)="onMockLinkPay()"
+      />
+    </section>
+  }
+
+  @if (showAmazonPayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-amazon-pay-panel"
+      [attr.aria-label]="msgs().amazonPayPaymentRegionAria"
+    >
+      <easy-amazon-pay-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onAmazonPayStarted()"
+        (busyChange)="onAmazonPayBusy($event)"
+        (success)="onAmazonPaySuccess($event)"
+        (cancel)="onAmazonPayCancel($event)"
+        (error)="onAmazonPayError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockAmazonPayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-amazon-pay-mock-panel"
+      [attr.aria-label]="msgs().amazonPayPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="amazon-pay"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'amazon-pay'"
+        (pay)="onMockAmazonPayPay()"
       />
     </section>
   }

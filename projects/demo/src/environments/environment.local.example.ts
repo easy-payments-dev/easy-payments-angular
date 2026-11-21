@@ -26,6 +26,7 @@ export const environment = {
   cashAppPayCreatePaymentUrl: '/api/payments/cash-app-pay/create',
   afterpayCreatePaymentUrl: '/api/payments/afterpay/create',
   linkCreatePaymentUrl: '/api/payments/link/create',
+  amazonPayCreatePaymentUrl: '/api/payments/amazon-pay/create',
   zipCreateCheckoutUrl: '/api/payments/zip/create',
   zipVerifyReturnUrl: '/api/payments/zip/verify',
   zipCaptureUrl: '/api/payments/zip/capture',
