@@ -496,7 +496,7 @@ describe('App', () => {
     );
   });
 
-  it('defaults payment methods with Card first in a six-method order', async () => {
+  it('defaults demo methods without experimental Zip and keeps Card first', async () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     app.setPlaygroundExperience('checkout');
@@ -508,7 +508,13 @@ describe('App', () => {
       'google-pay',
       'klarna',
       'affirm',
+      'us-bank-account',
+      'cash-app-pay',
+      'afterpay',
+      'venmo',
     ]);
+    expect(app.methods().includes('zip')).toBeFalse();
+    expect(app.methodRows().some((row) => row.method === 'zip')).toBeFalse();
     expect(app.checkoutMaxWidth()).toBe(640);
 
     await settle(fixture);
@@ -528,12 +534,12 @@ describe('App', () => {
       fixture.nativeElement.querySelectorAll('button.ep-tile') as NodeListOf<HTMLButtonElement>,
     ).map((button) => (button.getAttribute('aria-label') ?? '').replace(/,.*/, ''));
 
-    expect(labels).toEqual(['Card', 'PayPal', 'Apple Pay', 'Google Pay', 'Klarna', 'Affirm']);
-    expect(labels[0]).toBe('Card');
+    expect(labels[0]).toMatch(/^(Card|Credit \/ Debit)$/);
+    expect(labels).not.toContain('Zip');
     expect(
       (fixture.nativeElement.querySelector('button.ep-tile[aria-checked="true"]') as HTMLButtonElement)
         ?.getAttribute('aria-label') ?? '',
-    ).toContain('Card');
+    ).toMatch(/Card|Credit \/ Debit/);
   });
 
   it('updates the checkout maxWidth control live', async () => {

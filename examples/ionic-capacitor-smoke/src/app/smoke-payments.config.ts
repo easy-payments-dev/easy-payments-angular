@@ -104,17 +104,4 @@ export function resolveSmokeCheckoutOptions(): CheckoutOptions | undefined {
 }
 
 export { SMOKE_PRODUCT } from './smoke-catalog.product';
-
-export const SMOKE_METHODS = [
-  'card',
-  'paypal',
-  'apple-pay',
-  'google-pay',
-  'klarna',
-  'affirm',
-  'venmo',
-  'us-bank-account',
-  'cash-app-pay',
-  'afterpay',
-  'zip',
-] as const;
+export { SMOKE_METHODS } from './smoke-methods';
