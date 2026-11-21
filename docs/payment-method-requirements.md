@@ -20,6 +20,7 @@ Setup requirements for every payment method exposed by `@easy-payments/angular` 
 | `us-bank-account` | Stripe ACH | Opt-in | Opt-in | Opt-in | [us-bank-account.md](./providers/us-bank-account.md) |
 | `cash-app-pay` | Stripe Cash App Pay | Opt-in | Opt-in | Opt-in | [cash-app-pay.md](./providers/cash-app-pay.md) |
 | `afterpay` | Stripe Afterpay/Clearpay | Opt-in | Opt-in | Opt-in | [afterpay.md](./providers/afterpay.md) |
+| `link` | Stripe Link (Express Checkout Element) | Opt-in | Opt-in | Opt-in | [link.md](./providers/link.md) |
 | `zip` | Zip US Gateway + JS SDK (**experimental**) | Opt-in | Opt-in | Opt-in | [zip.md](./providers/zip.md) |
 
 \* Klarna and Affirm appear in the Buttons Only **default** `[methods]` list; they still need Stripe + their create URLs to become available.
@@ -207,6 +208,35 @@ providers: {
 | **Mock / sandbox / prod** | Stripe Test Afterpay |
 | **Unavailable** | Hidden; `PROVIDER_MISCONFIGURED` |
 | **Guide** | [providers/afterpay.md](./providers/afterpay.md) · [Stripe Afterpay](https://docs.stripe.com/payments/afterpay-clearpay) |
+
+---
+
+## Link (`link`) — opt-in
+
+| | |
+|--|--|
+| **Provider** | Stripe Express Checkout Element (official Link button) |
+| **Modes** | Full · Buttons · Headless (`wallet-button`; **no** `confirm()`) — opt-in |
+| **Merchant** | Stripe; enable Link; register Payment Method Domains |
+| **Public** | `providers.link: {}` + Stripe `publishableKey` |
+| **Server-only** | Stripe secret |
+| **Backend** | `backend.linkCreatePaymentUrl` → `{ provider: 'link', clientSecret }` with PI types `['link','card']` |
+| **Constraints** | Catalog amount authoritative. Card PE keeps `wallets.link: 'never'` so Link is not duplicated when both methods are enabled |
+| **Mock / sandbox / prod** | Stripe Test Link; HTTPS + domain registration for real ECE |
+| **Unavailable** | Hidden until ECE `ready` reports Link; `PROVIDER_UNAVAILABLE` |
+| **Guide** | [providers/link.md](./providers/link.md) · [Link in ECE](https://docs.stripe.com/payments/link/express-checkout-element-link) |
+
+```ts
+provideEasyPayments({
+  providers: {
+    stripe: { publishableKey: 'pk_test_...' },
+    link: {},
+  },
+  backend: {
+    linkCreatePaymentUrl: 'https://api.example.com/payments/link/create',
+  },
+});
+```
 
 ---
 

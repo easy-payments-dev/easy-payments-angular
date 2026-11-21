@@ -1769,6 +1769,127 @@ describe('EasyPaymentsComponent', () => {
       expect(byVisible('Cartão')?.getAttribute('aria-label')).toContain('Cartão');
     });
 
+    it('shows Link selector label override with official mark and default fallback', async () => {
+      fixture.destroy();
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [EasyPaymentsComponent],
+        providers: [
+          provideEasyPayments({
+            enableMockMode: true,
+            providers: { link: {} },
+          }),
+          { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        ],
+      }).compileComponents();
+      TestBed.inject(MockPaymentController).reset();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+      fixture = TestBed.createComponent(EasyPaymentsComponent);
+      fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+      fixture.componentRef.setInput('methods', ['card', 'link']);
+      fixture.componentRef.setInput('locale', 'en');
+      fixture.componentRef.setInput('selectorLabels', null);
+      await render(fixture);
+
+      const tiles = () =>
+        Array.from(
+          fixture.nativeElement.querySelectorAll('button.ep-tile'),
+        ) as HTMLButtonElement[];
+      const linkTile = () =>
+        tiles().find((btn) =>
+          (btn.getAttribute('aria-label') ?? '').includes('Pay with Link'),
+        );
+
+      expect(linkTile()?.querySelector('.ep-tile__label')?.textContent?.trim()).toBe(
+        'Pay with Link',
+      );
+      expect(linkTile()?.querySelector('img.ep-mark__img, .ep-mark__img')).toBeTruthy();
+
+      fixture.componentRef.setInput('locale', 'es');
+      await render(fixture);
+      const esTile = tiles().find((btn) =>
+        (btn.getAttribute('aria-label') ?? '').includes('Pagar con Link'),
+      );
+      expect(esTile?.querySelector('.ep-tile__label')?.textContent?.trim()).toBe(
+        'Pagar con Link',
+      );
+
+      fixture.componentRef.setInput('locale', 'en');
+      fixture.componentRef.setInput('selectorLabels', { link: 'Checkout with Link' });
+      await render(fixture);
+      const custom = tiles().find((btn) =>
+        (btn.getAttribute('aria-label') ?? '').includes('Checkout with Link'),
+      );
+      expect(custom?.querySelector('.ep-tile__label')?.textContent?.trim()).toBe(
+        'Checkout with Link',
+      );
+      expect(custom?.getAttribute('aria-label')).toContain('Checkout with Link');
+
+      fixture.componentRef.setInput('selectorLabels', { link: '' });
+      await render(fixture);
+      expect(linkTile()?.querySelector('.ep-tile__label')?.textContent?.trim()).toBe(
+        'Pay with Link',
+      );
+    });
+
+    it('keeps real Link in the selector without ECE ready (config availability)', async () => {
+      fixture.destroy();
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [EasyPaymentsComponent],
+        providers: [
+          provideEasyPayments({
+            enableMockMode: false,
+            providers: {
+              stripe: { publishableKey: 'pk_test_123' },
+              link: {},
+            },
+            backend: {
+              createPaymentUrl: 'https://api.example.com/payments/create',
+              linkCreatePaymentUrl: 'https://api.example.com/payments/link/create',
+            },
+          }),
+          { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        ],
+      }).compileComponents();
+      TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+      fixture = TestBed.createComponent(EasyPaymentsComponent);
+      fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+      fixture.componentRef.setInput('methods', ['card', 'link']);
+      await render(fixture);
+
+      applyInstanceAvailability(fixture, [
+        {
+          method: 'card',
+          available: true,
+          status: 'available',
+          isMock: false,
+        },
+        {
+          method: 'link',
+          available: true,
+          status: 'available',
+          isMock: false,
+        },
+      ]);
+      fixture.componentInstance.selectMethod('card');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.linkExpressInList()).toBeFalse();
+      expect(fixture.componentInstance.hasRealLinkMethod()).toBeTrue();
+      expect(fixture.componentInstance.showLinkPanel()).toBeFalse();
+      const labels = tileLabels(fixture);
+      expect(labels.some((label) => label.includes('Link'))).toBeTrue();
+      // Link is a selectable tile — not an express-in-list ECE slot.
+      expect(
+        fixture.nativeElement.querySelector('.ep-selector__express easy-link-payment'),
+      ).toBeNull();
+
+      fixture.componentInstance.selectMethod('link');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.showLinkPanel()).toBeTrue();
+    });
+
     it('does not leak English provider diagnostics into Spanish error UI', async () => {
       fixture.componentRef.setInput('locale', 'es');
       fixture.componentRef.setInput('methods', ['card']);

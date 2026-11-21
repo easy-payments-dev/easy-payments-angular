@@ -31,6 +31,34 @@ describe('EasyPaymentsConfigValidator', () => {
     expect(summary).toContain('Affirm: configured (demo mode)');
     expect(summary.join(' ')).not.toContain('pk_test_secret_value');
   });
+  it('treats Link as explicit opt-in via providers.link', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_123' } },
+        }),
+      ],
+    });
+    const validator = TestBed.inject(EasyPaymentsConfigValidator);
+
+    expect(validator.validateProvider('link', undefined).status).toBe('missing');
+    expect(validator.validateProvider('link', {}).status).toBe('configured');
+    expect(
+      validator.validateAll(['link'], {
+        providers: { stripe: { publishableKey: 'pk_test_123' }, link: {} },
+      }).find((r) => r.provider === 'link')?.status,
+    ).toBe('configured');
+    expect(
+      validator.validateAll(['card'], {
+        providers: { stripe: { publishableKey: 'pk_test_123' }, link: {} },
+      }).find((r) => r.provider === 'link')?.status,
+    ).toBe('not_requested');
+    expect(validator.formatStatusLine({ provider: 'link', status: 'missing', message: 'x' })).toContain(
+      'Link:',
+    );
+  });
+
   it('rejects Stripe secret keys in frontend configuration', () => {
     TestBed.configureTestingModule({
       providers: [

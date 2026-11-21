@@ -22,6 +22,7 @@ const ALL_PROVIDERS = [
   'afterpay',
   'venmo',
   'zip',
+  'link',
 ] as const satisfies ReadonlyArray<keyof EasyPaymentsProviderConfig>;
 
 @Injectable({ providedIn: 'root' })
@@ -166,6 +167,15 @@ export class EasyPaymentsConfigValidator {
         const cfg = providerConfig as EasyPaymentsProviderConfig['zip'];
         // Presence of the zip config object is enough to opt in.
         // zipCreateCheckoutUrl + zipVerifyReturnUrl are enforced at runtime.
+        if (!cfg || typeof cfg !== 'object') {
+          return { provider, status: 'invalid', message: required };
+        }
+        break;
+      }
+      case 'link': {
+        const cfg = providerConfig as EasyPaymentsProviderConfig['link'];
+        // Presence of the link config object opts in.
+        // Stripe publishableKey + linkCreatePaymentUrl are enforced at runtime by LinkAdapter.
         if (!cfg || typeof cfg !== 'object') {
           return { provider, status: 'invalid', message: required };
         }

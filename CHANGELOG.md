@@ -2,6 +2,16 @@
 
 ## Unreleased (1.3.0)
 
+### Stripe Link (opt-in)
+
+- Dedicated `'link'` method via Stripe **Express Checkout Element** (official Link button)
+- Explicit opt-in: `providers.link: {}` + `'link'` in `methods` + Stripe `publishableKey` + `backend.linkCreatePaymentUrl`
+- Server creates PaymentIntent with `payment_method_types: ['link', 'card']` (Stripe requires both); catalog amount is authoritative
+- Card Payment Element keeps `wallets.link: 'never'` so Link is not duplicated when both card and Link are enabled
+- Available in Full Checkout, Buttons Only, and Headless (wallet-button; no `confirm()`)
+- EN / ES / PT / FR library copy; locale passed to Stripe Elements
+- Angular demo includes Link; Ionic smoke includes Link for web/Test checks — native Capacitor Link confirmation not claimed as verified
+
 ### Zip (experimental)
 
 - Zip US Gateway + JS SDK remains available as an **explicit opt-in** (`methods` includes `'zip'` + `providers.zip` + Zip backend URLs)

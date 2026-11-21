@@ -32,8 +32,9 @@
       </p>
     } @else {
       <!--
-        Apple Pay renders Stripe's own button in its list position: tapping it opens
-        the Apple Pay sheet directly instead of selecting a tile and a second panel.
+        Apple Pay renders Stripe's own button in list position: tapping opens
+        the wallet flow directly instead of selecting a tile and a second panel.
+        Link uses a selectable tile + panel (official ECE button in the panel).
       -->
       <ng-template #applePayExpress>
         <easy-apple-pay-payment
@@ -56,7 +57,7 @@
           [theme]="resolvedTheme()"
           [disabled]="methodsLocked()"
           [selectorLabels]="selectorLabels()"
-          [expressTemplates]="applePayExpressInList() ? { 'apple-pay': applePayExpress } : {}"
+          [expressTemplates]="expressTemplatesFor(applePayExpress)"
           (methodSelect)="selectMethod($event)"
         />
       </section>
@@ -160,6 +161,28 @@
             (error)="onApplePayError($event)"
             (started)="onPaymentStarted('apple-pay')"
             (busyChange)="onProviderBusy('apple-pay', $event)"
+          />
+        </div>
+      }
+    }
+
+    @if (showLinkPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!linkPanelActive()"
+          [attr.aria-hidden]="!linkPanelActive()"
+          [inert]="!linkPanelActive()"
+        >
+          <easy-link-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            (success)="onLinkSuccess($event)"
+            (cancel)="onLinkCancel($event)"
+            (error)="onLinkError($event)"
+            (started)="onPaymentStarted('link')"
+            (busyChange)="onProviderBusy('link', $event)"
           />
         </div>
       }

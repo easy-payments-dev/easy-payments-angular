@@ -29,6 +29,8 @@ import type { GooglePayAdapter } from '../adapters/google-pay/google-pay.adapter
 import { mapGooglePayError } from '../adapters/google-pay/google-pay-error.mapper';
 import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
+import type { LinkAdapter } from '../adapters/link/link.adapter';
+import { mapLinkError } from '../adapters/link/link-error.mapper';
 import {
   isTransientStripeVerificationError,
   StripeRedirectRecoveryService,
@@ -92,6 +94,7 @@ type HeadlessMountableMethod =
   | 'venmo'
   | 'google-pay'
   | 'apple-pay'
+  | 'link'
   | 'zip';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
@@ -112,6 +115,7 @@ function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMe
     method === 'venmo' ||
     method === 'google-pay' ||
     method === 'apple-pay' ||
+    method === 'link' ||
     method === 'zip'
   );
 }
@@ -163,6 +167,7 @@ export interface HeadlessCheckoutSessionDeps {
   venmo: VenmoAdapter;
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
+  link: LinkAdapter;
   zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   stripeRedirectRecovery: StripeRedirectRecoveryService;
 }
@@ -201,6 +206,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly venmo: VenmoAdapter;
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
+  private readonly link: LinkAdapter;
   private readonly zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   private readonly stripeRedirectRecovery: StripeRedirectRecoveryService;
   private zipHostEl: HTMLElement | null = null;
@@ -274,6 +280,10 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private applePayEceMountId: string | null = null;
   private applePayAttemptAnnounced = false;
 
+  /** Ownership-scoped Link ECE mount id from {@link LinkAdapter.mountExpressCheckout}. */
+  private linkEceMountId: string | null = null;
+  private linkAttemptAnnounced = false;
+
   /**
    * DEMO surface mounted for a mock-adapter method (`enableMockMode`). Non-null only while a
    * mock mount is active; real Stripe / PayPal / wallet adapters are never used for it.
@@ -315,6 +325,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.venmo = deps.venmo;
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
+    this.link = deps.link;
     this.zip = deps.zip;
     this.stripeRedirectRecovery = deps.stripeRedirectRecovery;
     void this.translations;
@@ -449,7 +460,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", "apple-pay", and "zip".',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", "apple-pay", "link", and "zip".',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -475,10 +486,12 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
 
     const methodStatus = this._availableMethods().find((entry) => entry.method === method);
     // enableMockMode: the registered adapter is a mock. Availability comes from the mock
-    // controller, so skip the real Apple Pay ECE config gate (which would report unconfigured).
+    // controller, so skip the real Apple Pay / Link ECE config gate (which would report unconfigured).
     const isMock = isMockHeadlessStatus(methodStatus);
     if (method === 'apple-pay' && !isMock) {
       this.assertApplePayMountable(methodStatus);
+    } else if (method === 'link' && !isMock) {
+      this.assertLinkMountable(methodStatus);
     } else if (!methodStatus?.available) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
@@ -498,6 +511,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
     this.applePayAttemptAnnounced = false;
+    this.linkAttemptAnnounced = false;
     this.mockClickInFlight = false;
     await this.teardownActiveMounts();
 
@@ -526,6 +540,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
     if (method === 'apple-pay') {
       return this.mountApplePay(container, mountGen);
+    }
+    if (method === 'link') {
+      return this.mountLink(container, mountGen);
     }
 
     return this.mountStripeElement(method, container, mountGen);
@@ -1132,6 +1149,27 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
   }
 
+  private assertLinkMountable(methodStatus: HeadlessMethodStatus | undefined): void {
+    if (!this.link.isConfigured()) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Link is not available for this Headless session configuration.',
+        method: 'link',
+        provider: 'link',
+      });
+    }
+
+    const readiness = methodStatus?.readiness;
+    if (readiness === 'unavailable' || readiness === 'misconfigured') {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Link is not available for this Headless session configuration.',
+        method: 'link',
+        provider: 'link',
+      });
+    }
+  }
+
   private async mountApplePay(
     container: HTMLElement,
     mountGen: number,
@@ -1277,6 +1315,148 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
   }
 
+  private async mountLink(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    const mountId = this.linkEceMountId ?? this.link.createMountId();
+
+    try {
+      const prefersDark =
+        this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
+      const resolvedTheme = resolveHeadlessTheme(this.theme, prefersDark);
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      const elementsLocale = toStripeElementsLocale(effectiveLocale);
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'link');
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const settleOk = (): void => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        const settleErr = (error: unknown): void => {
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
+        };
+
+        void this.link
+          .mountExpressCheckout(
+            container,
+            {
+              product: this.product,
+              checkout: this.checkout,
+              theme: resolvedTheme,
+              locale: elementsLocale,
+              onReady: () => settleOk(),
+              onUnavailable: () =>
+                settleErr(
+                  new PaymentError({
+                    code: 'PROVIDER_UNAVAILABLE',
+                    message:
+                      'Link is not available in this browser or for this payment configuration.',
+                    method: 'link',
+                    provider: 'link',
+                  }),
+                ),
+              onSuccess: (result) => this.onLinkSuccess(result, mountGen),
+              onCancel: () => this.onLinkCancel(mountGen),
+              onError: (error) => {
+                if (!settled) {
+                  settleErr(error);
+                  return;
+                }
+                this.onLinkError(error, mountGen);
+              },
+              onAttempt: () => this.onLinkAttempt(mountGen),
+            },
+            mountId,
+          )
+          .then((id) => {
+            if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+              this.link.unmountExpressCheckout({ mountId: id });
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message: 'Headless checkout session was destroyed during mount().',
+                  method: 'link',
+                  provider: 'link',
+                }),
+              );
+              return;
+            }
+            this.linkEceMountId = id;
+            if (this.link.getAvailabilityStatus(this.product) === 'available') {
+              settleOk();
+            } else if (this.link.getAvailabilityStatus(this.product) === 'unavailable') {
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message:
+                    'Link is not available in this browser or for this payment configuration.',
+                  method: 'link',
+                  provider: 'link',
+                }),
+              );
+            } else if (this.link.getAvailabilityStatus(this.product) === 'error') {
+              settleErr(
+                new PaymentError({
+                  code: 'SDK_LOAD_FAILED',
+                  message: 'Failed to initialize Link.',
+                  method: 'link',
+                  provider: 'link',
+                }),
+              );
+            }
+          })
+          .catch(settleErr);
+      });
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'link');
+
+      this.linkEceMountId = mountId;
+      this.mountedMethod = 'link';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      void this.refreshAvailability().catch(() => undefined);
+
+      return this.createLinkMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.linkEceMountId ?? mountId;
+        this.linkEceMountId = null;
+        this.link.unmountExpressCheckout({
+          mountId: id,
+          preserveAvailability: true,
+        });
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'link',
+          provider: 'link',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapLinkError(error, 'SDK_LOAD_FAILED', 'Failed to initialize Link.');
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
+
   async confirm(): Promise<void> {
     this.assertNotDestroyed('confirm');
 
@@ -1343,6 +1523,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           'Apple Pay is confirmed through the official Apple Pay control, not session.confirm(). Mount Apple Pay and let the buyer authorize payment.',
         method: 'apple-pay',
         provider: 'applePay',
+      });
+    }
+
+    if (selected === 'link') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Link is confirmed through the official Link button, not session.confirm(). Mount Link and let the buyer authorize payment.',
+        method: 'link',
+        provider: 'link',
       });
     }
 
@@ -1688,6 +1878,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePayAttemptAnnounced = false;
     this.googlePayClickInFlight = false;
     this.applePayAttemptAnnounced = false;
+    this.linkAttemptAnnounced = false;
     this.mockClickInFlight = false;
     this.destroyMockSurfaceOnly();
     this._state.set('destroyed');
@@ -1712,6 +1903,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this.destroyPayPalButtonsOnly(),
         Promise.resolve(this.destroyGooglePayButtonOnly()),
         Promise.resolve(this.destroyApplePayEceOnly()),
+        Promise.resolve(this.destroyLinkEceOnly()),
       ]);
     } catch {
       // Ignore teardown failures.
@@ -2357,6 +2549,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     await this.destroyPayPalButtonsOnly();
     this.destroyGooglePayButtonOnly();
     this.destroyApplePayEceOnly();
+    this.destroyLinkEceOnly();
   }
 
   private async destroyPayPalButtonsOnly(): Promise<void> {
@@ -2380,6 +2573,17 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.applePayEceMountId = null;
     if (id) {
       this.applePay.unmountExpressCheckout({
+        mountId: id,
+        preserveAvailability: true,
+      });
+    }
+  }
+
+  private destroyLinkEceOnly(): void {
+    const id = this.linkEceMountId;
+    this.linkEceMountId = null;
+    if (id) {
+      this.link.unmountExpressCheckout({
         mountId: id,
         preserveAvailability: true,
       });
@@ -2517,6 +2721,150 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this._state() === 'destroyed' ||
         mountGen !== this.mountGeneration ||
         this.mountedMethod !== 'apple-pay'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
+  }
+
+  private createLinkMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'link',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.linkAttemptAnnounced = false;
+        if (this.linkEceMountId === mountId) {
+          this.linkEceMountId = null;
+        }
+        this.link.unmountExpressCheckout({
+          mountId,
+          preserveAvailability: true,
+        });
+      },
+    };
+  }
+
+  private onLinkAttempt(mountGen: number): void {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this._state() === 'success' ||
+      this._state() === 'pending'
+    ) {
+      return;
+    }
+
+    this._lastError.set(null);
+    this.confirmGeneration += 1;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.linkAttemptAnnounced) {
+      this.linkAttemptAnnounced = true;
+      this.emitStarted('link');
+    }
+  }
+
+  private onLinkSuccess(result: PaymentResult, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration;
+    this.linkAttemptAnnounced = false;
+
+    if (result.status === 'cancelled') {
+      this.applyPaymentResult(result, confirmGen, 'link');
+      this.restoreLinkReadyAfterTerminal(mountGen);
+      return;
+    }
+
+    if (result.status === 'success' || result.status === 'processing') {
+      this.applyPaymentResult(result, confirmGen, 'link');
+      return;
+    }
+
+    const paymentError = new PaymentError({
+      code: 'PAYMENT_FAILED',
+      message: result.message ?? 'Link payment failed.',
+      method: 'link',
+      provider: 'link',
+    });
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreLinkReadyAfterTerminal(mountGen);
+  }
+
+  private onLinkCancel(mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.linkAttemptAnnounced = false;
+    this.applyPaymentResult(
+      {
+        status: 'cancelled',
+        method: 'link',
+        provider: 'link',
+        message: 'Link was cancelled.',
+      },
+      confirmGen,
+      'link',
+    );
+    this.restoreLinkReadyAfterTerminal(mountGen);
+  }
+
+  private onLinkError(error: PaymentError, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const paymentError = normalizeError(error, {
+      method: 'link',
+      provider: 'link',
+    });
+
+    if (paymentError.code === 'PAYMENT_CANCELLED') {
+      this.onLinkCancel(mountGen);
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.linkAttemptAnnounced = false;
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreLinkReadyAfterTerminal(mountGen);
+  }
+
+  /** Official Link control stays mounted after cancel/error for another attempt. */
+  private restoreLinkReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'link'
       ) {
         return;
       }
@@ -3025,5 +3373,7 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'Google Pay';
     case 'apple-pay':
       return 'Apple Pay';
+    case 'link':
+      return 'Pay with Link';
   }
 }

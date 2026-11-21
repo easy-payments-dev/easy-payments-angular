@@ -22,12 +22,14 @@ import {
   CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
+  CreateLinkPaymentResponse,
   CreatePaymentRequest,
   CreatePayPalOrderResponse,
   CreateStripePaymentResponse,
   CreateUsBankAccountPaymentResponse,
   CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
+  LinkCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
   ZipCaptureRequest,
@@ -39,6 +41,7 @@ import {
   toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
+  toLinkCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
   toZipCreateCheckoutRequest,
@@ -75,6 +78,10 @@ export class BackendService {
 
   get cashAppPayCreatePaymentUrl(): string | undefined {
     return this.endpointUrl('cashAppPayCreatePaymentUrl');
+  }
+
+  get linkCreatePaymentUrl(): string | undefined {
+    return this.endpointUrl('linkCreatePaymentUrl');
   }
 
   /** @deprecated Prefer createPaymentUrl. Kept optional for future provider flows. */
@@ -378,6 +385,45 @@ export class BackendService {
   }
 
   /**
+   * Posts the Link create-payment wire contract (server creates ['link', 'card'] PaymentIntent).
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createLinkPayment(
+    payload: LinkCreatePaymentRequest | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateLinkPaymentResponse> {
+    const url = this.requireEndpoint(
+      'linkCreatePaymentUrl',
+      'Backend linkCreatePaymentUrl is not configured.',
+      'link',
+      'link',
+    );
+
+    const body = toLinkCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'link', 'link');
+    }
+
+    return this.postJson<CreateLinkPaymentResponse>(url, body, 'link', 'link', {
+      successMessage: 'Failed to create Link payment on backend.',
+      networkMessage: 'A network error occurred while creating the Link payment session.',
+      validate: (response) => {
+        if (
+          response?.provider !== 'link' ||
+          typeof response.clientSecret !== 'string' ||
+          !response.clientSecret.trim()
+        ) {
+          throw new PaymentError({
+            code: 'BACKEND_ERROR',
+            message: 'Invalid Link create-payment response from backend.',
+            method: 'link',
+            provider: 'link',
+          });
+        }
+      },
+    });
+  }
+
+  /**
    * Posts the Afterpay/Clearpay create-payment wire contract.
    * Forwards validated merchant metadata only. Never forwards a client amount.
    */
@@ -581,6 +627,7 @@ export class BackendService {
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
+      | 'linkCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'
@@ -600,6 +647,7 @@ export class BackendService {
       | 'affirmCreatePaymentUrl'
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
+      | 'linkCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'

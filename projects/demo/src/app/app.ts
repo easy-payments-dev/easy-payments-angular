@@ -135,6 +135,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'afterpay', enabled: true },
   // Opt-in Venmo (PayPal JS SDK funding) for Full Checkout, Buttons Only, and Headless.
   { method: 'venmo', enabled: true },
+  // Opt-in Link (Stripe Express Checkout Element) for Full Checkout, Buttons Only, and Headless.
+  { method: 'link', enabled: true },
   // Zip US remains available via explicit `methods: […, 'zip']` + providers.zip —
   // experimental until Sandbox E2E validation (not in the demo selector by default).
 ];
@@ -308,7 +310,9 @@ export class App {
   readonly appearance = signal<EasyPaymentsAppearance>('default');
   /**
    * Demo Full Checkout + Buttons Only selector label overrides.
-   * Card and US bank account are independent; blank keys keep localized defaults.
+   * Card and US bank account are independent; blank/omitted keys keep localized defaults.
+   * Link is omitted here so EN/ES/PT/FR `methodLink` defaults apply; set `link` only to
+   * demo a custom override. Stripe’s ECE button branding stays under Stripe rules.
    * Confirm CTAs stay on `[cardButtonAppearance]` and are not affected here.
    */
   readonly selectorLabels = signal<EasyPaymentButtonsSelectorLabels>({
@@ -437,6 +441,7 @@ export class App {
       usBankAccount: 'Bank account',
       klarna: 'Pay with Klarna',
       affirm: 'Pay with Affirm',
+      // link omitted — localized methodLink defaults (Pay with Link / ES/PT/FR)
     },
   };
 
@@ -1331,6 +1336,9 @@ ${cardAppearanceBlock}
               usBankAccount: {},
               cashAppPay: {},
               afterpay: {},
+              // Link via Stripe Express Checkout Element (same pk_test).
+              // Card PE keeps wallets.link: 'never' so Link is not duplicated in the card form.
+              link: {},
             }
           : {}),
         ...(this.paypalConfigReady()
@@ -1357,6 +1365,7 @@ ${cardAppearanceBlock}
         createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
         cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
         afterpayCreatePaymentUrl: environment.afterpayCreatePaymentUrl.trim(),
+        linkCreatePaymentUrl: environment.linkCreatePaymentUrl.trim(),
         zipCreateCheckoutUrl: environment.zipCreateCheckoutUrl.trim(),
         zipVerifyReturnUrl: environment.zipVerifyReturnUrl.trim(),
         zipCaptureUrl: environment.zipCaptureUrl.trim(),

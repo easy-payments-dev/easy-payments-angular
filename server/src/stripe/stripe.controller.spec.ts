@@ -12,6 +12,7 @@ describe('StripeController', () => {
     createUsBankAccountPaymentIntent: jest.Mock;
     createCashAppPayPaymentIntent: jest.Mock;
     createAfterpayPaymentIntent: jest.Mock;
+    createLinkPaymentIntent: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -22,6 +23,7 @@ describe('StripeController', () => {
       createUsBankAccountPaymentIntent: jest.fn(),
       createCashAppPayPaymentIntent: jest.fn(),
       createAfterpayPaymentIntent: jest.fn(),
+      createLinkPaymentIntent: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -165,6 +167,27 @@ describe('StripeController', () => {
       provider: 'afterpay',
       clientSecret: 'pi_afterpay_secret',
       paymentIntentId: 'pi_afterpay_1',
+    });
+  });
+
+  it('creates a Link PaymentIntent via the dedicated endpoint', async () => {
+    service.createLinkPaymentIntent.mockResolvedValue({
+      provider: 'link',
+      clientSecret: 'pi_link_secret',
+      paymentIntentId: 'pi_link_1',
+    });
+
+    await expect(
+      controller.createLinkPaymentIntent({
+        provider: 'link',
+        productId: 'premium-plan',
+        quantity: 1,
+        currency: 'USD',
+      }),
+    ).resolves.toEqual({
+      provider: 'link',
+      clientSecret: 'pi_link_secret',
+      paymentIntentId: 'pi_link_1',
     });
   });
 });

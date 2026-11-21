@@ -42,6 +42,9 @@ export function localizePaymentError(
       if (context?.method === 'apple-pay') {
         return messages.applePayUnavailable;
       }
+      if (context?.method === 'link') {
+        return messages.linkUnavailable;
+      }
       return messages.errorDetailUnavailable;
     case 'AUTHENTICATION_REQUIRED':
       return messages.errorDetailAuthRequired;

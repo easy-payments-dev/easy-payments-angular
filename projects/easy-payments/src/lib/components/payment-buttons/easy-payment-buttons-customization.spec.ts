@@ -281,6 +281,51 @@ describe('EasyPaymentButtonsComponent customization', () => {
     expect(selector('card')?.getAttribute('aria-label')).toContain('Cartão');
   });
 
+  it('applies Link selector label override with default fallback and accessible name', async () => {
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: true,
+          providers: { link: {} },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+      ],
+    }).compileComponents();
+    TestBed.inject(StripeRedirectRecoveryService).resetForTests();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card', 'link']);
+    fixture.componentRef.setInput('buttonsAppearance', { selectorLabels: null });
+    await settle();
+
+    expect(selector('link')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Pay with Link',
+    );
+    expect(selector('link')?.getAttribute('aria-label')).toContain('Pay with Link');
+    expect(selector('link')?.querySelector('.ep-payment-buttons__mark')).toBeTruthy();
+
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: { link: 'Checkout with Link' },
+    });
+    await settle();
+    expect(selector('link')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Checkout with Link',
+    );
+    expect(selector('link')?.getAttribute('aria-label')).toContain('Checkout with Link');
+
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: { link: '' },
+    });
+    await settle();
+    expect(selector('link')?.querySelector('.ep-payment-buttons__label')?.textContent?.trim()).toBe(
+      'Pay with Link',
+    );
+  });
+
   it('renders a disabled busy selector without starting a payment', async () => {
     const started: unknown[] = [];
     fixture.componentInstance.started.subscribe((value) => started.push(value));

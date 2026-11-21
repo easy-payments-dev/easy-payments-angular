@@ -110,7 +110,20 @@ describe('payment method presentation', () => {
       'cash-app-pay',
       'afterpay',
       'zip',
+      'link',
     ]);
+  });
+
+  it('uses the official Link icon mark for light and dark (label stays accessible name)', () => {
+    const light = getPaymentMethodPresentation('link', 'light');
+    const dark = getPaymentMethodPresentation('link', 'dark');
+    expect(light.label).toBe('Link');
+    expect(dark.label).toBe('Link');
+    expect(light.source).toBe('official-bundled');
+    expect(dark.source).toBe('official-bundled');
+    expect(light.markIncludesName).toBeFalse();
+    expect(light.markUrl).toContain('data:image/svg+xml');
+    expect(dark.markUrl).toBe(light.markUrl);
   });
 
   it('uses official Zip wordmarks for light and dark themes', () => {

@@ -19,7 +19,8 @@ export function isMockWalletMethod(method: PaymentMethod): boolean {
     method === 'paypal' ||
     method === 'venmo' ||
     method === 'google-pay' ||
-    method === 'apple-pay'
+    method === 'apple-pay' ||
+    method === 'link'
   );
 }
 
@@ -59,7 +60,12 @@ export function renderHeadlessMockSurface(
 ): HeadlessMockSurface {
   const { method, theme, messages, onActivate } = options;
   const doc = container.ownerDocument;
-  const label = method === 'card' ? messages.methodCard : PAYMENT_METHOD_LABELS[method];
+  const label =
+    method === 'card'
+      ? messages.methodCard
+      : method === 'link'
+        ? messages.methodLink
+        : PAYMENT_METHOD_LABELS[method];
   const dark = theme === 'dark';
   const text = dark ? '#f8fafc' : '#0f172a';
   const secondary = dark ? '#94a3b8' : '#64748b';

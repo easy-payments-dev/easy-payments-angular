@@ -135,6 +135,12 @@ export interface EasyPaymentButtonsSelectorLabels {
   venmo?: string;
   /** Optional Zip selector label (Full Checkout tiles use the official wordmark by default). */
   zip?: string;
+  /**
+   * Override for the Link selector label (Full Checkout tile / Buttons Only selector).
+   * Default localized copy is “Link”. Does not change Stripe’s Express Checkout Element
+   * payment button branding or text inside the payment panel.
+   */
+  link?: string;
 }
 
 /** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay / Afterpay triggers. Wallets stay official SDK buttons. */
