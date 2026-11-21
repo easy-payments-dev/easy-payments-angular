@@ -59,6 +59,29 @@ describe('EasyPaymentsConfigValidator', () => {
     );
   });
 
+  it('treats Amazon Pay as explicit opt-in via providers.amazonPay', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_123' } },
+        }),
+      ],
+    });
+    const validator = TestBed.inject(EasyPaymentsConfigValidator);
+
+    expect(validator.validateProvider('amazonPay', undefined).status).toBe('missing');
+    expect(validator.validateProvider('amazonPay', {}).status).toBe('configured');
+    expect(
+      validator.validateAll(['amazon-pay'], {
+        providers: { stripe: { publishableKey: 'pk_test_123' }, amazonPay: {} },
+      }).find((r) => r.provider === 'amazonPay')?.status,
+    ).toBe('configured');
+    expect(
+      validator.formatStatusLine({ provider: 'amazonPay', status: 'missing', message: 'x' }),
+    ).toContain('Amazon Pay:');
+  });
+
   it('rejects Stripe secret keys in frontend configuration', () => {
     TestBed.configureTestingModule({
       providers: [

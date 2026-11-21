@@ -333,6 +333,52 @@ export interface CreateLinkPaymentResponse {
 }
 
 /**
+ * Minimal wire contract for Amazon Pay via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface AmazonPayCreatePaymentRequest {
+  provider: 'amazonPay';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the Amazon Pay create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toAmazonPayCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): AmazonPayCreatePaymentRequest {
+  const body: AmazonPayCreatePaymentRequest = {
+    provider: 'amazonPay',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Amazon Pay create (`['amazon_pay']` Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateAmazonPayPaymentResponse {
+  provider: 'amazonPay';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
+/**
  * Minimal wire contract for Afterpay/Clearpay via Stripe create PaymentIntent.
  * Never includes a browser-controlled amount. Metadata is a validated string map.
  */
@@ -485,5 +531,6 @@ export type CreatePaymentResponse =
   | CreateUsBankAccountPaymentResponse
   | CreateCashAppPayPaymentResponse
   | CreateLinkPaymentResponse
+  | CreateAmazonPayPaymentResponse
   | CreateAfterpayPaymentResponse
   | CreateZipCheckoutResponse;

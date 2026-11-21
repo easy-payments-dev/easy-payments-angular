@@ -19,6 +19,7 @@ export interface EasyPaymentsTranslations {
   methodVenmo: string;
   methodZip: string;
   methodLink: string;
+  methodAmazonPay: string;
 
   orderTotal: string;
   quantityPrefix: string;
@@ -90,6 +91,7 @@ export interface EasyPaymentsTranslations {
   venmoPaymentRegionAria: string;
   zipPaymentRegionAria: string;
   linkPaymentRegionAria: string;
+  amazonPayPaymentRegionAria: string;
   demoWalletButtonAria: string;
 
   payWithCard: string;
@@ -132,6 +134,13 @@ export interface EasyPaymentsTranslations {
   linkUnavailable: string;
   processingLink: string;
   linkCheckoutAria: string;
+
+  payWithAmazonPay: string;
+  secureCheckoutAmazonPay: string;
+  preparingAmazonPay: string;
+  amazonPayUnavailable: string;
+  processingAmazonPay: string;
+  amazonPayCheckoutAria: string;
 
   payWithKlarna: string;
   secureCheckoutKlarna: string;

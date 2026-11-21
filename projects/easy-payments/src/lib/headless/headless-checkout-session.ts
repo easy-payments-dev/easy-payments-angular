@@ -31,6 +31,8 @@ import type { ApplePayAdapter } from '../adapters/apple-pay/apple-pay.adapter';
 import { mapApplePayError } from '../adapters/apple-pay/apple-pay-error.mapper';
 import type { LinkAdapter } from '../adapters/link/link.adapter';
 import { mapLinkError } from '../adapters/link/link-error.mapper';
+import type { AmazonPayAdapter } from '../adapters/amazon-pay/amazon-pay.adapter';
+import { mapAmazonPayError } from '../adapters/amazon-pay/amazon-pay-error.mapper';
 import {
   isTransientStripeVerificationError,
   StripeRedirectRecoveryService,
@@ -95,6 +97,7 @@ type HeadlessMountableMethod =
   | 'google-pay'
   | 'apple-pay'
   | 'link'
+  | 'amazon-pay'
   | 'zip';
 
 function isStripeElementMethod(method: PaymentMethod): method is HeadlessStripeElementMethod {
@@ -116,6 +119,7 @@ function isMountableMethod(method: PaymentMethod): method is HeadlessMountableMe
     method === 'google-pay' ||
     method === 'apple-pay' ||
     method === 'link' ||
+    method === 'amazon-pay' ||
     method === 'zip'
   );
 }
@@ -168,6 +172,7 @@ export interface HeadlessCheckoutSessionDeps {
   googlePay: GooglePayAdapter;
   applePay: ApplePayAdapter;
   link: LinkAdapter;
+  amazonPay: AmazonPayAdapter;
   zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   stripeRedirectRecovery: StripeRedirectRecoveryService;
 }
@@ -207,6 +212,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   private readonly googlePay: GooglePayAdapter;
   private readonly applePay: ApplePayAdapter;
   private readonly link: LinkAdapter;
+  private readonly amazonPay: AmazonPayAdapter;
   private readonly zip: import('../adapters/zip/zip.adapter').ZipAdapter;
   private readonly stripeRedirectRecovery: StripeRedirectRecoveryService;
   private zipHostEl: HTMLElement | null = null;
@@ -283,6 +289,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
   /** Ownership-scoped Link ECE mount id from {@link LinkAdapter.mountExpressCheckout}. */
   private linkEceMountId: string | null = null;
   private linkAttemptAnnounced = false;
+  private amazonPayEceMountId: string | null = null;
+  private amazonPayAttemptAnnounced = false;
 
   /**
    * DEMO surface mounted for a mock-adapter method (`enableMockMode`). Non-null only while a
@@ -326,6 +334,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePay = deps.googlePay;
     this.applePay = deps.applePay;
     this.link = deps.link;
+    this.amazonPay = deps.amazonPay;
     this.zip = deps.zip;
     this.stripeRedirectRecovery = deps.stripeRedirectRecovery;
     void this.translations;
@@ -460,7 +469,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw new PaymentError({
         code: 'PROVIDER_NOT_IMPLEMENTED',
         message:
-          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", "apple-pay", "link", and "zip".',
+          'Headless mount currently supports "card", "klarna", "affirm", "paypal", "venmo", "google-pay", "apple-pay", "link", "amazon-pay", and "zip".',
         method,
         provider: PAYMENT_METHOD_PROVIDER_MAP[method],
       });
@@ -492,6 +501,8 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       this.assertApplePayMountable(methodStatus);
     } else if (method === 'link' && !isMock) {
       this.assertLinkMountable(methodStatus);
+    } else if (method === 'amazon-pay' && !isMock) {
+      this.assertAmazonPayMountable(methodStatus);
     } else if (!methodStatus?.available) {
       throw new PaymentError({
         code: 'PROVIDER_UNAVAILABLE',
@@ -512,6 +523,7 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.googlePayClickInFlight = false;
     this.applePayAttemptAnnounced = false;
     this.linkAttemptAnnounced = false;
+    this.amazonPayAttemptAnnounced = false;
     this.mockClickInFlight = false;
     await this.teardownActiveMounts();
 
@@ -543,6 +555,9 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     }
     if (method === 'link') {
       return this.mountLink(container, mountGen);
+    }
+    if (method === 'amazon-pay') {
+      return this.mountAmazonPay(container, mountGen);
     }
 
     return this.mountStripeElement(method, container, mountGen);
@@ -1169,6 +1184,26 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       });
     }
   }
+  private assertAmazonPayMountable(methodStatus: HeadlessMethodStatus | undefined): void {
+    if (!this.amazonPay.isConfigured()) {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Amazon Pay is not available for this Headless session configuration.',
+        method: 'amazon-pay',
+        provider: 'amazonPay',
+      });
+    }
+
+    const readiness = methodStatus?.readiness;
+    if (readiness === 'unavailable' || readiness === 'misconfigured') {
+      throw new PaymentError({
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Amazon Pay is not available for this Headless session configuration.',
+        method: 'amazon-pay',
+        provider: 'amazonPay',
+      });
+    }
+  }
 
   private async mountApplePay(
     container: HTMLElement,
@@ -1456,6 +1491,147 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       throw paymentError;
     }
   }
+  private async mountAmazonPay(
+    container: HTMLElement,
+    mountGen: number,
+  ): Promise<HeadlessMountHandle> {
+    const mountId = this.amazonPayEceMountId ?? this.amazonPay.createMountId();
+
+    try {
+      const prefersDark =
+        this.browser.matchMedia('(prefers-color-scheme: dark)')?.matches ?? false;
+      const resolvedTheme = resolveHeadlessTheme(this.theme, prefersDark);
+      const effectiveLocale = resolveEffectiveLocale(this.locale);
+      const elementsLocale = toStripeElementsLocale(effectiveLocale);
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'amazon-pay');
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const settleOk = (): void => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        const settleErr = (error: unknown): void => {
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
+        };
+
+        void this.amazonPay
+          .mountExpressCheckout(
+            container,
+            {
+              product: this.product,
+              checkout: this.checkout,
+              theme: resolvedTheme,
+              locale: elementsLocale,
+              onReady: () => settleOk(),
+              onUnavailable: () =>
+                settleErr(
+                  new PaymentError({
+                    code: 'PROVIDER_UNAVAILABLE',
+                    message:
+                      'Amazon Pay is not available in this browser or for this payment configuration.',
+                    method: 'amazon-pay',
+                    provider: 'amazonPay',
+                  }),
+                ),
+              onSuccess: (result) => this.onAmazonPaySuccess(result, mountGen),
+              onCancel: () => this.onAmazonPayCancel(mountGen),
+              onError: (error) => {
+                if (!settled) {
+                  settleErr(error);
+                  return;
+                }
+                this.onAmazonPayError(error, mountGen);
+              },
+              onAttempt: () => this.onAmazonPayAttempt(mountGen),
+            },
+            mountId,
+          )
+          .then((id) => {
+            if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+              this.amazonPay.unmountExpressCheckout({ mountId: id });
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message: 'Headless checkout session was destroyed during mount().',
+                  method: 'amazon-pay',
+                  provider: 'amazonPay',
+                }),
+              );
+              return;
+            }
+            this.amazonPayEceMountId = id;
+            if (this.amazonPay.getAvailabilityStatus(this.product) === 'available') {
+              settleOk();
+            } else if (this.amazonPay.getAvailabilityStatus(this.product) === 'unavailable') {
+              settleErr(
+                new PaymentError({
+                  code: 'PROVIDER_UNAVAILABLE',
+                  message:
+                    'Amazon Pay is not available in this browser or for this payment configuration.',
+                  method: 'amazon-pay',
+                  provider: 'amazonPay',
+                }),
+              );
+            } else if (this.amazonPay.getAvailabilityStatus(this.product) === 'error') {
+              settleErr(
+                new PaymentError({
+                  code: 'SDK_LOAD_FAILED',
+                  message: 'Failed to initialize Amazon Pay.',
+                  method: 'amazon-pay',
+                  provider: 'amazonPay',
+                }),
+              );
+            }
+          })
+          .catch(settleErr);
+      });
+
+      this.throwIfDestroyedOrMountStale(mountGen, 'mount', 'amazon-pay');
+
+      this.amazonPayEceMountId = mountId;
+      this.mountedMethod = 'amazon-pay';
+      this._lastError.set(null);
+      if (this._state() === 'error' || this._state() === 'cancelled' || this._state() === 'success') {
+        this._state.set('ready');
+      }
+
+      void this.refreshAvailability().catch(() => undefined);
+
+      return this.createAmazonPayMountHandle(mountGen, mountId);
+    } catch (error) {
+      if (this._state() !== 'destroyed' && mountGen === this.mountGeneration) {
+        this.mountedMethod = null;
+        const id = this.amazonPayEceMountId ?? mountId;
+        this.amazonPayEceMountId = null;
+        this.amazonPay.unmountExpressCheckout({
+          mountId: id,
+          preserveAvailability: true,
+        });
+      }
+      if (this._state() === 'destroyed') {
+        throw new PaymentError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Headless checkout session was destroyed during mount().',
+          method: 'amazon-pay',
+          provider: 'amazonPay',
+        });
+      }
+      const paymentError =
+        error instanceof PaymentError
+          ? error
+          : mapAmazonPayError(error, 'SDK_LOAD_FAILED', 'Failed to initialize Amazon Pay.');
+      this._lastError.set(paymentError);
+      this.emitError(paymentError);
+      throw paymentError;
+    }
+  }
 
   async confirm(): Promise<void> {
     this.assertNotDestroyed('confirm');
@@ -1533,6 +1709,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
           'Link is confirmed through the official Link button, not session.confirm(). Mount Link and let the buyer authorize payment.',
         method: 'link',
         provider: 'link',
+      });
+    }
+
+    if (selected === 'amazon-pay') {
+      throw new PaymentError({
+        code: 'CONFIG_INVALID',
+        message:
+          'Amazon Pay is confirmed through the official Amazon Pay button, not session.confirm(). Mount Amazon Pay and let the buyer authorize payment.',
+        method: 'amazon-pay',
+        provider: 'amazonPay',
       });
     }
 
@@ -2589,6 +2775,16 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       });
     }
   }
+  private destroyAmazonPayEceOnly(): void {
+    const id = this.amazonPayEceMountId;
+    this.amazonPayEceMountId = null;
+    if (id) {
+      this.amazonPay.unmountExpressCheckout({
+        mountId: id,
+        preserveAvailability: true,
+      });
+    }
+  }
 
   private createApplePayMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
     let unmounted = false;
@@ -2762,6 +2958,34 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       },
     };
   }
+  private createAmazonPayMountHandle(mountGen: number, mountId: string): HeadlessMountHandle {
+    let unmounted = false;
+    return {
+      method: 'amazon-pay',
+      unmount: () => {
+        if (unmounted) {
+          return;
+        }
+        unmounted = true;
+        if (this._state() === 'destroyed') {
+          return;
+        }
+        if (mountGen !== this.mountGeneration) {
+          return;
+        }
+        this.mountGeneration += 1;
+        this.mountedMethod = null;
+        this.amazonPayAttemptAnnounced = false;
+        if (this.amazonPayEceMountId === mountId) {
+          this.amazonPayEceMountId = null;
+        }
+        this.amazonPay.unmountExpressCheckout({
+          mountId,
+          preserveAvailability: true,
+        });
+      },
+    };
+  }
 
   private onLinkAttempt(mountGen: number): void {
     if (
@@ -2781,6 +3005,26 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     if (!this.linkAttemptAnnounced) {
       this.linkAttemptAnnounced = true;
       this.emitStarted('link');
+    }
+  }
+  private onAmazonPayAttempt(mountGen: number): void {
+    if (
+      this._state() === 'destroyed' ||
+      mountGen !== this.mountGeneration ||
+      this._state() === 'success' ||
+      this._state() === 'pending'
+    ) {
+      return;
+    }
+
+    this._lastError.set(null);
+    this.confirmGeneration += 1;
+    this.terminalEmittedForConfirm = 0;
+    this._state.set('processing');
+
+    if (!this.amazonPayAttemptAnnounced) {
+      this.amazonPayAttemptAnnounced = true;
+      this.emitStarted('amazon-pay');
     }
   }
 
@@ -2814,6 +3058,36 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.emitTerminalError(paymentError, confirmGen);
     this.restoreLinkReadyAfterTerminal(mountGen);
   }
+  private onAmazonPaySuccess(result: PaymentResult, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration;
+    this.amazonPayAttemptAnnounced = false;
+
+    if (result.status === 'cancelled') {
+      this.applyPaymentResult(result, confirmGen, 'amazon-pay');
+      this.restoreAmazonPayReadyAfterTerminal(mountGen);
+      return;
+    }
+
+    if (result.status === 'success' || result.status === 'processing') {
+      this.applyPaymentResult(result, confirmGen, 'amazon-pay');
+      return;
+    }
+
+    const paymentError = new PaymentError({
+      code: 'PAYMENT_FAILED',
+      message: result.message ?? 'Amazon Pay payment failed.',
+      method: 'amazon-pay',
+      provider: 'amazonPay',
+    });
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreAmazonPayReadyAfterTerminal(mountGen);
+  }
 
   private onLinkCancel(mountGen: number): void {
     if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
@@ -2833,6 +3107,25 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
       'link',
     );
     this.restoreLinkReadyAfterTerminal(mountGen);
+  }
+  private onAmazonPayCancel(mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.amazonPayAttemptAnnounced = false;
+    this.applyPaymentResult(
+      {
+        status: 'cancelled',
+        method: 'amazon-pay',
+        provider: 'amazonPay',
+        message: 'Amazon Pay was cancelled.',
+      },
+      confirmGen,
+      'amazon-pay',
+    );
+    this.restoreAmazonPayReadyAfterTerminal(mountGen);
   }
 
   private onLinkError(error: PaymentError, mountGen: number): void {
@@ -2857,6 +3150,28 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
     this.emitTerminalError(paymentError, confirmGen);
     this.restoreLinkReadyAfterTerminal(mountGen);
   }
+  private onAmazonPayError(error: PaymentError, mountGen: number): void {
+    if (this._state() === 'destroyed' || mountGen !== this.mountGeneration) {
+      return;
+    }
+
+    const paymentError = normalizeError(error, {
+      method: 'amazon-pay',
+      provider: 'amazonPay',
+    });
+
+    if (paymentError.code === 'PAYMENT_CANCELLED') {
+      this.onAmazonPayCancel(mountGen);
+      return;
+    }
+
+    const confirmGen = this.confirmGeneration || ++this.confirmGeneration;
+    this.amazonPayAttemptAnnounced = false;
+    this._lastError.set(paymentError);
+    this._state.set('error');
+    this.emitTerminalError(paymentError, confirmGen);
+    this.restoreAmazonPayReadyAfterTerminal(mountGen);
+  }
 
   /** Official Link control stays mounted after cancel/error for another attempt. */
   private restoreLinkReadyAfterTerminal(mountGen: number): void {
@@ -2865,6 +3180,24 @@ export class HeadlessCheckoutSessionImpl implements HeadlessCheckoutSession, Str
         this._state() === 'destroyed' ||
         mountGen !== this.mountGeneration ||
         this.mountedMethod !== 'link'
+      ) {
+        return;
+      }
+      if (
+        this._state() === 'cancelled' ||
+        this._state() === 'error' ||
+        this._state() === 'processing'
+      ) {
+        this._state.set('ready');
+      }
+    });
+  }
+  private restoreAmazonPayReadyAfterTerminal(mountGen: number): void {
+    queueMicrotask(() => {
+      if (
+        this._state() === 'destroyed' ||
+        mountGen !== this.mountGeneration ||
+        this.mountedMethod !== 'amazon-pay'
       ) {
         return;
       }
@@ -3375,5 +3708,7 @@ function methodLabel(method: HeadlessMountableMethod): string {
       return 'Apple Pay';
     case 'link':
       return 'Pay with Link';
+    case 'amazon-pay':
+      return 'Amazon Pay';
   }
 }

@@ -139,6 +139,11 @@ import { getPaymentMethodPresentation } from '../../branding/payment-method-pres
         max-width: 24px;
       }
 
+      .ep-mark[data-method='amazon-pay'] .ep-mark__img {
+        height: 22px;
+        max-width: 96px;
+      }
+
       .ep-mark__fallback {
         display: inline-flex;
         align-items: center;

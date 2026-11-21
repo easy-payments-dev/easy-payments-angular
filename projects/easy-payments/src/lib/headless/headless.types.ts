@@ -145,7 +145,7 @@ export interface HeadlessCheckoutSession {
 
   /**
    * Mount official provider UI into a merchant-owned container.
-   * Supports `card`, `klarna`, `affirm`, `us-bank-account`, `paypal`, `venmo`, `google-pay`, `apple-pay`, and `link`.
+   * Supports `card`, `klarna`, `affirm`, `us-bank-account`, `paypal`, `venmo`, `google-pay`, `apple-pay`, `link`, and `amazon-pay`.
    */
   mount(method: PaymentMethod, container: HTMLElement): Promise<HeadlessMountHandle>;
 

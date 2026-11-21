@@ -55,6 +55,8 @@ import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
 import { LinkAdapter } from '../../adapters/link/link.adapter';
 import { LinkPaymentComponent } from '../payment-methods/link-payment.component';
+import { AmazonPayAdapter } from '../../adapters/amazon-pay/amazon-pay.adapter';
+import { AmazonPayPaymentComponent } from '../payment-methods/amazon-pay-payment.component';
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
@@ -97,6 +99,7 @@ import {
     GooglePayPaymentComponent,
     ApplePayPaymentComponent,
     LinkPaymentComponent,
+    AmazonPayPaymentComponent,
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
@@ -146,6 +149,7 @@ export class EasyPaymentsComponent {
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
   private readonly applePayAdapter = inject(ApplePayAdapter);
   private readonly linkAdapter = inject(LinkAdapter);
+  private readonly amazonPayAdapter = inject(AmazonPayAdapter);
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly ngZone = inject(NgZone);
@@ -365,6 +369,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'link' && !entry.isMock),
   );
 
+  readonly hasRealAmazonPayMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'amazon-pay' && !entry.isMock),
+  );
+
   readonly hasRealKlarnaMethod = computed(() =>
     this.visibleMethods().some((entry) => entry.method === 'klarna' && !entry.isMock),
   );
@@ -414,6 +422,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'link' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'amazon-pay' && !entry.isMock) {
       return false;
     }
     if (entry.method === 'klarna' && !entry.isMock) {
@@ -509,6 +520,13 @@ export class EasyPaymentsComponent {
       this.selectedMethod() === 'link',
   );
 
+  readonly showAmazonPayPanel = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.hasRealAmazonPayMethod() &&
+      this.selectedMethod() === 'amazon-pay',
+  );
+
   readonly showKlarnaPanel = computed(
     () => this.hasRealKlarnaMethod() && this.shouldMountProviderPanel('klarna'),
   );
@@ -565,6 +583,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'link' &&
       this.hasRealLinkMethod(),
+  );
+
+  readonly amazonPayPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'amazon-pay' &&
+      this.hasRealAmazonPayMethod(),
   );
 
   readonly klarnaPanelActive = computed(
@@ -639,11 +664,14 @@ export class EasyPaymentsComponent {
     };
     const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(refreshOnWalletReady);
     const removeLinkListener = this.linkAdapter.addAvailabilityListener(refreshOnWalletReady);
+    const removeAmazonPayListener =
+      this.amazonPayAdapter.addAvailabilityListener(refreshOnWalletReady);
 
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       removeApplePayListener();
       removeLinkListener();
+      removeAmazonPayListener();
     });
 
     // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm/Cash App Pay.
@@ -697,12 +725,14 @@ export class EasyPaymentsComponent {
       this.i18n.setOverrides(this.translations());
     });
 
-    // Merchant removed apple-pay / link from allowed methods — drop preserved ECE ready state.
+    // Merchant removed apple-pay / link / amazon-pay — drop preserved ECE ready state.
     let allowedApplePay = false;
     let allowedLink = false;
+    let allowedAmazonPay = false;
     effect(() => {
       const allowsApplePay = this.methods().includes('apple-pay');
       const allowsLink = this.methods().includes('link');
+      const allowsAmazonPay = this.methods().includes('amazon-pay');
       if (allowedApplePay && !allowsApplePay) {
         const product = untracked(() => this.product());
         untracked(() => this.applePayAdapter.clearAvailability(product));
@@ -711,8 +741,13 @@ export class EasyPaymentsComponent {
         const product = untracked(() => this.product());
         untracked(() => this.linkAdapter.clearAvailability(product));
       }
+      if (allowedAmazonPay && !allowsAmazonPay) {
+        const product = untracked(() => this.product());
+        untracked(() => this.amazonPayAdapter.clearAvailability(product));
+      }
       allowedApplePay = allowsApplePay;
       allowedLink = allowsLink;
+      allowedAmazonPay = allowsAmazonPay;
     });
 
     effect(() => {
@@ -1127,6 +1162,19 @@ export class EasyPaymentsComponent {
   onLinkCancel(result: PaymentResult): void {
     this.handleCancelled(result);
   }
+
+  onAmazonPaySuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onAmazonPayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAmazonPayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
 
   onLinkError(error: PaymentError): void {
     this.handlePaymentError(error);

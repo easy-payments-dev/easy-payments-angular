@@ -16,6 +16,8 @@ npm run start:dev
 Listens on `PORT` (default **3001**). Payment endpoints:
 
 - `POST http://localhost:3001/api/payments/create`
+- `POST http://localhost:3001/api/payments/link/create`
+- `POST http://localhost:3001/api/payments/amazon-pay/create`
 - `POST http://localhost:3001/api/payments/paypal/create`
 - `POST http://localhost:3001/api/payments/paypal/capture`
 

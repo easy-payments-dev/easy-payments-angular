@@ -20,7 +20,8 @@ export function isMockWalletMethod(method: PaymentMethod): boolean {
     method === 'venmo' ||
     method === 'google-pay' ||
     method === 'apple-pay' ||
-    method === 'link'
+    method === 'link' ||
+    method === 'amazon-pay'
   );
 }
 
@@ -65,7 +66,9 @@ export function renderHeadlessMockSurface(
       ? messages.methodCard
       : method === 'link'
         ? messages.methodLink
-        : PAYMENT_METHOD_LABELS[method];
+        : method === 'amazon-pay'
+          ? messages.methodAmazonPay
+          : PAYMENT_METHOD_LABELS[method];
   const dark = theme === 'dark';
   const text = dark ? '#f8fafc' : '#0f172a';
   const secondary = dark ? '#94a3b8' : '#64748b';

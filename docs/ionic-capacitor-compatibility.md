@@ -107,6 +107,7 @@ See [iOS on macOS](#ios-on-macos-windows-cannot-run) below.
 | Klarna / Affirm / Afterpay / Cash App | Start in WebView | **Leave-app** redirect common | Return via App Links + `recoverReturn` / shared recovery — **manual** |
 | US bank account | In-WebView PE | Microdeposit / bank may leave | Async `processing` |
 | Link | Stripe ECE Link button in WebView | Same ECE as web when Link eligible | Included in smoke `SMOKE_METHODS` for web/Test; **native Capacitor Link confirmation not claimed as verified** — see [link.md](./providers/link.md) |
+| Amazon Pay | Stripe ECE Amazon Pay button in WebView | Same ECE as web when Amazon Pay eligible | **Not claimed as verified on native Capacitor** in this release — web/Test ECE mounting only until device confirmation; see [amazon-pay.md](./providers/amazon-pay.md) |
 | Zip | Pending Sandbox merchant access | Zip hosted checkout / popup | **Experimental** opt-in (not in smoke `SMOKE_METHODS`); see [zip.md](./providers/zip.md) |
 
 ## Redirects and App Links
@@ -248,5 +249,6 @@ Exact reproduce steps on a Mac with Xcode:
 - iPhone Apple Pay + Universal Link leave-app resume.
 - Zip Sandbox end-to-end (pending merchant portal credentials).
 - Native Capacitor Link (Express Checkout Element) end-to-end confirmation — only web/Test-mode ECE mounting is assumed for smoke; complete a live Link payment on device before claiming native support.
+- Native Capacitor Amazon Pay (Express Checkout Element) end-to-end confirmation — not verified on device in this release; complete a live Amazon Pay payment on device before claiming native support.
 - Production App Links domain association files (`assetlinks.json` / `apple-app-site-association`).
 - Google Pay sheet availability on a signed-in emulator / device WebView.

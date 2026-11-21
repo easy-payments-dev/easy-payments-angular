@@ -22,6 +22,7 @@ import {
   CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
+  CreateAmazonPayPaymentResponse,
   CreateLinkPaymentResponse,
   CreatePaymentRequest,
   CreatePayPalOrderResponse,
@@ -29,6 +30,7 @@ import {
   CreateUsBankAccountPaymentResponse,
   CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
+  AmazonPayCreatePaymentRequest,
   LinkCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
@@ -41,6 +43,7 @@ import {
   toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
+  toAmazonPayCreatePaymentRequest,
   toLinkCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
@@ -82,6 +85,10 @@ export class BackendService {
 
   get linkCreatePaymentUrl(): string | undefined {
     return this.endpointUrl('linkCreatePaymentUrl');
+  }
+
+  get amazonPayCreatePaymentUrl(): string | undefined {
+    return this.endpointUrl('amazonPayCreatePaymentUrl');
   }
 
   /** @deprecated Prefer createPaymentUrl. Kept optional for future provider flows. */
@@ -424,6 +431,47 @@ export class BackendService {
   }
 
   /**
+   * Posts the Amazon Pay create-payment wire contract (server creates ['amazon_pay'] PaymentIntent).
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createAmazonPayPayment(
+    payload:
+      | AmazonPayCreatePaymentRequest
+      | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateAmazonPayPaymentResponse> {
+    const url = this.requireEndpoint(
+      'amazonPayCreatePaymentUrl',
+      'Backend amazonPayCreatePaymentUrl is not configured.',
+      'amazon-pay',
+      'amazonPay',
+    );
+
+    const body = toAmazonPayCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'amazon-pay', 'amazonPay');
+    }
+
+    return this.postJson<CreateAmazonPayPaymentResponse>(url, body, 'amazon-pay', 'amazonPay', {
+      successMessage: 'Failed to create Amazon Pay payment on backend.',
+      networkMessage: 'A network error occurred while creating the Amazon Pay payment session.',
+      validate: (response) => {
+        if (
+          response?.provider !== 'amazonPay' ||
+          typeof response.clientSecret !== 'string' ||
+          !response.clientSecret.trim()
+        ) {
+          throw new PaymentError({
+            code: 'BACKEND_ERROR',
+            message: 'Invalid Amazon Pay create-payment response from backend.',
+            method: 'amazon-pay',
+            provider: 'amazonPay',
+          });
+        }
+      },
+    });
+  }
+
+  /**
    * Posts the Afterpay/Clearpay create-payment wire contract.
    * Forwards validated merchant metadata only. Never forwards a client amount.
    */
@@ -628,6 +676,7 @@ export class BackendService {
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
       | 'linkCreatePaymentUrl'
+      | 'amazonPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'
@@ -648,6 +697,7 @@ export class BackendService {
       | 'createUsBankAccountPaymentUrl'
       | 'cashAppPayCreatePaymentUrl'
       | 'linkCreatePaymentUrl'
+      | 'amazonPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'

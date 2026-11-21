@@ -137,6 +137,7 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'venmo', enabled: true },
   // Opt-in Link (Stripe Express Checkout Element) for Full Checkout, Buttons Only, and Headless.
   { method: 'link', enabled: true },
+  { method: 'amazon-pay', enabled: true },
   // Zip US remains available via explicit `methods: […, 'zip']` + providers.zip —
   // experimental until Sandbox E2E validation (not in the demo selector by default).
 ];
@@ -1339,6 +1340,8 @@ ${cardAppearanceBlock}
               // Link via Stripe Express Checkout Element (same pk_test).
               // Card PE keeps wallets.link: 'never' so Link is not duplicated in the card form.
               link: {},
+              // Amazon Pay via Stripe Express Checkout Element (same pk_test).
+              amazonPay: {},
             }
           : {}),
         ...(this.paypalConfigReady()
@@ -1366,6 +1369,7 @@ ${cardAppearanceBlock}
         cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
         afterpayCreatePaymentUrl: environment.afterpayCreatePaymentUrl.trim(),
         linkCreatePaymentUrl: environment.linkCreatePaymentUrl.trim(),
+        amazonPayCreatePaymentUrl: environment.amazonPayCreatePaymentUrl.trim(),
         zipCreateCheckoutUrl: environment.zipCreateCheckoutUrl.trim(),
         zipVerifyReturnUrl: environment.zipVerifyReturnUrl.trim(),
         zipCaptureUrl: environment.zipCaptureUrl.trim(),

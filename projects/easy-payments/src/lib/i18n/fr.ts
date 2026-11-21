@@ -19,6 +19,7 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   methodVenmo: 'Venmo',
   methodZip: 'Zip',
   methodLink: 'Payer avec Link',
+  methodAmazonPay: 'Amazon Pay',
 
   orderTotal: 'Total de la commande',
   quantityPrefix: 'Qté',
@@ -90,6 +91,7 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   venmoPaymentRegionAria: 'Paiement Venmo',
   zipPaymentRegionAria: 'Paiement Zip',
   linkPaymentRegionAria: 'Paiement Link',
+  amazonPayPaymentRegionAria: 'Paiement Amazon Pay',
   demoWalletButtonAria: '{{method}}, mode démo',
 
   payWithCard: 'Payer par carte',
@@ -135,6 +137,14 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   linkUnavailable: 'Link n’est pas disponible dans ce navigateur ou pour ce paiement.',
   processingLink: 'Traitement du paiement Link…',
   linkCheckoutAria: 'Paiement officiel Link',
+
+  payWithAmazonPay: 'Payer avec Amazon Pay',
+  secureCheckoutAmazonPay: 'Paiement sécurisé avec Amazon Pay',
+  preparingAmazonPay: 'Préparation d’Amazon Pay…',
+  amazonPayUnavailable:
+    'Amazon Pay n’est pas disponible dans ce navigateur ou pour ce paiement.',
+  processingAmazonPay: 'Traitement du paiement Amazon Pay…',
+  amazonPayCheckoutAria: 'Paiement officiel Amazon Pay',
 
   payWithKlarna: 'Payer avec Klarna',
   secureCheckoutKlarna: 'Paiement sécurisé propulsé par Klarna via Stripe',

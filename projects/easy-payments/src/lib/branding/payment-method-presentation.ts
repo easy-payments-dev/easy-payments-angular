@@ -1,6 +1,8 @@
 import { PaymentMethod, PAYMENT_METHOD_LABELS } from '../models';
 import type { ResolvedPaymentTheme } from '../models';
 import {
+  AMAZON_PAY_MARK_DARK_DATA_URI,
+  AMAZON_PAY_MARK_LIGHT_DATA_URI,
   APPLE_PAY_MARK_DATA_URI,
   GOOGLE_PAY_MARK_DATA_URI,
   LINK_ICON_MARK_DATA_URI,
@@ -238,6 +240,18 @@ export function getPaymentMethodPresentation(
           'Official Link mark from stripe-ios PaymentSheet Link/link_icon.imageset (Stripe Link brand). Green circle icon works on light and dark tiles. Real Link payment chrome stays Stripe’s Express Checkout Element button; this mark is for library-owned selectors only.',
       };
 
+    case 'amazon-pay':
+      return {
+        method,
+        label,
+        // Official Amazon Pay acceptance mark includes the brand name; omit duplicate label.
+        markIncludesName: true,
+        source: 'official-bundled',
+        markUrl: dark ? AMAZON_PAY_MARK_DARK_DATA_URI : AMAZON_PAY_MARK_LIGHT_DATA_URI,
+        notes:
+          'Official Amazon Pay acceptance marks from the Amazon Pay Markpack (Black for light tiles, White for dark). Real Amazon Pay chrome stays Stripe’s Express Checkout Element button; these marks are for library-owned selectors only.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -261,6 +275,7 @@ export function listPaymentMethodPresentations(
     'afterpay',
     'zip',
     'link',
+    'amazon-pay',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

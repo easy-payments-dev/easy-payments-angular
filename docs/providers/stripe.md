@@ -1,6 +1,6 @@
 # Stripe
 
-Card, Apple Pay, Google Pay, Klarna, Affirm, US bank account (ACH), Cash App Pay, Afterpay, and Link in Easy Payments all use **Stripe** on the provider side (PayPal is separate). Card Payment Element keeps `wallets.link: 'never'`; use the dedicated `'link'` method for the official Link Express Checkout button.
+Card, Apple Pay, Google Pay, Klarna, Affirm, US bank account (ACH), Cash App Pay, Afterpay, Link, and Amazon Pay in Easy Payments all use **Stripe** on the provider side (PayPal is separate). Card Payment Element keeps `wallets.link: 'never'`; use the dedicated `'link'` / `'amazon-pay'` methods for the official Express Checkout buttons.
 
 ## What you need
 
@@ -43,7 +43,7 @@ Demo reference: `POST /api/payments/create` (see [backend.md](../backend.md)).
 
 ### Payment Method Domains (important)
 
-Stripe requires registering the **hostname that displays checkout** for certain payment methods (Apple Pay, Google Pay, Klarna, Link, PayPal via Stripe, etc.).
+Stripe requires registering the **hostname that displays checkout** for certain payment methods (Apple Pay, Google Pay, Klarna, Link, Amazon Pay, PayPal via Stripe, etc.).
 
 Register the domain, not a full path:
 

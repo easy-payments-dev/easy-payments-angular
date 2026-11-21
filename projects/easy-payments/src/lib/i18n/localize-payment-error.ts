@@ -42,7 +42,7 @@ export function localizePaymentError(
       if (context?.method === 'apple-pay') {
         return messages.applePayUnavailable;
       }
-      if (context?.method === 'link') {
+      if (context?.method === 'link' || context?.method === 'amazon-pay') {
         return messages.linkUnavailable;
       }
       return messages.errorDetailUnavailable;

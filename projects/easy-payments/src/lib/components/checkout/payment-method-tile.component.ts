@@ -242,6 +242,9 @@ export class PaymentMethodTileComponent {
     if (method === 'link') {
       return this.msgs().methodLink;
     }
+    if (method === 'amazon-pay') {
+      return this.msgs().methodAmazonPay;
+    }
     return this.presentation().label;
   });
 
@@ -262,7 +265,9 @@ export class PaymentMethodTileComponent {
                 ? this.msgs().methodVenmo
                 : method === 'link'
                   ? this.msgs().methodLink
-                  : PAYMENT_METHOD_LABELS[method]);
+                  : method === 'amazon-pay'
+                    ? this.msgs().methodAmazonPay
+                    : PAYMENT_METHOD_LABELS[method]);
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;
