@@ -52,7 +52,8 @@
             slot.kind === 'us-bank-account-selector' ||
             slot.kind === 'cash-app-pay-selector' ||
             slot.kind === 'afterpay-selector' ||
-            slot.kind === 'zip-selector')
+            slot.kind === 'zip-selector' ||
+            slot.kind === 'link-selector')
         ) {
           <button
             type="button"
@@ -503,6 +504,44 @@
         [isMock]="true"
         [loading]="processingMethod() === 'zip'"
         (pay)="onMockZipPay()"
+      />
+    </section>
+  }
+
+  @if (showLinkPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-link-panel"
+      [attr.aria-label]="msgs().linkPaymentRegionAria"
+    >
+      <easy-link-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        (started)="onLinkStarted()"
+        (busyChange)="onLinkBusy($event)"
+        (success)="onLinkSuccess($event)"
+        (cancel)="onLinkCancel($event)"
+        (error)="onLinkError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockLinkPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-link-mock-panel"
+      [attr.aria-label]="msgs().linkPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="link"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'link'"
+        (pay)="onMockLinkPay()"
       />
     </section>
   }

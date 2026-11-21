@@ -19,6 +19,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'cash-app-pay',
   'afterpay',
   'zip',
+  'link',
 ]);
 
 export function isKnownPaymentMethod(value: string): value is PaymentMethod {
@@ -39,6 +40,7 @@ export function interactionForMethod(
       return 'venmo-buttons';
     case 'google-pay':
     case 'apple-pay':
+    case 'link':
       return 'wallet-button';
     case 'zip':
       return 'zip-checkout';

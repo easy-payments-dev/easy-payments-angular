@@ -31,7 +31,7 @@ describe('mock adapters', () => {
     await factory.initializeAdapters();
 
     const adapters = registry.getAll();
-    expect(adapters.length).toBe(11);
+    expect(adapters.length).toBe(12);
     expect(adapters.every((adapter) => adapter.isMock)).toBeTrue();
     expect(adapters.map((adapter) => adapter.provider).sort()).toEqual([
       'affirm',
@@ -40,6 +40,7 @@ describe('mock adapters', () => {
       'cashAppPay',
       'googlePay',
       'klarna',
+      'link',
       'paypal',
       'stripe',
       'usBankAccount',

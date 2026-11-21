@@ -15,6 +15,10 @@ export type {
   EasyPaymentButtonsSelectorLabels,
   EasyPaymentButtonsSelectorVisibility,
 } from './lib/models/easy-payment-buttons-appearance.model';
+export {
+  resolveSelectorLabelOverride,
+  sanitizeSelectorLabel,
+} from './lib/utils/selector-label';
 export type { EasyPaymentsCardButtonAppearance } from './lib/models/easy-payments-card-button-appearance.model';
 export {
   resolveCardButtonAppearance,
@@ -34,6 +38,7 @@ export type {
   EasyPaymentsProviderConfig,
   GooglePayProviderConfig,
   KlarnaProviderConfig,
+  LinkProviderConfig,
   PayPalProviderConfig,
   ProviderConfigStatus,
   ProviderValidationResult,
@@ -90,6 +95,7 @@ export type {
   CreateAfterpayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
+  CreateLinkPaymentResponse,
   CreatePaymentRequest,
   CreatePaymentResponse,
   CreatePayPalOrderResponse,
@@ -97,6 +103,7 @@ export type {
   CreateUsBankAccountPaymentResponse,
   CreateZipCheckoutResponse,
   KlarnaCreatePaymentRequest,
+  LinkCreatePaymentRequest,
   PayPalCreateOrderRequest,
   UsBankAccountCreatePaymentRequest,
   ZipCaptureRequest,
@@ -110,6 +117,7 @@ export {
   toAfterpayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
+  toLinkCreatePaymentRequest,
   toPayPalCreateOrderRequest,
   toUsBankAccountCreatePaymentRequest,
   toZipCreateCheckoutRequest,
@@ -169,6 +177,8 @@ export type {
 
 export { ApplePayAdapter } from './lib/adapters/apple-pay/apple-pay.adapter';
 export type { ApplePayAvailabilityState } from './lib/adapters/apple-pay/apple-pay.types';
+export { LinkAdapter } from './lib/adapters/link/link.adapter';
+export type { LinkAvailabilityState } from './lib/adapters/link/link.types';
 export type { EasyPaymentsAppearance } from './lib/models/easy-payments-appearance.model';
 export type { EasyPaymentsVisualStyle } from './lib/models/easy-payments-visual-style.model';
 

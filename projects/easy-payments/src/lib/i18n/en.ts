@@ -16,6 +16,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   methodAfterpay: 'Afterpay',
   methodVenmo: 'Venmo',
   methodZip: 'Zip',
+  methodLink: 'Pay with Link',
 
   orderTotal: 'Order total',
   quantityPrefix: 'Qty',
@@ -79,6 +80,7 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   afterpayPaymentRegionAria: 'Afterpay payment',
   venmoPaymentRegionAria: 'Venmo payment',
   zipPaymentRegionAria: 'Zip payment',
+  linkPaymentRegionAria: 'Link payment',
   demoWalletButtonAria: '{{method}}, demo mode',
 
   payWithCard: 'Pay with card',
@@ -115,6 +117,12 @@ export const EN_TRANSLATIONS: EasyPaymentsTranslations = {
   applePayUnavailable: 'Apple Pay is not available in this browser or Wallet.',
   processingApplePay: 'Processing Apple Pay payment…',
   applePayCheckoutAria: 'Apple Pay official checkout',
+  payWithLink: 'Pay with Link',
+  secureCheckoutLink: 'Secure checkout with Link',
+  preparingLink: 'Preparing Link…',
+  linkUnavailable: 'Link is not available in this browser or for this payment.',
+  processingLink: 'Processing Link payment…',
+  linkCheckoutAria: 'Link official checkout',
 
   payWithKlarna: 'Pay with Klarna',
   secureCheckoutKlarna: 'Secure checkout powered by Klarna via Stripe',

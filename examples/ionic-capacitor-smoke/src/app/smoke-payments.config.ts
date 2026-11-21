@@ -52,6 +52,7 @@ export function buildSmokePaymentsConfig(forceMock?: boolean): EasyPaymentsConfi
             usBankAccount: {},
             cashAppPay: {},
             afterpay: {},
+            link: {},
           }
         : {}),
       ...(smokeEnv.paypalClientId?.trim()
@@ -77,6 +78,7 @@ export function buildSmokePaymentsConfig(forceMock?: boolean): EasyPaymentsConfi
       createUsBankAccountPaymentUrl: smokeEnv.createUsBankAccountPaymentUrl,
       cashAppPayCreatePaymentUrl: smokeEnv.cashAppPayCreatePaymentUrl,
       afterpayCreatePaymentUrl: smokeEnv.afterpayCreatePaymentUrl,
+      linkCreatePaymentUrl: smokeEnv.linkCreatePaymentUrl,
       zipCreateCheckoutUrl: smokeEnv.zipCreateCheckoutUrl,
       zipVerifyReturnUrl: smokeEnv.zipVerifyReturnUrl,
       zipCaptureUrl: smokeEnv.zipCaptureUrl,

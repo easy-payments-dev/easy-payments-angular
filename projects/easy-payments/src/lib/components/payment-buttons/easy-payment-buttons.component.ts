@@ -58,6 +58,7 @@ import {
   type BnplReadinessResult,
 } from '../../bnpl/bnpl-direct-readiness';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { LinkAdapter } from '../../adapters/link/link.adapter';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
 import { StripeConfirmationGate } from '../../adapters/stripe/stripe-confirmation-gate';
@@ -81,6 +82,7 @@ import { StripeCardPaymentComponent } from '../payment-methods/stripe-card-payme
 import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.component';
 import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment.component';
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
+import { LinkPaymentComponent } from '../payment-methods/link-payment.component';
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
@@ -115,6 +117,7 @@ export type EasyPaymentButtonSlotKind =
   | 'cash-app-pay-selector'
   | 'afterpay-selector'
   | 'zip-selector'
+  | 'link-selector'
   | 'paypal-express'
   | 'venmo-express'
   | 'paypal-mock'
@@ -122,7 +125,8 @@ export type EasyPaymentButtonSlotKind =
   | 'google-pay-express'
   | 'google-pay-mock'
   | 'apple-pay-express'
-  | 'apple-pay-mock';
+  | 'apple-pay-mock'
+  | 'link-mock';
 
 const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'card-selector',
@@ -132,6 +136,7 @@ const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'cash-app-pay-selector',
   'afterpay-selector',
   'zip-selector',
+  'link-selector',
 ]);
 
 export interface EasyPaymentButtonSlot {
@@ -181,6 +186,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     PayPalPaymentComponent,
     GooglePayPaymentComponent,
     ApplePayPaymentComponent,
+    LinkPaymentComponent,
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
@@ -211,6 +217,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-paypal-ready]': 'hasAvailablePayPal() ? "true" : "false"',
     '[attr.data-google-pay-ready]': 'hasAvailableGooglePay() ? "true" : "false"',
     '[attr.data-apple-pay-ready]': 'hasAvailableApplePay() ? "true" : "false"',
+    '[attr.data-link-ready]': 'hasAvailableLink() ? "true" : "false"',
     '[attr.data-klarna-ready]': 'hasAvailableKlarna() ? "true" : "false"',
     '[attr.data-affirm-ready]': 'hasAvailableAffirm() ? "true" : "false"',
     '[attr.data-us-bank-account-ready]': 'hasAvailableUsBankAccount() ? "true" : "false"',
@@ -268,6 +275,7 @@ export class EasyPaymentButtonsComponent {
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly configService = inject(EasyPaymentsConfigService);
   private readonly applePayAdapter = inject(ApplePayAdapter);
+  private readonly linkAdapter = inject(LinkAdapter);
   private readonly klarnaAdapter = inject(KlarnaAdapter);
   private readonly affirmAdapter = inject(AffirmAdapter);
   private readonly usBankAccountAdapter = inject(UsBankAccountAdapter);
@@ -550,17 +558,20 @@ export class EasyPaymentButtonsComponent {
                 ? msgs.methodAfterpay
                 : method === 'venmo'
                   ? msgs.methodVenmo
-                  : brandLabel);
+                  : method === 'link'
+                    ? msgs.methodLink
+                    : brandLabel);
       // Brand marks already name the provider — never duplicate visible text.
       // Card / ACH generic icons do not include the name; show a compact label
       // so the selector stays visible in light/dark and selected states.
       // Brand marks that already name the provider (Klarna / Affirm / Afterpay) omit duplicate text.
-      // Card / ACH / Cash App Pay keep a compact label (Cash App badge is the $ plate only).
+      // Card / ACH / Cash App Pay / Link keep a compact label (Link icon is decorative).
       const showVisibleLabel =
         method === 'card' ||
         method === 'us-bank-account' ||
         method === 'cash-app-pay' ||
         method === 'venmo' ||
+        method === 'link' ||
         customLabel != null;
       const showBrandIcon = this.buttonsAppearance()?.showSelectorIcon !== false;
       return {
@@ -611,6 +622,10 @@ export class EasyPaymentButtonsComponent {
 
   readonly hasAvailableApplePay = computed(() =>
     this.methodSlots().some((slot) => slot.method === 'apple-pay' && slot.state === 'available'),
+  );
+
+  readonly hasAvailableLink = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'link' && slot.state === 'available'),
   );
 
   readonly hasAvailableKlarna = computed(() =>
@@ -795,6 +810,25 @@ export class EasyPaymentButtonsComponent {
     return !!entry && entry.isMock;
   });
 
+  readonly selectedLinkEntry = computed(() => {
+    if (this.selectedMethod() !== 'link') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'link' && entry.available) ?? null
+    );
+  });
+
+  readonly showLinkPanel = computed(() => {
+    const entry = this.selectedLinkEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockLinkPanel = computed(() => {
+    const entry = this.selectedLinkEntry();
+    return !!entry && entry.isMock;
+  });
+
   /**
    * True when at least one configured method is still loading (placeholder, not unavailable).
    */
@@ -806,8 +840,8 @@ export class EasyPaymentButtonsComponent {
     this.hostContext.kind = 'buttons';
 
     // Stripe ECE `ready` often fires outside NgZone — refresh instance availability
-    // so apple-pay slots update after wallet eligibility is known. One listener per host.
-    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(() => {
+    // so apple-pay / link slots update after wallet eligibility is known.
+    const refreshOnWalletReady = (): void => {
       this.ngZone.run(() => {
         if (this.destroyed) {
           return;
@@ -824,7 +858,9 @@ export class EasyPaymentButtonsComponent {
           // Availability refresh errors are non-fatal for button UI.
         });
       });
-    });
+    };
+    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(refreshOnWalletReady);
+    const removeLinkListener = this.linkAdapter.addAvailabilityListener(refreshOnWalletReady);
 
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
@@ -838,6 +874,7 @@ export class EasyPaymentButtonsComponent {
       void this.klarnaAdapter.destroy(this.klarnaDirectOwnerId);
       void this.affirmAdapter.destroy(this.affirmDirectOwnerId);
       removeApplePayListener();
+      removeLinkListener();
     });
 
     // Klarna/Affirm redirect return: hold the UI until the recovery service decides
@@ -903,7 +940,8 @@ export class EasyPaymentButtonsComponent {
         selected !== 'us-bank-account' &&
         selected !== 'cash-app-pay' &&
         selected !== 'afterpay' &&
-        selected !== 'zip'
+        selected !== 'zip' &&
+        selected !== 'link'
       ) {
         return;
       }
@@ -979,7 +1017,8 @@ export class EasyPaymentButtonsComponent {
       slot.kind === 'paypal-mock' ||
       slot.kind === 'venmo-mock' ||
       slot.kind === 'google-pay-mock' ||
-      slot.kind === 'apple-pay-mock'
+      slot.kind === 'apple-pay-mock' ||
+      slot.kind === 'link-mock'
     ) {
       return interpolate(msgs.demoWalletButtonAria, { method: base });
     }
@@ -1001,7 +1040,12 @@ export class EasyPaymentButtonsComponent {
     if (this.destroyed) {
       return;
     }
-    if (method === 'paypal' || method === 'venmo' || method === 'google-pay' || method === 'apple-pay') {
+    if (
+      method === 'paypal' ||
+      method === 'venmo' ||
+      method === 'google-pay' ||
+      method === 'apple-pay'
+    ) {
       this.error.emit(
         new PaymentError({
           code: 'CONFIG_INVALID',
@@ -1019,7 +1063,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
       method !== 'afterpay' &&
-      method !== 'zip'
+      method !== 'zip' &&
+      method !== 'link'
     ) {
       this.error.emit(
         new PaymentError({
@@ -1058,7 +1103,8 @@ export class EasyPaymentButtonsComponent {
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
       method !== 'afterpay' &&
-      method !== 'zip'
+      method !== 'zip' &&
+      method !== 'link'
     ) {
       return false;
     }
@@ -1341,6 +1387,27 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  onLinkStarted(): void {
+    this.updateSelectedMethod('link');
+    this.onPaymentStarted('link');
+  }
+
+  onLinkBusy(busy: boolean): void {
+    this.onProviderBusy('link', busy);
+  }
+
+  onLinkSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onLinkCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onLinkError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   async onMockCardPay(): Promise<void> {
     await this.runMockPayment('card');
   }
@@ -1415,6 +1482,14 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('apple-pay');
   }
 
+  async onMockLinkPay(): Promise<void> {
+    if (this.methodsLocked() || this.destroyed) {
+      return;
+    }
+    this.updateSelectedMethod('link');
+    await this.runMockPayment('link');
+  }
+
   private resolveSlotKind(
     method: PaymentMethod,
     state: EasyPaymentButtonSlotState,
@@ -1455,6 +1530,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'zip') {
       return 'zip-selector';
+    }
+    if (method === 'link') {
+      return 'link-selector';
     }
     if (method === 'paypal') {
       return isMock ? 'paypal-mock' : 'paypal-express';

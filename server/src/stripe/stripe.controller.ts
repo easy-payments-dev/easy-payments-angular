@@ -5,6 +5,7 @@ import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
 import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
+import { CreateLinkPaymentIntentDto } from './dto/create-link-payment-intent.dto';
 import { StripeService } from './stripe.service';
 
 @Controller('api/payments')
@@ -69,5 +70,15 @@ export class StripeController {
   @HttpCode(201)
   createAfterpayPaymentIntent(@Body() body: CreateAfterpayPaymentIntentDto) {
     return this.stripeService.createAfterpayPaymentIntent(body);
+  }
+
+  /**
+   * Link via Stripe PaymentIntent (`payment_method_types: ['link', 'card']`):
+   * POST http://localhost:3000/api/payments/link/create
+   */
+  @Post('link/create')
+  @HttpCode(201)
+  createLinkPaymentIntent(@Body() body: CreateLinkPaymentIntentDto) {
+    return this.stripeService.createLinkPaymentIntent(body);
   }
 }

@@ -16,7 +16,8 @@ describe('SMOKE_METHODS experimental Zip visibility', () => {
     expect(SMOKE_METHODS).toContain('card');
     expect(SMOKE_METHODS).toContain('venmo');
     expect(SMOKE_METHODS).toContain('afterpay');
-    expect(SMOKE_METHODS.length).toBe(10);
+    expect(SMOKE_METHODS).toContain('link');
+    expect(SMOKE_METHODS.length).toBe(11);
   });
 });
 

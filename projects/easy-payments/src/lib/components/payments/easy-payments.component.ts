@@ -53,6 +53,8 @@ import { PayPalPaymentComponent } from '../payment-methods/paypal-payment.compon
 import { GooglePayPaymentComponent } from '../payment-methods/google-pay-payment.component';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { ApplePayPaymentComponent } from '../payment-methods/apple-pay-payment.component';
+import { LinkAdapter } from '../../adapters/link/link.adapter';
+import { LinkPaymentComponent } from '../payment-methods/link-payment.component';
 import { KlarnaPaymentComponent } from '../payment-methods/klarna-payment.component';
 import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.component';
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
@@ -94,6 +96,7 @@ import {
     PayPalPaymentComponent,
     GooglePayPaymentComponent,
     ApplePayPaymentComponent,
+    LinkPaymentComponent,
     KlarnaPaymentComponent,
     AffirmPaymentComponent,
     UsBankAccountPaymentComponent,
@@ -142,6 +145,7 @@ export class EasyPaymentsComponent {
   private readonly themeService = inject(ThemeService);
   private readonly stripeRedirectRecovery = inject(StripeRedirectRecoveryService);
   private readonly applePayAdapter = inject(ApplePayAdapter);
+  private readonly linkAdapter = inject(LinkAdapter);
   private readonly i18n = inject(EasyPaymentsI18nService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly ngZone = inject(NgZone);
@@ -357,6 +361,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'apple-pay' && !entry.isMock),
   );
 
+  readonly hasRealLinkMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'link' && !entry.isMock),
+  );
+
   readonly hasRealKlarnaMethod = computed(() =>
     this.visibleMethods().some((entry) => entry.method === 'klarna' && !entry.isMock),
   );
@@ -403,6 +411,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'apple-pay' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'link' && !entry.isMock) {
       return false;
     }
     if (entry.method === 'klarna' && !entry.isMock) {
@@ -484,6 +495,20 @@ export class EasyPaymentsComponent {
       this.selectedMethod() === 'apple-pay',
   );
 
+  /**
+   * Real Link uses a selectable tile (logo + configurable label). The official
+   * Express Checkout Element Link button mounts in the payment panel when selected
+   * — same Cash App Pay pattern. ECE eligibility is not used to hide the tile.
+   */
+  readonly linkExpressInList = computed(() => false);
+
+  readonly showLinkPanel = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.hasRealLinkMethod() &&
+      this.selectedMethod() === 'link',
+  );
+
   readonly showKlarnaPanel = computed(
     () => this.hasRealKlarnaMethod() && this.shouldMountProviderPanel('klarna'),
   );
@@ -533,6 +558,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'apple-pay' &&
       this.hasRealApplePayMethod(),
+  );
+
+  readonly linkPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'link' &&
+      this.hasRealLinkMethod(),
   );
 
   readonly klarnaPanelActive = computed(
@@ -587,7 +619,7 @@ export class EasyPaymentsComponent {
   constructor() {
     // Stripe ECE `ready` often fires outside NgZone — re-enter so tile filtering updates.
     // One listener per host, so concurrent checkouts each refresh their own tiles.
-    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(() => {
+    const refreshOnWalletReady = (): void => {
       this.ngZone.run(() => {
         if (this.destroyed) {
           return;
@@ -604,11 +636,14 @@ export class EasyPaymentsComponent {
           // Availability refresh errors are non-fatal for checkout UI.
         });
       });
-    });
+    };
+    const removeApplePayListener = this.applePayAdapter.addAvailabilityListener(refreshOnWalletReady);
+    const removeLinkListener = this.linkAdapter.addAvailabilityListener(refreshOnWalletReady);
 
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       removeApplePayListener();
+      removeLinkListener();
     });
 
     // Avoid flashing fresh checkout when Stripe redirects back from Klarna/Affirm/Cash App Pay.
@@ -662,16 +697,22 @@ export class EasyPaymentsComponent {
       this.i18n.setOverrides(this.translations());
     });
 
-    // Merchant removed apple-pay from allowed methods — drop this checkout's preserved
-    // ECE ready state only (sibling hosts keep their own Apple Pay availability).
+    // Merchant removed apple-pay / link from allowed methods — drop preserved ECE ready state.
     let allowedApplePay = false;
+    let allowedLink = false;
     effect(() => {
       const allowsApplePay = this.methods().includes('apple-pay');
+      const allowsLink = this.methods().includes('link');
       if (allowedApplePay && !allowsApplePay) {
         const product = untracked(() => this.product());
         untracked(() => this.applePayAdapter.clearAvailability(product));
       }
+      if (allowedLink && !allowsLink) {
+        const product = untracked(() => this.product());
+        untracked(() => this.linkAdapter.clearAvailability(product));
+      }
       allowedApplePay = allowsApplePay;
+      allowedLink = allowsLink;
     });
 
     effect(() => {
@@ -692,10 +733,10 @@ export class EasyPaymentsComponent {
 
     effect(() => {
       this.selectionRefresh();
-      const express = this.applePayExpressInList();
+      const appleExpress = this.applePayExpressInList();
       // Express methods own their own button and are never the selected tile.
       const visible = this.visibleMethods().filter(
-        (entry) => !(express && entry.method === 'apple-pay'),
+        (entry) => !(appleExpress && entry.method === 'apple-pay'),
       );
       const current = untracked(() => this.selectedMethod());
       const state = untracked(() => this.viewState());
@@ -772,6 +813,7 @@ export class EasyPaymentsComponent {
         }
       });
     });
+
   }
 
   /**
@@ -980,6 +1022,17 @@ export class EasyPaymentsComponent {
     this.updateSelectedMethod(method);
   }
 
+  /** Builds express-template map for Apple Pay official ECE buttons in the method list. */
+  expressTemplatesFor(
+    applePayTpl: import('@angular/core').TemplateRef<unknown>,
+  ): Partial<Record<PaymentMethod, import('@angular/core').TemplateRef<unknown>>> {
+    const map: Partial<Record<PaymentMethod, import('@angular/core').TemplateRef<unknown>>> = {};
+    if (this.applePayExpressInList()) {
+      map['apple-pay'] = applePayTpl;
+    }
+    return map;
+  }
+
   isMethodLoading(method: PaymentMethod): boolean {
     return this.loading() && this.processingMethod() === method;
   }
@@ -1064,6 +1117,18 @@ export class EasyPaymentsComponent {
   }
 
   onApplePayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  onLinkSuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onLinkCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onLinkError(error: PaymentError): void {
     this.handlePaymentError(error);
   }
 

@@ -512,9 +512,11 @@ describe('App', () => {
       'cash-app-pay',
       'afterpay',
       'venmo',
+      'link',
     ]);
     expect(app.methods().includes('zip')).toBeFalse();
     expect(app.methodRows().some((row) => row.method === 'zip')).toBeFalse();
+    expect(app.methods().includes('link')).toBeTrue();
     expect(app.checkoutMaxWidth()).toBe(640);
 
     await settle(fixture);

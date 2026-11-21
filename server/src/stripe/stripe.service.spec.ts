@@ -499,4 +499,40 @@ describe('StripeService', () => {
     expect(createMock.mock.calls[1][0].metadata.customerReference).toBe('CUSTOMER-789');
     expect(createMock.mock.calls[1][0].metadata.paymentMethod).toBe('affirm');
   });
+
+  it('creates a Link PaymentIntent with payment_method_types link and card', async () => {
+    createMock.mockResolvedValue({
+      id: 'pi_link',
+      client_secret: 'pi_link_secret',
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StripeService, { provide: ConfigService, useValue: mockConfig() }],
+    }).compile();
+    const service = module.get(StripeService);
+
+    const result = await service.createLinkPaymentIntent({
+      provider: 'link',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+
+    expect(result).toEqual({
+      provider: 'link',
+      clientSecret: 'pi_link_secret',
+      paymentIntentId: 'pi_link',
+    });
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 9900,
+        currency: 'usd',
+        payment_method_types: ['link', 'card'],
+        metadata: expect.objectContaining({
+          productId: 'premium-plan',
+          paymentMethod: 'link',
+        }),
+      }),
+    );
+  });
 });

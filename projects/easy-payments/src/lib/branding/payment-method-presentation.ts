@@ -1,6 +1,10 @@
 import { PaymentMethod, PAYMENT_METHOD_LABELS } from '../models';
 import type { ResolvedPaymentTheme } from '../models';
-import { APPLE_PAY_MARK_DATA_URI, GOOGLE_PAY_MARK_DATA_URI } from './official-mark-data';
+import {
+  APPLE_PAY_MARK_DATA_URI,
+  GOOGLE_PAY_MARK_DATA_URI,
+  LINK_ICON_MARK_DATA_URI,
+} from './official-mark-data';
 
 /**
  * Internal presentation metadata for payment-method selector tiles.
@@ -221,6 +225,19 @@ export function getPaymentMethodPresentation(
           'Official Zip wordmark from zip.co brand assets (fearless logos). Black on light themes, white on dark. Accessible name remains “Zip.” Buttons Only uses the shared selector + Zip CTA with official branding.',
       };
 
+    case 'link':
+      return {
+        method,
+        label,
+        // Official green Link icon is decorative; the selector keeps a visible “Link”
+        // (or merchant override) label for accessible naming in Mock and Real.
+        markIncludesName: false,
+        source: 'official-bundled',
+        markUrl: LINK_ICON_MARK_DATA_URI,
+        notes:
+          'Official Link mark from stripe-ios PaymentSheet Link/link_icon.imageset (Stripe Link brand). Green circle icon works on light and dark tiles. Real Link payment chrome stays Stripe’s Express Checkout Element button; this mark is for library-owned selectors only.',
+      };
+
     default: {
       const _exhaustive: never = method;
       return _exhaustive;
@@ -243,6 +260,7 @@ export function listPaymentMethodPresentations(
     'cash-app-pay',
     'afterpay',
     'zip',
+    'link',
   ];
   return methods.map((method) => getPaymentMethodPresentation(method, theme));
 }

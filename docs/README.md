@@ -37,9 +37,10 @@ Start with the [Payment method requirements](./payment-method-requirements.md) m
 6. [US bank account (ACH)](./providers/us-bank-account.md) — opt-in Direct Debit (FC / Buttons / Headless)
 7. [Cash App Pay](./providers/cash-app-pay.md) — opt-in Stripe wallet (FC / Buttons / Headless)
 8. [Afterpay](./providers/afterpay.md) — opt-in Stripe BNPL / Clearpay (FC / Buttons / Headless)
-9. [PayPal](./providers/paypal.md) — JS SDK + Orders API
-10. [Venmo](./providers/venmo.md) — opt-in PayPal JS SDK funding (FC / Buttons / Headless)
-11. [Zip](./providers/zip.md) — **experimental** opt-in Zip US Gateway + JS SDK (FC / Buttons / Headless; Sandbox E2E pending)
+9. [Link](./providers/link.md) — opt-in Stripe Express Checkout Link button (FC / Buttons / Headless)
+10. [PayPal](./providers/paypal.md) — JS SDK + Orders API
+11. [Venmo](./providers/venmo.md) — opt-in PayPal JS SDK funding (FC / Buttons / Headless)
+12. [Zip](./providers/zip.md) — **experimental** opt-in Zip US Gateway + JS SDK (FC / Buttons / Headless; Sandbox E2E pending)
 
 ## Screenshots
 

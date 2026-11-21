@@ -287,6 +287,52 @@ export interface CreateCashAppPayPaymentResponse {
 }
 
 /**
+ * Minimal wire contract for Link via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface LinkCreatePaymentRequest {
+  provider: 'link';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the Link create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toLinkCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): LinkCreatePaymentRequest {
+  const body: LinkCreatePaymentRequest = {
+    provider: 'link',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Link create (`['link', 'card']` Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateLinkPaymentResponse {
+  provider: 'link';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
+/**
  * Minimal wire contract for Afterpay/Clearpay via Stripe create PaymentIntent.
  * Never includes a browser-controlled amount. Metadata is a validated string map.
  */
@@ -438,5 +484,6 @@ export type CreatePaymentResponse =
   | CreateAffirmPaymentResponse
   | CreateUsBankAccountPaymentResponse
   | CreateCashAppPayPaymentResponse
+  | CreateLinkPaymentResponse
   | CreateAfterpayPaymentResponse
   | CreateZipCheckoutResponse;

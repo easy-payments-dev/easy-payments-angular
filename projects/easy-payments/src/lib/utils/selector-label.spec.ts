@@ -32,4 +32,14 @@ describe('selector-label helpers', () => {
       ),
     ).toBeNull();
   });
+
+  it('resolves Link selector overrides with blank fallback', () => {
+    expect(resolveSelectorLabelOverride({ link: 'Pay with Link' }, 'link')).toBe('Pay with Link');
+    expect(resolveSelectorLabelOverride({ link: 'Checkout with Link' }, 'link')).toBe(
+      'Checkout with Link',
+    );
+    expect(resolveSelectorLabelOverride({ link: '' }, 'link')).toBeNull();
+    expect(resolveSelectorLabelOverride({ link: '   ' }, 'link')).toBeNull();
+    expect(resolveSelectorLabelOverride({ card: 'Credit / Debit' }, 'link')).toBeNull();
+  });
 });

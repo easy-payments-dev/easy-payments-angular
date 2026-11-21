@@ -239,6 +239,9 @@ export class PaymentMethodTileComponent {
     if (method === 'afterpay') {
       return this.msgs().methodAfterpay;
     }
+    if (method === 'link') {
+      return this.msgs().methodLink;
+    }
     return this.presentation().label;
   });
 
@@ -257,7 +260,9 @@ export class PaymentMethodTileComponent {
               ? this.msgs().methodAfterpay
               : method === 'venmo'
                 ? this.msgs().methodVenmo
-                : PAYMENT_METHOD_LABELS[method]);
+                : method === 'link'
+                  ? this.msgs().methodLink
+                  : PAYMENT_METHOD_LABELS[method]);
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;

@@ -106,6 +106,7 @@ See [iOS on macOS](#ios-on-macos-windows-cannot-run) below.
 | Venmo | Often `isEligible()===false` in the Capacitor WebView even when Chrome on the same device works | Smoke Sandbox: **Continue with Venmo** → Nest `POST /api/payments/paypal/venmo/handoff` creates Orders v2 with `payment_source.venmo` (catalog amount) and binds the attempt. If Sandbox returns `payer-action`/`approve`, Chrome opens that URL; otherwise a simplified page (product, total, official Venmo button, cancel) uses the bound order. Return reconciles via `POST .../venmo/complete` (idempotent capture) — success only after `COMPLETED`. Never invent Venmo URLs. | Config: `venmoSandboxCheckoutUrl` in gitignored `environment.local.ts`. Normal demo unchanged without smoke query |
 | Klarna / Affirm / Afterpay / Cash App | Start in WebView | **Leave-app** redirect common | Return via App Links + `recoverReturn` / shared recovery — **manual** |
 | US bank account | In-WebView PE | Microdeposit / bank may leave | Async `processing` |
+| Link | Stripe ECE Link button in WebView | Same ECE as web when Link eligible | Included in smoke `SMOKE_METHODS` for web/Test; **native Capacitor Link confirmation not claimed as verified** — see [link.md](./providers/link.md) |
 | Zip | Pending Sandbox merchant access | Zip hosted checkout / popup | **Experimental** opt-in (not in smoke `SMOKE_METHODS`); see [zip.md](./providers/zip.md) |
 
 ## Redirects and App Links
@@ -246,5 +247,6 @@ Exact reproduce steps on a Mac with Xcode:
 - iOS Simulator Mock pass on macOS.
 - iPhone Apple Pay + Universal Link leave-app resume.
 - Zip Sandbox end-to-end (pending merchant portal credentials).
+- Native Capacitor Link (Express Checkout Element) end-to-end confirmation — only web/Test-mode ECE mounting is assumed for smoke; complete a live Link payment on device before claiming native support.
 - Production App Links domain association files (`assetlinks.json` / `apple-app-site-association`).
 - Google Pay sheet availability on a signed-in emulator / device WebView.

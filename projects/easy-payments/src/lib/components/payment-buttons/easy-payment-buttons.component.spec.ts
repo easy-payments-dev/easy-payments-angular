@@ -11,6 +11,7 @@ import { StripeCardAdapter } from '../../adapters/stripe/stripe-card.adapter';
 import { PayPalAdapter } from '../../adapters/paypal/paypal.adapter';
 import { GooglePayAdapter } from '../../adapters/google-pay/google-pay.adapter';
 import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
+import { LinkAdapter } from '../../adapters/link/link.adapter';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
@@ -2040,6 +2041,146 @@ describe('EasyPaymentButtonsComponent real Apple Pay express', () => {
     expect(apple.classList.contains('ep-payment-buttons__item--collapsed')).toBeTrue();
     // ECE host stays mounted so a later eligibility change can still be reported.
     expect(apple.querySelector('easy-apple-pay-payment')).toBeTruthy();
+  });
+});
+
+describe('EasyPaymentButtonsComponent real Link panel', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let link: jasmine.SpyObj<LinkAdapter>;
+  let stripe: jasmine.SpyObj<StripeCardAdapter>;
+
+  beforeEach(async () => {
+    link = jasmine.createSpyObj<LinkAdapter>(
+      'LinkAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'isConfigured',
+        'createMountId',
+        'mountExpressCheckout',
+        'unmountExpressCheckout',
+        'destroy',
+        'isProcessing',
+        'getAvailabilityStatus',
+        'setAvailabilityListener',
+        'addAvailabilityListener',
+        'createPayment',
+      ],
+      { provider: 'link', isMock: false },
+    );
+    link.initialize.and.resolveTo();
+    link.isConfigured.and.returnValue(true);
+    link.addAvailabilityListener.and.returnValue(() => undefined);
+    link.createMountId.and.returnValue('link-ece-buttons-1');
+    link.getAvailabilityStatus.and.returnValue('available');
+    link.isAvailable.and.resolveTo(true);
+    link.isProcessing.and.returnValue(false);
+    link.mountExpressCheckout.and.callFake(async (_host, options, mountId) => {
+      options.onReady?.();
+      return mountId ?? 'link-ece-buttons-1';
+    });
+
+    stripe = jasmine.createSpyObj<StripeCardAdapter>(
+      'StripeCardAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'confirmPayment',
+        'destroy',
+        'hasMountedElement',
+        'isConfirming',
+      ],
+      { provider: 'stripe', isMock: false },
+    );
+    stripe.initialize.and.resolveTo();
+    stripe.isAvailable.and.resolveTo(true);
+    stripe.hasMountedElement.and.returnValue(true);
+    stripe.isConfirming.and.returnValue(false);
+    stripe.createPaymentSession.and.resolveTo({
+      clientSecret: 'pi_link_buttons_secret',
+    } as never);
+    stripe.mountPaymentElement.and.resolveTo();
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_link_buttons' },
+            link: {},
+          },
+          backend: {
+            createPaymentUrl: '/api/payments/create',
+            linkCreatePaymentUrl: '/api/payments/link/create',
+          },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: LinkAdapter, useValue: link },
+        { provide: StripeCardAdapter, useValue: stripe },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['card', 'link']);
+  });
+
+  it('emits one success without inline Payment completed text in the Link panel', async () => {
+    const successes: PaymentResult[] = [];
+    const started: unknown[] = [];
+    fixture.componentInstance.success.subscribe((value) => successes.push(value));
+    fixture.componentInstance.started.subscribe((value) => started.push(value));
+
+    await render(fixture);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    slotItem(fixture, 'link')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector(
+      '[data-testid="easy-payment-buttons-link-panel"]',
+    ) as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.querySelector('easy-link-payment')?.getAttribute('data-chrome')).toBeNull();
+    expect(panel.querySelector('.ep-link')?.getAttribute('data-chrome')).toBe('minimal');
+    expect(link.mountExpressCheckout).toHaveBeenCalled();
+
+    const options = link.mountExpressCheckout.calls.mostRecent().args[1];
+    options.onAttempt?.();
+    options.onSuccess({
+      status: 'success',
+      method: 'link',
+      provider: 'link',
+      transactionId: 'pi_link_buttons_ok',
+    });
+    options.onSuccess({
+      status: 'success',
+      method: 'link',
+      provider: 'link',
+      transactionId: 'pi_link_buttons_ok',
+    });
+    fixture.detectChanges();
+
+    expect(started.length).toBe(1);
+    expect(successes).toEqual([
+      jasmine.objectContaining({
+        status: 'success',
+        method: 'link',
+        transactionId: 'pi_link_buttons_ok',
+      }),
+    ]);
+    expect(panel.querySelector('.ep-link__success')).toBeNull();
+    expect(panel.querySelector('easy-checkout-outcome')).toBeNull();
+    expect(panel.textContent).not.toContain('Payment completed');
+    expect(panel.querySelector('.ep-link__button--hidden')).toBeTruthy();
   });
 });
 

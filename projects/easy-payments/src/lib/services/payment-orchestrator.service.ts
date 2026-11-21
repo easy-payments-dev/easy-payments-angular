@@ -45,6 +45,7 @@ const STRIPE_DEPENDENT_METHODS = new Set<PaymentMethod>([
   'us-bank-account',
   'cash-app-pay',
   'afterpay',
+  'link',
 ]);
 
 @Injectable({ providedIn: 'root' })
@@ -302,7 +303,7 @@ function diagnosticCodeForUnavailable(
   if (status === 'checking') {
     return 'PROVIDER_AVAILABILITY_PENDING';
   }
-  if (method === 'apple-pay' || method === 'google-pay') {
+  if (method === 'apple-pay' || method === 'google-pay' || method === 'link') {
     return 'PROVIDER_UNAVAILABLE';
   }
   return 'PROVIDER_MISCONFIGURED';
