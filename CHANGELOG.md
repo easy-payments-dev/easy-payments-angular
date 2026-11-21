@@ -2,6 +2,13 @@
 
 ## Unreleased (1.3.0)
 
+### Zip (experimental)
+
+- Zip US Gateway + JS SDK remains available as an **explicit opt-in** (`methods` includes `'zip'` + `providers.zip` + Zip backend URLs)
+- Zip is **not** in Full Checkout or Buttons Only default `[methods]`, Headless has no implicit methods, and Angular / Ionic demos omit Zip from their selectors
+- Marked **experimental**: approval, cancellation, return, and capture require end-to-end Sandbox validation (merchant credentials pending)
+- Adapter, Nest reference endpoints, and error handling are unchanged for developers who opt in
+
 ### Localization
 
 - Added French (`fr`) to `[locale]` / Headless `locale` (`auto` \| `en` \| `es` \| `pt` \| `fr`)

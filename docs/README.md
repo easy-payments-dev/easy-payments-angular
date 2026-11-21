@@ -39,7 +39,7 @@ Start with the [Payment method requirements](./payment-method-requirements.md) m
 8. [Afterpay](./providers/afterpay.md) — opt-in Stripe BNPL / Clearpay (FC / Buttons / Headless)
 9. [PayPal](./providers/paypal.md) — JS SDK + Orders API
 10. [Venmo](./providers/venmo.md) — opt-in PayPal JS SDK funding (FC / Buttons / Headless)
-11. [Zip](./providers/zip.md) — opt-in Zip US Gateway + JS SDK (FC / Buttons / Headless)
+11. [Zip](./providers/zip.md) — **experimental** opt-in Zip US Gateway + JS SDK (FC / Buttons / Headless; Sandbox E2E pending)
 
 ## Screenshots
 

@@ -20,7 +20,7 @@ npm install @easy-payments/angular @stripe/stripe-js
 | **Framework** | Angular |
 | **Compatibility** | Angular **20.3+**, **21**, **22** (`>=20.3.0 <23.0.0`) |
 | **Workspace** | Built with Angular **22.1.5** |
-| **Methods** | Card · PayPal · Venmo · Apple Pay · Google Pay · Klarna · Affirm · ACH · Cash App Pay · Afterpay · Zip |
+| **Methods** | Card · PayPal · Venmo · Apple Pay · Google Pay · Klarna · Affirm · ACH · Cash App Pay · Afterpay · Zip *(experimental)* |
 | **Locales** | `auto` · `en` · `es` · `pt` |
 
 <p align="center">
@@ -1068,7 +1068,7 @@ Every method currently exposed by the library (Full Checkout, Buttons Only, and 
 | US bank account (ACH) | [docs/providers/us-bank-account.md](docs/providers/us-bank-account.md) |
 | Cash App Pay | [docs/providers/cash-app-pay.md](docs/providers/cash-app-pay.md) |
 | Afterpay | [docs/providers/afterpay.md](docs/providers/afterpay.md) |
-| Zip | [docs/providers/zip.md](docs/providers/zip.md) |
+| Zip *(experimental)* | [docs/providers/zip.md](docs/providers/zip.md) |
 
 Unavailable methods are **hidden** in Full Checkout and Buttons Only (not shown as disabled). Headless reports `readiness` / diagnostic codes. Use `EasyPaymentsDiagnosticsService` for developer diagnosis — buyers should not see technical config strings.
 
@@ -1088,7 +1088,7 @@ Unavailable methods are **hidden** in Full Checkout and Buttons Only (not shown 
 | **US bank account** | `usBankAccount: {}` + Stripe | Stripe + `createUsBankAccountPaymentUrl` | USD ACH; opt-in |
 | **Cash App Pay** | `cashAppPay: {}` + Stripe | Stripe + `cashAppPayCreatePaymentUrl` | US/USD; ≥ $0.50; opt-in |
 | **Afterpay** | `afterpay: {}` + Stripe | Stripe + `afterpayCreatePaymentUrl` | AU/CA/NZ/GB/US; opt-in |
-| **Zip** | `zip: {}` | `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` | Server: `ZIP_MERCHANT_ID`, `ZIP_API_SECRET`, `ZIP_CALLBACK_URL`; US/USD; opt-in |
+| **Zip** *(experimental)* | `zip: {}` | `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` | Server: `ZIP_MERCHANT_ID`, `ZIP_API_SECRET`, `ZIP_CALLBACK_URL`; US/USD; **opt-in only** (not in library/demo defaults). Approval, cancellation, return, and capture need end-to-end Sandbox validation — merchant credentials pending |
 
 Details: [docs/payment-method-requirements.md](docs/payment-method-requirements.md) · [docs/providers/](docs/providers/) · Security: [docs/security.md](docs/security.md)
 

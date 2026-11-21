@@ -106,7 +106,7 @@ See [iOS on macOS](#ios-on-macos-windows-cannot-run) below.
 | Venmo | Often `isEligible()===false` in the Capacitor WebView even when Chrome on the same device works | Smoke Sandbox: **Continue with Venmo** → Nest `POST /api/payments/paypal/venmo/handoff` creates Orders v2 with `payment_source.venmo` (catalog amount) and binds the attempt. If Sandbox returns `payer-action`/`approve`, Chrome opens that URL; otherwise a simplified page (product, total, official Venmo button, cancel) uses the bound order. Return reconciles via `POST .../venmo/complete` (idempotent capture) — success only after `COMPLETED`. Never invent Venmo URLs. | Config: `venmoSandboxCheckoutUrl` in gitignored `environment.local.ts`. Normal demo unchanged without smoke query |
 | Klarna / Affirm / Afterpay / Cash App | Start in WebView | **Leave-app** redirect common | Return via App Links + `recoverReturn` / shared recovery — **manual** |
 | US bank account | In-WebView PE | Microdeposit / bank may leave | Async `processing` |
-| Zip | Pending Sandbox merchant access | Zip hosted checkout / popup | Opt-in; see [zip.md](./providers/zip.md) |
+| Zip | Pending Sandbox merchant access | Zip hosted checkout / popup | **Experimental** opt-in (not in smoke `SMOKE_METHODS`); see [zip.md](./providers/zip.md) |
 
 ## Redirects and App Links
 

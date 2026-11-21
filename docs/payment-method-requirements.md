@@ -20,7 +20,7 @@ Setup requirements for every payment method exposed by `@easy-payments/angular` 
 | `us-bank-account` | Stripe ACH | Opt-in | Opt-in | Opt-in | [us-bank-account.md](./providers/us-bank-account.md) |
 | `cash-app-pay` | Stripe Cash App Pay | Opt-in | Opt-in | Opt-in | [cash-app-pay.md](./providers/cash-app-pay.md) |
 | `afterpay` | Stripe Afterpay/Clearpay | Opt-in | Opt-in | Opt-in | [afterpay.md](./providers/afterpay.md) |
-| `zip` | Zip US Gateway + JS SDK | Opt-in | Opt-in | Opt-in | [zip.md](./providers/zip.md) |
+| `zip` | Zip US Gateway + JS SDK (**experimental**) | Opt-in | Opt-in | Opt-in | [zip.md](./providers/zip.md) |
 
 \* Klarna and Affirm appear in the Buttons Only **default** `[methods]` list; they still need Stripe + their create URLs to become available.
 
@@ -210,12 +210,13 @@ providers: {
 
 ---
 
-## Zip US (`zip`) — opt-in
+## Zip US (`zip`) — experimental opt-in
 
 | | |
 |--|--|
+| **Status** | **Experimental** for 1.3.0. Implementation ships; **approval, cancellation, return, and capture require end-to-end Sandbox validation** (merchant `ZIP_*` credentials pending). Not in library defaults or Angular/Ionic demo selectors |
 | **Provider** | **Zip US Gateway API** + JS SDK (`window.quadpay.apiCheckout`) — independent of Stripe/PayPal |
-| **Modes** | Full · Buttons · Headless (`zip-checkout`; **no** `confirm()`) — opt-in, disabled by default |
+| **Modes** | Full · Buttons · Headless (`zip-checkout`; **no** `confirm()`) — **explicit opt-in only** (`methods` must include `'zip'`) |
 | **Merchant** | Zip for Business account; sandbox + production credentials from Merchant Portal → Settings ([Introduction](https://docs.us.zip.co/docs/introduction)) |
 | **Public** | `providers.zip: {}` + `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` (optional `zipCaptureUrl` for deferred capture) |
 | **Server-only** | `ZIP_MERCHANT_ID`, `ZIP_API_SECRET`, `ZIP_MODE`, `ZIP_CALLBACK_URL` — never in Angular |
@@ -263,4 +264,4 @@ Provider isolation: a misconfigured Stripe method does not disable PayPal or Zip
 | Stripe Payment Method Domains, ECE, Cash App, Afterpay | Against Stripe docs links in provider guides |
 | PayPal Venmo integrate / test | Against PayPal developer docs |
 | Zip US Gateway, JS SDK, Postman (Merchant ID + API secret in Portal Settings), Introduction | Against [docs.us.zip.co](https://docs.us.zip.co/docs/introduction) |
-| Zip production certification checklist | Against Zip Go Live docs; **live Zip Sandbox E2E still pending merchant credentials** in this workspace |
+| Zip production certification checklist | Against Zip Go Live docs; **experimental** — live Zip Sandbox E2E (approval / cancel / return / capture) still pending merchant credentials |

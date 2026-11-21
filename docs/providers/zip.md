@@ -1,6 +1,8 @@
-# Zip (US)
+# Zip (US) — experimental
 
-Opt-in Zip US for `@easy-payments/angular` — Full Checkout, Payment Buttons Only, and Headless Checkout.
+**Experimental** for `@easy-payments/angular` 1.3.0 — Full Checkout, Payment Buttons Only, and Headless Checkout.
+
+The Zip integration is implemented and available via **explicit opt-in** (`'zip'` in `[methods]` / Headless `methods` + `providers.zip`). It is **not** included in library default method lists or the Angular / Ionic demo selectors. **Approval, cancellation, return, and capture still require end-to-end Sandbox validation** once merchant credentials are available.
 
 Zip uses the **Zip US Gateway API** plus the **JS SDK** (`window.quadpay.apiCheckout.openCheckout`). It is **not** Stripe Afterpay / Clearpay.
 
@@ -46,8 +48,9 @@ Gateway bases: `https://gateway.sand.us.zip.co/` / `https://gateway.us.zip.co/`.
 |------------|-------------|
 | Market | United States |
 | Currency | USD |
-| Opt-in | `providers.zip: {}` + `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` |
-| Default | **Disabled** (not in default method lists) |
+| Opt-in | `providers.zip: {}` + `zipCreateCheckoutUrl` + `zipVerifyReturnUrl` + `'zip'` in `methods` |
+| Default | **Disabled** — absent from Full Checkout / Buttons Only defaults, Headless (no implicit methods), and Angular/Ionic demos |
+| Experimental | Sandbox E2E (approval / cancel / return / capture) **pending** merchant `ZIP_*` credentials |
 
 ## Server credentials (`ZIP_*`)
 

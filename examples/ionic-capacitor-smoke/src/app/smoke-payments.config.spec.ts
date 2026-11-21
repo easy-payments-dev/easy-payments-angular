@@ -8,6 +8,17 @@ import {
   SMOKE_CATALOG_UNIT_AMOUNT,
   SMOKE_PRODUCT,
 } from './smoke-catalog.product';
+import { SMOKE_METHODS } from './smoke-methods';
+
+describe('SMOKE_METHODS experimental Zip visibility', () => {
+  it('omits Zip from the default smoke method list while keeping other methods', () => {
+    expect(SMOKE_METHODS).not.toContain('zip');
+    expect(SMOKE_METHODS).toContain('card');
+    expect(SMOKE_METHODS).toContain('venmo');
+    expect(SMOKE_METHODS).toContain('afterpay');
+    expect(SMOKE_METHODS.length).toBe(10);
+  });
+});
 
 describe('SMOKE_PRODUCT catalog alignment', () => {
   it('matches Nest premium-plan unit amount and currency (server-authoritative)', () => {

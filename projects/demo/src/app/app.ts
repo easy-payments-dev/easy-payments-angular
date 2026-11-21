@@ -135,8 +135,8 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'afterpay', enabled: true },
   // Opt-in Venmo (PayPal JS SDK funding) for Full Checkout, Buttons Only, and Headless.
   { method: 'venmo', enabled: true },
-  // Opt-in Zip US (Gateway API + JS SDK) for Full Checkout, Buttons Only, and Headless.
-  { method: 'zip', enabled: true },
+  // Zip US remains available via explicit `methods: […, 'zip']` + providers.zip —
+  // experimental until Sandbox E2E validation (not in the demo selector by default).
 ];
 
 /** Phase 3 visual QA — demo-only presets (not production merchant UI). */
