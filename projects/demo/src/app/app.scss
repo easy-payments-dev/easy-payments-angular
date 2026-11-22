@@ -409,6 +409,184 @@ h2 {
   border: 1px solid #bfdbfe;
 }
 
+.layout-preview {
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layout-preview__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout-preview__controls .demo-action[aria-pressed='true'] {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.layout-preview__frame {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.layout-preview__frame--constrained {
+  border: 1px dashed #94a3b8;
+  border-radius: 16px;
+  padding: 8px;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f8fafc,
+    #f8fafc 8px,
+    #f1f5f9 8px,
+    #f1f5f9 16px
+  );
+  /* Prefer shrinking to the available page column over horizontal scroll. */
+  overflow-x: visible;
+}
+
+/*
+ * Buttons Only width preview: size only — no card, stripe fill, or outer pad.
+ * Full Checkout keeps the decorated constrained frame above.
+ */
+.layout-preview__frame--constrained.layout-preview__frame--bare {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.layout-preview__frame--bare.layout-preview__scroll-host {
+  border-radius: 0;
+  outline: none;
+}
+
+.layout-preview__host-surface {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.layout-preview__host-surface .demo-action[aria-pressed='true'] {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.buttons-host-surface {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.buttons-host-surface--light {
+  background: #e2e8f0;
+}
+
+.buttons-host-surface--dark {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.buttons-host-surface--dark .hint,
+.buttons-host-surface--dark .preview-kicker,
+.buttons-host-surface--dark h3,
+.buttons-host-surface--dark .demo-merchant-status {
+  color: #cbd5e1;
+}
+
+.demo-buttons-showcase {
+  margin: 2.25rem 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.demo-buttons-showcase + .demo-buttons-showcase {
+  margin-top: 2.75rem;
+}
+
+.demo-merchant-status {
+  margin: 10px 0 0;
+  color: #334155;
+  font-size: 14px;
+}
+
+.layout-preview__custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.layout-preview__custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 180px);
+}
+
+.layout-preview__custom-field span {
+  font-size: 12px;
+  font-weight: 650;
+  color: #475569;
+}
+
+.layout-preview__custom-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.layout-preview__custom-field input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.layout-preview__custom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout-preview__error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.layout-preview__effective {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.layout-preview__scroll-host {
+  max-height: min(420px, 70vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: 12px;
+  outline: 1px dashed #94a3b8;
+  outline-offset: 2px;
+}
+
 .checkout-stage {
   padding: 20px;
   border-radius: 20px;
@@ -416,6 +594,10 @@ h2 {
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 42%),
     linear-gradient(180deg, #eef2ff 0%, #f8fafc 48%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 .checkout-stage--transparent-demo {
@@ -438,8 +620,11 @@ h2 {
 
 .checkout-stage__surface {
   width: 100%;
-  max-width: none;
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
+  /* border-box so padding cannot expand past the stage content width */
+  box-sizing: border-box;
 }
 
 .checkout-stage__surface--dark {
@@ -454,14 +639,23 @@ h2 {
   line-height: 1.5;
 }
 
+/*
+ * Buttons Only must look like bare embeds on the consumer page — not a demo card.
+ * Override the Full Checkout stage chrome (pad / radius / gradient / border).
+ */
 .checkout-stage--buttons {
-  background: #fff;
-  border: 1px dashed #cbd5e1;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
 .checkout-stage--buttons .checkout-stage__surface {
-  padding: 20px;
-  max-width: 640px;
+  padding: 0;
+  max-width: 100%;
+  background: transparent;
 }
 
 .checkout-stage--headless {
@@ -496,11 +690,23 @@ h2 {
 }
 
 .demo-host-outcome__detail,
+.demo-host-outcome__next,
+.demo-host-outcome__retry,
 .demo-host-outcome__hint {
   margin: 0;
   font-size: 13px;
   line-height: 1.45;
   color: #334155;
+}
+
+.demo-host-outcome__next,
+.demo-host-outcome__retry {
+  margin-top: 6px;
+}
+
+.demo-host-outcome__retry {
+  font-weight: 650;
+  color: #1d4ed8;
 }
 
 .demo-host-outcome__hint {

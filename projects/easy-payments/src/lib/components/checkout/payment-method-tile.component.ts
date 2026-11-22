@@ -67,7 +67,8 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
         justify-content: center;
         gap: 6px;
         width: 100%;
-        height: 88px;
+        /* Grow for wrapped custom / localized labels; keep a compact default footprint. */
+        height: auto;
         min-height: 88px;
         padding: 18px 8px 12px;
         border: 1px solid var(--ep-border, #e2e8f0);
@@ -154,14 +155,17 @@ import { PaymentMethodIconComponent } from './payment-method-icon.component';
       .ep-tile__label {
         font-size: 12px;
         font-weight: 600;
-        line-height: 1.2;
+        line-height: 1.25;
         text-align: center;
         color: var(--ep-text-secondary, #64748b);
         min-height: 1.2em;
         max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-width: 0;
+        /* Match Buttons Only: wrap long custom / EN/ES/PT/FR labels instead of ellipsis clip. */
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: normal;
+        overflow: visible;
       }
 
       .ep-tile__label--spacer {

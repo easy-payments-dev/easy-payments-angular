@@ -1587,6 +1587,166 @@
         }
       </div>
 
+      @if (playgroundExperience() !== 'headless') {
+        <section
+          class="layout-preview"
+          data-testid="demo-layout-preview"
+          aria-label="Demo layout width preview"
+        >
+          <p class="hint">
+            Demo-only container width preview for library-rendered checkout surfaces (Full Checkout
+            and Buttons Only). Buttons Only stays a bare embed (no demo card); width follows this
+            host frame (<code>width</code> / <code>max-width: 100%</code>). Headless owns its own
+            layout.
+          </p>
+          <div class="layout-preview__controls" role="group" aria-label="Preview container width">
+            <button
+              type="button"
+              class="demo-action"
+              data-testid="layout-preview-wide"
+              [attr.aria-pressed]="layoutPreviewWidth() === null"
+              (click)="setLayoutPreviewWidth(null)"
+            >
+              Wide / automatic
+            </button>
+            @for (width of layoutPreviewPresets; track width) {
+              <button
+                type="button"
+                class="demo-action"
+                [attr.data-testid]="'layout-preview-' + width"
+                [attr.aria-pressed]="layoutPreviewWidth() === width"
+                (click)="setLayoutPreviewWidth(width)"
+              >
+                {{ width }}px
+              </button>
+            }
+          </div>
+          <div class="layout-preview__custom" data-testid="layout-preview-custom">
+            <label class="layout-preview__custom-field" for="layout-preview-custom-width">
+              <span>Custom width (CSS px)</span>
+              <input
+                id="layout-preview-custom-width"
+                data-testid="layout-preview-custom-input"
+                type="number"
+                inputmode="numeric"
+                min="200"
+                max="2000"
+                step="1"
+                [value]="layoutPreviewCustomInput()"
+                [attr.aria-invalid]="layoutPreviewError() ? 'true' : 'false'"
+                [attr.aria-describedby]="
+                  layoutPreviewError()
+                    ? 'layout-preview-custom-error'
+                    : layoutPreviewEffectiveNote()
+                      ? 'layout-preview-effective'
+                      : null
+                "
+                (input)="onLayoutPreviewCustomInput($event)"
+                (keydown.enter)="applyLayoutPreviewCustomWidth(); $event.preventDefault()"
+              />
+            </label>
+            <div class="layout-preview__custom-actions">
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="layout-preview-custom-apply"
+                (click)="applyLayoutPreviewCustomWidth()"
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="layout-preview-custom-reset"
+                (click)="setLayoutPreviewWidth(null)"
+              >
+                Reset to automatic
+              </button>
+            </div>
+          </div>
+          @if (layoutPreviewError(); as error) {
+            <p
+              class="layout-preview__error"
+              id="layout-preview-custom-error"
+              data-testid="layout-preview-custom-error"
+              role="alert"
+            >
+              {{ error }}
+            </p>
+          }
+          @if (layoutPreviewEffectiveNote(); as note) {
+            <p
+              class="layout-preview__effective"
+              id="layout-preview-effective"
+              data-testid="layout-preview-effective"
+              role="status"
+            >
+              {{ note }}
+            </p>
+          }
+          <label class="demo-check" style="display:inline-flex;gap:8px;align-items:center">
+            <input
+              type="checkbox"
+              data-testid="layout-preview-host-scroll"
+              [checked]="layoutPreviewHostScroll()"
+              (change)="setLayoutPreviewHostScroll($any($event.target).checked)"
+            />
+            <span>
+              Demo host scroll (constrain preview height — host owns overflow; controls are not
+              clipped by the library)
+            </span>
+          </label>
+          @if (playgroundExperience() === 'buttons') {
+            <div
+              class="layout-preview__host-surface"
+              role="group"
+              aria-label="Demo host page background"
+              data-testid="buttons-host-surface-controls"
+            >
+              <span class="hint" style="margin:0">Host page background (demo only):</span>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-host-surface-page"
+                [attr.aria-pressed]="buttonsHostSurface() === 'page'"
+                (click)="setButtonsHostSurface('page')"
+              >
+                Page
+              </button>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-host-surface-light"
+                [attr.aria-pressed]="buttonsHostSurface() === 'light'"
+                (click)="setButtonsHostSurface('light')"
+              >
+                Light
+              </button>
+              <button
+                type="button"
+                class="demo-action"
+                data-testid="buttons-host-surface-dark"
+                [attr.aria-pressed]="buttonsHostSurface() === 'dark'"
+                (click)="setButtonsHostSurface('dark')"
+              >
+                Dark
+              </button>
+            </div>
+          }
+        </section>
+      }
+
+      <div
+        #layoutPreviewFrame
+        class="layout-preview__frame"
+        data-testid="demo-layout-preview-frame"
+        [style.width.px]="layoutPreviewActive() ? layoutPreviewWidth() : null"
+        [class.layout-preview__frame--constrained]="layoutPreviewActive()"
+        [class.layout-preview__frame--bare]="playgroundExperience() === 'buttons'"
+        [class.layout-preview__scroll-host]="
+          layoutPreviewHostScroll() && playgroundExperience() !== 'headless'
+        "
+      >
       <div
         class="checkout-stage"
         [class.checkout-stage--transparent-demo]="
@@ -1635,6 +1795,13 @@
               (successContinue)="onSuccessContinue($event)"
             />
           } @else if (playgroundExperience() === 'buttons') {
+            <div
+              class="buttons-host-surface"
+              data-testid="buttons-host-surface"
+              [class.buttons-host-surface--light]="buttonsHostSurface() === 'light'"
+              [class.buttons-host-surface--dark]="buttonsHostSurface() === 'dark'"
+              [attr.data-surface]="buttonsHostSurface()"
+            >
             <easy-payment-buttons
               [product]="product()"
               [methods]="methods()"
@@ -1654,15 +1821,17 @@
               (methodChange)="onPaymentMethodChange($event)"
               (pending)="onPaymentPending($event)"
             />
-            <section class="demo-buttons-showcase" data-testid="demo-buttons-styled-library" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-styled-library">
               <p class="preview-kicker">Experience A</p>
               <h3>Styled library buttons</h3>
               <p class="hint">
                 Same <code>&lt;easy-payment-buttons&gt;</code> engine with selector colors,
                 type, radius, and plain-text labels. PayPal, Google Pay, and Apple Pay stay
-                official SDK buttons and are omitted from this sample.
+                official SDK buttons and are omitted from this sample. Separated by demo
+                headings/spacing only — not a library card.
               </p>
               <easy-payment-buttons
+                layout="vertical"
                 [product]="product()"
                 [methods]="['card', 'klarna', 'affirm']"
                 [theme]="theme()"
@@ -1679,7 +1848,7 @@
                 (pending)="onPaymentPending($event)"
               />
             </section>
-            <section class="demo-buttons-showcase" data-testid="demo-buttons-merchant-owned" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+            <section class="demo-buttons-showcase" data-testid="demo-buttons-merchant-owned">
               <p class="preview-kicker">Experience B</p>
               <h3>Merchant-owned Angular buttons</h3>
               <p class="hint">
@@ -1688,6 +1857,7 @@
               </p>
               <easy-payment-buttons
                 #merchantButtons
+                layout="vertical"
                 selectorVisibility="merchant"
                 [product]="product()"
                 [methods]="['klarna', 'affirm']"
@@ -1729,7 +1899,6 @@
                 data-testid="demo-merchant-status"
                 role="status"
                 aria-live="polite"
-                style="margin:10px 0 0;color:#334155;font-size:14px"
               >
                 @switch (merchantButtonsStatus()) {
                   @case ('success') {
@@ -1750,6 +1919,7 @@
                 }
               </p>
             </section>
+            </div>
           } @else {
             <app-headless-demo
               [product]="product()"
@@ -1760,6 +1930,7 @@
             />
           }
         </div>
+      </div>
       </div>
 
       @if (playgroundExperience() === 'buttons') {
@@ -1779,10 +1950,18 @@
             </div>
             <h2 class="demo-host-outcome__title">{{ outcome.title }}</h2>
             <p class="demo-host-outcome__detail">{{ outcome.detail }}</p>
+            <p class="demo-host-outcome__next" data-testid="demo-buttons-host-next">
+              {{ outcome.nextStep }}
+            </p>
+            @if (outcome.canRetry) {
+              <p class="demo-host-outcome__retry" data-testid="demo-buttons-host-retry">
+                Host may offer a safe next attempt (no automatic confirm/capture).
+              </p>
+            }
             <p class="demo-host-outcome__hint">
-              <code>&lt;easy-payment-buttons&gt;</code> emits events only. Your app chooses toasts,
-              modals, or confirmation pages. Do not treat <code>pending</code> as completed;
-              verify fulfillment on your backend / webhooks.
+              <code>&lt;easy-payment-buttons&gt;</code> emits events only. Your app chooses
+              notifications or confirmation routes — no toast dependency. Do not treat
+              <code>pending</code> as completed; verify fulfillment on your backend / webhooks.
             </p>
           </section>
         }

@@ -166,7 +166,7 @@ Full states (redirects, `successBehavior`, events): **[docs/payment-flow.md](doc
 
 **Is not:** a payment processor · bank · merchant of record · Stripe/PayPal replacement · trusted pricing backend · a currency converter · Samsung Pay · ACH or other unfinished roadmap methods
 
-Headless Checkout (`EasyPaymentsHeadless`) is an **additional** integration mode alongside Full Checkout and Buttons Only — see [docs/headless.md](docs/headless.md).
+Headless Checkout (`EasyPaymentsHeadless`) is an **additional** integration mode alongside Full Checkout and Buttons Only — see [docs/headless.md](docs/headless.md). For host-owned success/cancel/error/pending patterns, see [docs/examples/payment-events.md](docs/examples/payment-events.md).
 
 Money settles to **your** Stripe / PayPal (and related) merchant accounts.
 

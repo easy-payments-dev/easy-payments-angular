@@ -2,6 +2,14 @@
 
 ## Unreleased (1.3.0)
 
+### Checkout layout & Headless UX
+
+- Container-aware Buttons Only / Full Checkout layout hardening for narrow embeds, sidebars, modals, and wrapping rows (method order preserved; no horizontal overflow from library chrome)
+- Demo-only layout width preview (280 / 320 / 480 / 768 CSS px + wide) without resizing the viewport
+- Additive Headless helpers: `describeHeadlessUi`, `isHeadlessRecoveryRetryable`, `isHeadlessPaymentRetryAllowed` — localized EN/ES/PT/FR buyer copy + recovery guidance from existing session signals (pending stays distinct from success/failure)
+- Practical payment event examples for Buttons Only and Headless (`docs/examples/payment-events.md`); demo host outcome banner shows cancel/error/pending/success next steps without a toast dependency
+- Preserves `cardButtonAppearance`, `alipayLabel`, `selectorLabels`, Zip experimental opt-in, and existing public layout inputs (`layout`, `maxWidth`, `buttonsAppearance`)
+
 ### Stripe Link (opt-in)
 
 - Dedicated `'link'` method via Stripe **Express Checkout Element** (official Link button)

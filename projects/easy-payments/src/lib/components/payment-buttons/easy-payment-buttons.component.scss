@@ -1,7 +1,18 @@
   :host {
   display: block;
   width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   box-sizing: border-box;
+  /* Contain strip reflow to the host width (sidebars / modals / narrow embeds). */
+  container-type: inline-size;
+  container-name: ep-buttons;
+  overflow-x: clip;
+  /* Bare embed: consumer owns page/card chrome. Selectors keep --ep-surface fills. */
   background: transparent !important;
   color: var(--ep-text, #0f172a);
   font-family: var(
@@ -73,6 +84,8 @@
   flex-direction: column;
   gap: var(--ep-buttons-gap, 8px);
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
   padding: var(--ep-buttons-padding, 0);
   background: var(--ep-buttons-strip-bg, transparent);
@@ -103,8 +116,12 @@
   display: flex;
   gap: var(--ep-buttons-gap, 8px);
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   position: relative;
+  /* Nested container so slot wrapping follows the strip, not the viewport. */
   container-type: inline-size;
+  container-name: ep-buttons-list;
   background: transparent;
   /* Center — do not stretch library selectors to match taller SDK buttons. */
   align-items: center;
@@ -115,10 +132,22 @@
   align-items: stretch;
 }
 
+/*
+ * Horizontal wrap is container-driven (not viewport breakpoints): auto-fill as
+ * many equal tracks as `--ep-buttons-slot-width` allows inside the host width.
+ * `auto-fill` keeps empty tracks so a short last row does not stretch one method
+ * across the full strip. Order follows `[methods]`; wrapping never reorders.
+ */
 .ep-payment-buttons--horizontal .ep-payment-buttons__list {
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--ep-buttons-slot-width, 160px)), 1fr)
+  );
   align-items: center;
+  /* flex properties from the base list rule do not apply in grid mode */
+  flex-direction: unset;
+  flex-wrap: unset;
 }
 
 .ep-payment-buttons__item {
@@ -131,33 +160,16 @@
   z-index: 0;
 }
 
-/*
- * Every horizontal slot — library selector or official SDK button — gets the
- * same fixed width and never grows, so a short last row cannot stretch one
- * method (e.g. Klarna/Affirm) across the strip.
- */
 .ep-payment-buttons--horizontal .ep-payment-buttons__item {
-  flex: 0 1 var(--ep-buttons-slot-width, 160px);
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
 /* PayPal Smart Buttons do not render below 150px wide. */
 .ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='paypal-express'],
 .ep-payment-buttons--horizontal .ep-payment-buttons__item[data-kind='venmo-express'] {
   min-width: min(100%, 150px);
-}
-
-/* Narrow containers: two equal columns while PayPal still fits, then one. */
-@container (min-width: 308px) and (max-width: 359px) {
-  .ep-payment-buttons--horizontal .ep-payment-buttons__item {
-    flex-basis: calc((100% - var(--ep-buttons-gap, 8px)) / 2);
-  }
-}
-
-@container (max-width: 307px) {
-  .ep-payment-buttons--horizontal .ep-payment-buttons__item {
-    flex-basis: 100%;
-  }
 }
 
 /*
@@ -187,10 +199,12 @@
   pointer-events: none;
 }
 
+/*
+ * Horizontal grid: separator siblings would consume tracks. Keep them in the
+ * DOM for hosts/tests, but out of layout — equal column gaps carry spacing.
+ */
 .ep-payment-buttons--horizontal .ep-payment-buttons__separator {
-  width: 1px;
-  min-height: calc(var(--ep-buttons-height, 40px) * 0.5);
-  align-self: center;
+  display: none;
 }
 
 .ep-payment-buttons--vertical .ep-payment-buttons__separator {
@@ -427,11 +441,15 @@
 
 .ep-payment-buttons__panel {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 10px 0 0;
   background: transparent;
   border: 0;
   border-top: 1px solid var(--ep-border, #e2e8f0);
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 @media (prefers-reduced-motion: reduce) {

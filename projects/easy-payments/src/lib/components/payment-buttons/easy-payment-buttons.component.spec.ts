@@ -653,6 +653,39 @@ describe('EasyPaymentButtonsComponent', () => {
     ]);
   });
 
+  it('keeps strip chrome within narrow host widths without reordering methods', async () => {
+    fixture.componentRef.setInput('methods', ['card', 'klarna', 'paypal', 'affirm']);
+    fixture.componentRef.setInput('layout', 'horizontal');
+    fixture.componentRef.setInput('buttonsAppearance', {
+      selectorLabels: {
+        card: 'Pagar con tarjeta bancaria internacional',
+        klarna: 'Continuar con Klarna a plazos',
+      },
+    });
+    await render(fixture);
+
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.width = '280px';
+    fixture.detectChanges();
+
+    expect(slotMethods(fixture)).toEqual(['card', 'klarna', 'paypal', 'affirm']);
+    expect(host.scrollWidth).toBeLessThanOrEqual(host.clientWidth + 1);
+
+    const cardLabel = slotItem(fixture, 'card')?.querySelector('.ep-payment-buttons__label');
+    expect(cardLabel?.textContent).toContain('Pagar con tarjeta');
+    const cardSelector = slotItem(fixture, 'card')?.querySelector(
+      '.ep-payment-buttons__selector',
+    ) as HTMLButtonElement | null;
+    expect(cardSelector).toBeTruthy();
+    cardSelector?.focus();
+    expect(document.activeElement).toBe(cardSelector);
+
+    host.style.width = '768px';
+    fixture.detectChanges();
+    expect(slotMethods(fixture)).toEqual(['card', 'klarna', 'paypal', 'affirm']);
+    expect(host.scrollWidth).toBeLessThanOrEqual(host.clientWidth + 1);
+  });
+
   it('keeps a permanently transparent host without checkout shell chrome', async () => {
     fixture.componentRef.setInput('methods', ['card', 'paypal']);
     fixture.componentRef.setInput('visualStyle', {
@@ -902,22 +935,49 @@ describe('EasyPaymentButtonsComponent', () => {
       expect(empty?.textContent).toContain('No payment methods are available');
     });
 
-    it('gives every horizontal slot the same fixed width without flex-grow', async () => {
+    it('fills the host with equal horizontal columns and adds a fourth when width allows', async () => {
       const host = fixture.nativeElement as HTMLElement;
       host.style.display = 'block';
       host.style.width = '600px';
       document.body.appendChild(host);
       fixture.componentRef.setInput('layout', 'horizontal');
-      fixture.componentRef.setInput('methods', ['card', 'paypal', 'google-pay', 'klarna', 'affirm']);
+      const methods = [
+        'card',
+        'paypal',
+        'google-pay',
+        'klarna',
+        'affirm',
+        'apple-pay',
+        'alipay',
+        'venmo',
+      ] as const;
+      fixture.componentRef.setInput('methods', [...methods]);
       await render(fixture);
 
-      const widths = ['card', 'paypal', 'google-pay', 'klarna', 'affirm'].map((m) =>
-        Math.round(slotItem(fixture, m)!.getBoundingClientRect().width),
-      );
-      // 600px fits three 160px slots per row; the two on the last row must not stretch.
-      expect(new Set(widths).size).toBe(1);
-      expect(widths[0]).toBe(160);
-      expect(getComputedStyle(slotItem(fixture, 'affirm')!).flexGrow).toBe('0');
+      const rowAt = (top: number) =>
+        methods
+          .map((m) => slotItem(fixture, m)!)
+          .filter((el) => Math.abs(el.getBoundingClientRect().top - top) < 2);
+
+      const firstTop = slotItem(fixture, 'card')!.getBoundingClientRect().top;
+      const row600 = rowAt(firstTop);
+      expect(row600.length).toBe(3);
+      const widths600 = row600.map((el) => Math.round(el.getBoundingClientRect().width));
+      expect(new Set(widths600).size).toBe(1);
+      expect(widths600[0]).toBeGreaterThan(160);
+      // Short last row keeps equal track width (auto-fill), not a full-strip stretch.
+      const lastWidth = Math.round(slotItem(fixture, 'venmo')!.getBoundingClientRect().width);
+      expect(lastWidth).toBe(widths600[0]);
+
+      host.style.width = '720px';
+      // Force layout after width change.
+      void host.offsetWidth;
+      await render(fixture);
+      const row720 = rowAt(slotItem(fixture, 'card')!.getBoundingClientRect().top);
+      expect(row720.length).toBe(4);
+      const widths720 = row720.map((el) => Math.round(el.getBoundingClientRect().width));
+      expect(new Set(widths720).size).toBe(1);
+      expect(widths720[0]).toBeGreaterThanOrEqual(160);
       host.remove();
     });
 
@@ -978,7 +1038,8 @@ describe('EasyPaymentButtonsComponent', () => {
 
       expect(sizes.every((s) => s.h === 40)).toBeTrue();
       expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
-      expect(sizes[0].w).toBe(160);
+      // Three equal columns share the 600px host (not a fixed 160px leftover).
+      expect(sizes[0].w).toBeGreaterThan(160);
       host.remove();
     });
 
@@ -1024,7 +1085,7 @@ describe('EasyPaymentButtonsComponent', () => {
 
       expect(sizes.every((s) => s.h === 40)).toBeTrue();
       expect(new Set(sizes.map((s) => s.w)).size).toBe(1);
-      expect(sizes[0].w).toBe(160);
+      expect(sizes[0].w).toBeGreaterThan(160);
       host.remove();
     });
 

@@ -69,6 +69,12 @@ export interface HeadlessDemoCopy {
   mountNoticeOfficial: string;
   recoveryUnrelated: string;
   recoveryRetryable: string;
+  /**
+   * Demo-only label: this block is an example of consumer-owned UI built from
+   * optional describeHeadlessUi() helpers — not chrome injected by Headless.
+   */
+  uiPresentationKicker: string;
+  uiPresentationRecovery: string;
 }
 
 const EN: HeadlessDemoCopy = {
@@ -143,6 +149,9 @@ const EN: HeadlessDemoCopy = {
     'No Headless-owned return for this checkout identity (unrelated or absent). Other checkout modes were not claimed.',
   recoveryRetryable:
     'Transient verification failure. Pending return data was preserved — retry recoverReturn() without confirming again or creating a new PaymentIntent.',
+  uiPresentationKicker:
+    'Demo example — consumer-owned UI (optional describeHeadlessUi helpers; not required Headless chrome)',
+  uiPresentationRecovery: 'Recovery action',
 };
 
 const ES: HeadlessDemoCopy = {
@@ -219,6 +228,9 @@ const ES: HeadlessDemoCopy = {
     'No hay un retorno Headless de esta identidad de checkout (ajeno o ausente). No se reclamaron otros modos de checkout.',
   recoveryRetryable:
     'Fallo transitorio de verificación. Se conservaron los datos del retorno pendiente — reintente recoverReturn() sin confirmar de nuevo ni crear un PaymentIntent nuevo.',
+  uiPresentationKicker:
+    'Ejemplo del demo — UI del comercio (helpers opcionales describeHeadlessUi; no es chrome de Headless)',
+  uiPresentationRecovery: 'Acción de recuperación',
 };
 
 const PT: HeadlessDemoCopy = {
@@ -295,6 +307,9 @@ const PT: HeadlessDemoCopy = {
     'Nenhum retorno Headless desta identidade de checkout (não relacionado ou ausente). Outros modos de checkout não foram reivindicados.',
   recoveryRetryable:
     'Falha transitória de verificação. Os dados do retorno pendente foram preservados — tente recoverReturn() de novo sem confirmar novamente nem criar um novo PaymentIntent.',
+  uiPresentationKicker:
+    'Exemplo do demo — UI do lojista (helpers opcionais describeHeadlessUi; não é chrome do Headless)',
+  uiPresentationRecovery: 'Ação de recuperação',
 };
 
 const FR: HeadlessDemoCopy = {
@@ -372,6 +387,9 @@ const FR: HeadlessDemoCopy = {
     'Aucun retour Headless pour cette identité de checkout (sans rapport ou absent). Les autres modes de checkout n’ont pas été revendiqués.',
   recoveryRetryable:
     'Échec de vérification transitoire. Les données de retour en attente ont été conservées — réessayez recoverReturn() sans confirmer à nouveau ni créer un nouveau PaymentIntent.',
+  uiPresentationKicker:
+    'Exemple démo — UI commerçant (helpers optionnels describeHeadlessUi ; pas de chrome Headless)',
+  uiPresentationRecovery: 'Action de récupération',
 };
 
 const DICTIONARIES: Record<EasyPaymentsResolvedLocale, HeadlessDemoCopy> = {

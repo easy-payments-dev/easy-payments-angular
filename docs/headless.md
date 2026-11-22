@@ -258,6 +258,50 @@ Browser storage is **correlation data**, not payment authorization. `redirect_st
 
 Never treat a frontend `success` event as sole permission to ship or unlock digital goods.
 
+### Presenting states in host UI
+
+Headless is a **session / API integration**. The host owns layout, method selectors, status messages, and confirmation buttons (where the method supports host confirmation). Easy Payments does **not** inject a status panel, banner, notification, or page layout into a Headless consumer.
+
+Optional UI-free helpers map session signals to localized copy and recovery guidance. They return data only — using them is never required:
+
+```ts
+import {
+  describeHeadlessUi,
+  isHeadlessPaymentRetryAllowed,
+  isHeadlessRecoveryRetryable,
+  resolveMessages,
+  resolveEffectiveLocale,
+} from '@easy-payments/angular';
+
+const ui = describeHeadlessUi({
+  state: session.state(),
+  messages: resolveMessages(resolveEffectiveLocale(locale)),
+  lastError: session.lastError(),
+  lastResult: session.lastResult(),
+  selectedReadiness: status?.readiness ?? null,
+});
+// ui.kind: loading | ready | processing | pending | success | cancelled | error | unavailable | …
+// ui.title / ui.body: EN/ES/PT/FR buyer-safe copy (never raw SDK / secrets)
+// ui.recoveryAction: none | retry-payment | retry-recovery | reconcile | choose-another-method
+```
+
+| `recoveryAction` | Host should |
+|------------------|-------------|
+| `none` | Informational only |
+| `retry-payment` | Allow another confirm **after** a definitive failure/cancel — never while pending |
+| `retry-recovery` | Call `recoverReturn()` again (no new PaymentIntent) |
+| `reconcile` | Await backend / webhooks; block another charge |
+| `choose-another-method` | Configuration/availability — **do not** retry payment |
+
+**Host-owned confirm vs official provider controls**
+
+| Methods | How payment starts |
+|---------|-------------------|
+| `card`, `klarna`, `affirm`, `alipay`, and other Payment Element methods | Host mounts via `session.mount()`, then calls `session.confirm()` from **its own** CTA when readiness is `ready` |
+| `paypal`, `venmo`, `google-pay`, `apple-pay`, `zip` | Host mounts the **official** provider control; the buyer must use that control. Do **not** call `confirm()`, simulate clicks, or bypass the SDK flow |
+
+Locale changes only need a new `messages` object — do not recreate the session or re-emit outcomes. See [examples/payment-events.md](./examples/payment-events.md). The demo playground’s presentation block is an example of consumer-owned UI, not a required Headless surface.
+
 ## G. Security
 
 - Backend validates product ids and amounts; client amounts are not authoritative.
