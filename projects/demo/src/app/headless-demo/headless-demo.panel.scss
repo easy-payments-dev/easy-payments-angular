@@ -168,12 +168,56 @@
 
 .headless-demo__error,
 .headless-demo__result,
-.headless-demo__notice {
+.headless-demo__notice,
+.headless-demo__presentation {
   margin: 0;
   padding: 10px 12px;
   border-radius: 10px;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.headless-demo__presentation {
+  border: 1px solid var(--hd-notice-border);
+  background: var(--hd-notice-bg);
+  color: var(--hd-notice-text);
+}
+
+.headless-demo__presentation[data-kind='error'],
+.headless-demo__presentation[data-kind='unavailable'] {
+  border-color: var(--hd-error-border);
+  background: var(--hd-error-bg);
+  color: var(--hd-error-text);
+}
+
+.headless-demo__presentation[data-kind='success'],
+.headless-demo__presentation[data-kind='pending'] {
+  border-color: var(--hd-ok-border);
+  background: var(--hd-ok-bg);
+  color: var(--hd-ok-text);
+}
+
+.headless-demo__presentation-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.headless-demo__presentation-title {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+}
+
+.headless-demo__presentation-body,
+.headless-demo__presentation-meta {
+  margin: 6px 0 0;
+}
+
+.headless-demo__presentation-meta code {
+  font-size: 0.92em;
 }
 
 .headless-demo__error {

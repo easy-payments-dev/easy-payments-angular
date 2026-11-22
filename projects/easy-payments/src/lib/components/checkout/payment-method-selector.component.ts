@@ -70,6 +70,9 @@ import { PaymentMethodTileComponent } from './payment-method-tile.component';
         display: grid;
         gap: var(--ep-spacing-sm, 10px);
         width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         /*
           Columns follow the <easy-payments> container width (container queries),
           not the browser viewport — so sidebars / modals / CMS embeds layout correctly.
@@ -87,7 +90,8 @@ import { PaymentMethodTileComponent } from './payment-method-tile.component';
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
-        height: 88px;
+        /* Align with wrapping library tiles (min 88px; grow with grid row). */
+        height: auto;
         min-height: 88px;
         padding: 12px 10px;
         border-radius: var(--ep-radius-md, 10px);

@@ -223,13 +223,20 @@ export {
 /** Headless Checkout (v1.2.0 — H3 providers + H4.3 Klarna/Affirm recoverReturn). */
 export {
   EasyPaymentsHeadless,
+  describeHeadlessUi,
+  isHeadlessPaymentRetryAllowed,
+  isHeadlessRecoveryRetryable,
 } from './lib/headless';
 export type {
+  DescribeHeadlessUiInput,
   HeadlessCheckoutEvents,
   HeadlessCheckoutSession,
   HeadlessMethodInteraction,
   HeadlessMethodStatus,
   HeadlessMountHandle,
+  HeadlessRecoveryAction,
   HeadlessSessionOptions,
   HeadlessSessionState,
+  HeadlessUiKind,
+  HeadlessUiPresentation,
 } from './lib/headless';

@@ -441,6 +441,7 @@ describe('App', () => {
     expect(banner.getAttribute('data-kind')).toBe('success');
     expect(banner.textContent).toContain('Demo application (not library UI)');
     expect(banner.textContent).toContain('pi_demo_host');
+    expect(banner.textContent).toContain('application-owned confirmation');
     expect(fixture.nativeElement.querySelector('easy-payment-buttons')?.textContent).not.toContain(
       'Demo application (not library UI)',
     );
@@ -457,6 +458,10 @@ describe('App', () => {
         .querySelector('[data-testid="demo-buttons-host-outcome"]')
         ?.getAttribute('data-kind'),
     ).toBe('pending');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="demo-buttons-host-next"]')?.textContent,
+    ).toContain('Reconcile');
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-buttons-host-retry"]')).toBeNull();
     expect(app.lastEvent()).toContain('pending · klarna');
 
     app.onPaymentCancel({
@@ -471,6 +476,7 @@ describe('App', () => {
         .querySelector('[data-testid="demo-buttons-host-outcome"]')
         ?.getAttribute('data-kind'),
     ).toBe('cancel');
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-buttons-host-retry"]')).toBeTruthy();
     expect(app.lastEvent()).toContain('cancel · paypal');
     expect(fixture.nativeElement.querySelector('easy-payment-buttons')?.textContent).not.toContain(
       'Payment cancelled',
@@ -494,6 +500,150 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('easy-payment-buttons')?.textContent).not.toContain(
       'Payment failed',
     );
+
+    app.onPaymentError(
+      new PaymentError({
+        code: 'CONFIG_MISSING',
+        message: 'Set STRIPE_SECRET_KEY',
+        method: 'card',
+        provider: 'stripe',
+      }),
+    );
+    fixture.detectChanges();
+    const configBanner = fixture.nativeElement.querySelector(
+      '[data-testid="demo-buttons-host-outcome"]',
+    ) as HTMLElement;
+    expect(configBanner.textContent).not.toContain('STRIPE_SECRET_KEY');
+    expect(configBanner.textContent).toContain('choose another method');
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-buttons-host-retry"]')).toBeNull();
+  });
+
+  it('exposes a demo-only layout width preview without changing methods', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-layout-preview"]')).toBeTruthy();
+    expect(app.layoutPreviewWidth()).toBeNull();
+
+    app.setLayoutPreviewWidth(320);
+    fixture.detectChanges();
+    const frame = fixture.nativeElement.querySelector(
+      '[data-testid="demo-layout-preview-frame"]',
+    ) as HTMLElement;
+    expect(frame.classList.contains('layout-preview__frame--constrained')).toBeTrue();
+    expect(frame.style.width).toBe('320px');
+    expect(app.methods()[0]).toBe('card');
+
+    app.setLayoutPreviewWidth(null);
+    fixture.detectChanges();
+    expect(frame.classList.contains('layout-preview__frame--constrained')).toBeFalse();
+  });
+
+  it('keeps fixed-width layout preview off Headless (host-owned layout)', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+
+    app.setPlaygroundExperience('buttons');
+    app.setLayoutPreviewWidth(480);
+    fixture.detectChanges();
+    expect(app.layoutPreviewActive()).toBeTrue();
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-layout-preview"]')).toBeTruthy();
+
+    app.setPlaygroundExperience('headless');
+    fixture.detectChanges();
+    expect(app.layoutPreviewWidth()).toBeNull();
+    expect(app.layoutPreviewActive()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('[data-testid="demo-layout-preview"]')).toBeNull();
+    const frame = fixture.nativeElement.querySelector(
+      '[data-testid="demo-layout-preview-frame"]',
+    ) as HTMLElement;
+    expect(frame.classList.contains('layout-preview__frame--constrained')).toBeFalse();
+    expect(frame.style.width).toBe('');
+  });
+
+  it('applies custom layout preview widths and rejects invalid values accessibly', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+
+    app.setPlaygroundExperience('buttons');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="layout-preview-custom"]')).toBeTruthy();
+
+    app.layoutPreviewCustomInput.set('not-a-number');
+    app.applyLayoutPreviewCustomWidth();
+    fixture.detectChanges();
+    expect(app.layoutPreviewWidth()).toBeNull();
+    const error = fixture.nativeElement.querySelector(
+      '[data-testid="layout-preview-custom-error"]',
+    ) as HTMLElement;
+    expect(error?.getAttribute('role')).toBe('alert');
+    expect(error.textContent).toContain('valid number');
+
+    app.layoutPreviewCustomInput.set('357');
+    app.applyLayoutPreviewCustomWidth();
+    fixture.detectChanges();
+    expect(app.layoutPreviewWidth()).toBe(357);
+    expect(app.layoutPreviewError()).toBeNull();
+    const frame = fixture.nativeElement.querySelector(
+      '[data-testid="demo-layout-preview-frame"]',
+    ) as HTMLElement;
+    expect(frame.style.width).toBe('357px');
+    expect(frame.classList.contains('layout-preview__frame--constrained')).toBeTrue();
+
+    app.setLayoutPreviewWidth(null);
+    fixture.detectChanges();
+    expect(app.layoutPreviewWidth()).toBeNull();
+    expect(app.layoutPreviewCustomInput()).toBe('');
+  });
+
+  it('keeps styled Buttons Only showcases on an explicit vertical layout', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+    app.setPlaygroundExperience('buttons');
+    fixture.detectChanges();
+
+    const styled = fixture.nativeElement.querySelector(
+      '[data-testid="demo-buttons-styled-library"] easy-payment-buttons',
+    ) as HTMLElement;
+    const merchant = fixture.nativeElement.querySelector(
+      '[data-testid="demo-buttons-merchant-owned"] easy-payment-buttons',
+    ) as HTMLElement;
+    expect(styled?.getAttribute('data-layout')).toBe('vertical');
+    expect(merchant?.getAttribute('data-layout')).toBe('vertical');
+  });
+
+  it('presents Buttons Only on a bare host surface without a demo card frame', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await settle(fixture);
+    app.setPlaygroundExperience('buttons');
+    app.setLayoutPreviewWidth(480);
+    fixture.detectChanges();
+
+    const stage = fixture.nativeElement.querySelector(
+      '.checkout-stage.checkout-stage--buttons',
+    ) as HTMLElement;
+    const frame = fixture.nativeElement.querySelector(
+      '[data-testid="demo-layout-preview-frame"]',
+    ) as HTMLElement;
+    const host = fixture.nativeElement.querySelector(
+      '[data-testid="buttons-host-surface"]',
+    ) as HTMLElement;
+    expect(stage).toBeTruthy();
+    expect(frame.classList.contains('layout-preview__frame--bare')).toBeTrue();
+    expect(host.getAttribute('data-surface')).toBe('page');
+
+    app.setButtonsHostSurface('dark');
+    fixture.detectChanges();
+    expect(host.classList.contains('buttons-host-surface--dark')).toBeTrue();
+    expect(host.getAttribute('data-surface')).toBe('dark');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="buttons-host-surface-controls"]'),
+    ).toBeTruthy();
   });
 
   it('defaults demo methods without experimental Zip and keeps Card first', async () => {

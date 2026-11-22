@@ -367,6 +367,48 @@ describe('HeadlessDemoPanel', () => {
     expect(pay.disabled).toBeTrue();
   });
 
+  it('presents describeHeadlessUi states and re-localizes without recreating the session', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('card');
+    fixture.detectChanges();
+
+    const presentation = () =>
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="headless-demo-ui-presentation"]',
+      ) as HTMLElement | null;
+
+    expect(presentation()?.getAttribute('data-kind')).toBe('ready');
+    expect(createSession).toHaveBeenCalledTimes(1);
+
+    state.set('pending');
+    lastResult.set({
+      status: 'processing',
+      method: 'card',
+      provider: 'stripe',
+    });
+    fixture.detectChanges();
+    expect(presentation()?.getAttribute('data-kind')).toBe('pending');
+    expect(presentation()?.getAttribute('data-recovery')).toBe('reconcile');
+
+    state.set('error');
+    lastError.set(
+      new PaymentError({
+        code: 'CONFIG_MISSING',
+        message: 'Set STRIPE_SECRET_KEY',
+        method: 'card',
+      }),
+    );
+    fixture.detectChanges();
+    expect(presentation()?.getAttribute('data-kind')).toBe('unavailable');
+    expect(presentation()?.getAttribute('data-recovery')).toBe('choose-another-method');
+    expect(presentation()?.textContent).not.toContain('STRIPE_SECRET_KEY');
+
+    fixture.componentRef.setInput('locale', 'fr');
+    fixture.detectChanges();
+    expect(presentation()?.textContent).toContain('Action de récupération');
+    expect(createSession).toHaveBeenCalledTimes(1);
+  });
+
   it('prevents double confirm while processing', async () => {
     const fixture = await createPanel();
     await fixture.componentInstance.onSelectMethod('card');

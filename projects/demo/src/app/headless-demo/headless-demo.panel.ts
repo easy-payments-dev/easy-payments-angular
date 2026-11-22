@@ -16,6 +16,7 @@ import {
   EasyPaymentsHeadless,
   PAYMENT_METHOD_LABELS,
   PaymentError,
+  describeHeadlessUi,
   interpolate,
   isAnyStripeBnplReturnAttempt,
   localizePaymentError,
@@ -27,6 +28,7 @@ import {
   type HeadlessCheckoutSession,
   type HeadlessMethodStatus,
   type HeadlessMountHandle,
+  type HeadlessUiPresentation,
   type PaymentMethod,
   type PaymentProduct,
   type PaymentResult,
@@ -127,6 +129,30 @@ export class HeadlessDemoPanel {
   readonly libraryMessages = computed(() =>
     resolveMessages(resolveEffectiveLocale(this.locale()), this.translations()),
   );
+
+  /**
+   * Optional {@link describeHeadlessUi} mapping rendered only in this demo as
+   * consumer-owned example UI (Headless does not inject status panels).
+   * Locale changes recompute copy only — no session restart.
+   */
+  readonly uiPresentation = computed((): HeadlessUiPresentation | null => {
+    const state = this.sessionState();
+    if (!state) {
+      return this.isInitializing()
+        ? describeHeadlessUi({ state: 'initializing', messages: this.libraryMessages() })
+        : null;
+    }
+    const selected = this.uiSelectedMethod() ?? this.selectedMethod();
+    const readiness =
+      this.availableMethods().find((entry) => entry.method === selected)?.readiness ?? null;
+    return describeHeadlessUi({
+      state,
+      messages: this.libraryMessages(),
+      lastError: this.lastError() ?? this.lastActionError(),
+      lastResult: this.lastResult(),
+      selectedReadiness: readiness,
+    });
+  });
 
   /** Buyer-facing last error: stable code + localized body (raw API text stays in diagnostics). */
   readonly lastErrorDisplay = computed(() => {

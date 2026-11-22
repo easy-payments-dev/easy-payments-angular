@@ -66,6 +66,37 @@
     }
   </div>
 
+  @if (uiPresentation(); as presentation) {
+    <!--
+      Demo-only: this section is host/app markup illustrating optional
+      describeHeadlessUi() output. Headless does not inject status panels.
+    -->
+    <section
+      class="headless-demo__presentation"
+      role="status"
+      data-testid="headless-demo-ui-presentation"
+      [attr.data-kind]="presentation.kind"
+      [attr.data-recovery]="presentation.recoveryAction"
+      aria-labelledby="headless-demo-ui-presentation-kicker"
+    >
+      <p
+        class="headless-demo__presentation-kicker"
+        id="headless-demo-ui-presentation-kicker"
+      >
+        {{ copy().uiPresentationKicker }}
+      </p>
+      <h4 class="headless-demo__presentation-title">{{ presentation.title }}</h4>
+      <p class="headless-demo__presentation-body">{{ presentation.body }}</p>
+      <p class="headless-demo__presentation-meta">
+        {{ copy().uiPresentationRecovery }}:
+        <code>{{ presentation.recoveryAction }}</code>
+        @if (presentation.errorCode) {
+          · <code>{{ presentation.errorCode }}</code>
+        }
+      </p>
+    </section>
+  }
+
   @if (bootErrorDisplay(); as error) {
     <div class="headless-demo__error" role="alert" data-testid="headless-demo-boot-error">
       <p>{{ error }}</p>

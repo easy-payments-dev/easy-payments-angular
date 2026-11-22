@@ -202,7 +202,7 @@ Configure providers with existing `provideEasyPayments(...)` — there is no com
 |--|-------------------|--------------------------|
 | Product / total UI | Built-in summary | Merchant-owned (not rendered) |
 | Method chrome | Selection tiles + detail panels | Compact strip + one shared panel |
-| Host fill | Theme / `appearance` / `visualStyle` | Transparent by default (`buttonsAppearance.background` optional) |
+| Host fill / outer chrome | Theme / `appearance` / `visualStyle` card shell | **Transparent and undecorated by default** — the consumer owns page background, spacing, and any optional card. Optional `buttonsAppearance.background` only fills the strip, not a surrounding panel |
 | Wallet buttons | In checkout detail / express slots | Official SDK buttons in the strip |
 | Card / Klarna / Affirm | Per-method panels under tiles | Selectors in strip → **one** panel **below the entire strip** |
 | Outcome UI | Optional built-in confirmation / error screens | **Event-driven only** — no success/error/cancel/pending banners inside the component |
@@ -218,7 +218,7 @@ Configure providers with existing `provideEasyPayments(...)` — there is no com
 | `klarna` | Compact selector → shared panel below the strip (Stripe BNPL). **Continue to Klarna** confirms and redirects. Selection does not start payment. |
 | `affirm` | Compact selector → shared panel below the strip (Stripe BNPL). **Continue to Affirm** confirms and redirects. Selection does not start payment. |
 
-Horizontal strips give every slot the same width (`160px` default, or `buttonsAppearance.buttonWidth`) and wrap; slots never stretch to fill a row. Narrow containers switch to two columns, then one.
+Horizontal strips use **container-driven** CSS grid (`auto-fill`): as many equal columns as fit the host width at the slot minimum (`160px` default, or a fixed `buttonsAppearance.buttonWidth`). Columns share leftover space equally. Narrow hosts collapse to fewer columns, then one. This follows the component’s container — not the viewport. Prefer sizing the host with normal CSS (`width`, `max-width`, `%`); Buttons Only has **no** `[maxWidth]` input (that belongs to Full Checkout only). Height follows content; if the host constrains height, use host-owned `overflow` scrolling rather than clipping or scaling provider controls.
 
 Unavailable methods are collapsed out of the strip (no space, `aria-hidden`), and separators only sit between visible slots. Apple Pay's Express Checkout Element stays mounted while collapsed so a later eligibility result can reveal it. When no requested method is available, one `role="status"` message is shown. In Demo Mode the panel CTA reads **Complete demo payment**. Card / Apple Pay / Google Pay / Klarna / Affirm share Stripe publishable-key + create-payment dependencies; PayPal does not.
 
@@ -277,8 +277,12 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `methods` | `PaymentMethod[]` | all six methods | No | Allow-list **and** exact visual order. |
 | `checkout` | `CheckoutOptions` | `undefined` | No | Optional checkout hints (including BNPL return URL context). |
 | `checkoutInstanceId` | `string \| null` | `null` | No | Optional stable id for multi-host redirect ownership (same rules as `<easy-payments>`). |
-| `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` (wraps) \| `vertical` (stacks). |
-| `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip layout plus optional library-selector chrome (`selectorBackgroundColor`, `selectorTextColor`, font, padding, hover/selected/disabled/loading/focus, `selectorLabels`, `showSelectorIcon`). Official PayPal / Google Pay / Apple Pay buttons are not restyled. See [Button customization](#buttons-only-button-customization). |
+| `layout` | `EasyPaymentButtonsLayout` | `'vertical'` | No | `horizontal` (container-driven equal columns that wrap) \| `vertical` (stacks). Explicit `vertical` is never overridden by width. |
+| `buttonsAppearance` | `EasyPaymentButtonsAppearance \| null` | `null` | No | Strip layout plus optional library-selector chrome (`selectorBackgroundColor`, `selectorTextColor`, font, padding, hover/selected/disabled/loading/focus, `selectorLabels`, `showSelectorIcon`). Fixed `buttonWidth` (when not `100%`/`auto`) sets the horizontal column minimum via `--ep-buttons-slot-width`. Official PayPal / Google Pay / Apple Pay buttons are not restyled. See [Button customization](#buttons-only-button-customization). |
+
+##### Host sizing and presentation (Buttons Only)
+
+`<easy-payment-buttons>` is a bare embed: `display: block; width: 100%; max-width: 100%` with a **transparent** host (no library card, border, shadow, or outer padding). The consumer owns the surrounding page background, spacing, and any optional card wrapper. Put the component in a host that has the width you want (px, `%`, sidebar column, etc.). Horizontal column count follows that container. Full Checkout’s `[maxWidth]` / `appearance` card shell do **not** apply here. Height grows with content (selected method panels included); constrain height only on a host scroller (`overflow: auto`) so provider buttons are not clipped or CSS-scaled. Individual library selectors and official provider buttons keep their own fills and branding; optional `buttonsAppearance.background` only tints the strip itself.
 | `selectorVisibility` | `'library' \| 'merchant'` | `'library'` | No | `merchant` hides Card / Klarna / Affirm selectors so the host calls `requestPayment(method)`. Wallet SDK slots stay visible. |
 | `theme` | `PaymentTheme` | `'system'` | No | `light` \| `dark` \| `system`. |
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `fr` \| `auto` (same resolver as checkout). |
@@ -830,6 +834,8 @@ See [configuration.md](./configuration.md) for the full public `--ep-*` token ta
 ### Stripe Card button appearance
 
 Optional `[cardButtonAppearance]` customizes **Easy Payments–owned** confirmation buttons (`.ep-stripe-card__pay`, `.ep-ach__pay`, `.ep-alipay__pay`) used by both `<easy-payments>` and `<easy-payment-buttons>`. Shared style fields apply to all three; `label` is Card/ACH only and `alipayLabel` is Alipay only. It does **not** restyle the Stripe Payment Element iframe or official PayPal / Google Pay / Apple Pay buttons. For Alipay Buttons Only, see [providers/alipay.md](./providers/alipay.md#buttons-only--confirm-cta-customization).
+
+Host-owned event handling patterns: [examples/payment-events.md](./examples/payment-events.md). Headless presentation helpers: `describeHeadlessUi`, `isHeadlessRecoveryRetryable`, `isHeadlessPaymentRetryAllowed` — see [headless.md](./headless.md#presenting-states-in-host-ui).
 
 ```ts
 interface EasyPaymentsCardButtonAppearance {

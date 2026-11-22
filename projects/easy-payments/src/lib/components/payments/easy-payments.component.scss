@@ -1,11 +1,13 @@
 :host {
   display: block;
   width: 100%;
-  max-width: var(--ep-checkout-max-width, 640px);
+  max-width: min(100%, var(--ep-checkout-max-width, 640px));
+  min-width: 0;
   box-sizing: border-box;
   /* Embeddable layout: payment grid responds to THIS component's width. */
   container-type: inline-size;
   container-name: ep-checkout;
+  overflow-x: clip;
   /* Default stack also assigned to --ep-font-family so visualStyle can override. */
   --ep-font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-family: var(--ep-font-family);
@@ -88,6 +90,8 @@
   box-shadow: var(--ep-shadow);
   box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /**
@@ -136,10 +140,15 @@
 .ep-checkout__detail {
   position: relative;
   min-height: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ep-checkout__panel {
   display: block;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /**
@@ -204,6 +213,22 @@
 
   .ep-checkout__title {
     font-size: 1.125rem;
+  }
+}
+
+/* Very narrow embeds (~280 CSS px sidebars / modal columns). */
+@container ep-checkout (max-width: 320px) {
+  .ep-checkout {
+    padding: max(8px, calc(var(--ep-spacing) * 0.75));
+    gap: max(8px, calc(var(--ep-spacing) * 0.75));
+  }
+
+  .ep-checkout__title {
+    font-size: 1.05rem;
+  }
+
+  .ep-checkout__subtitle {
+    font-size: 13px;
   }
 }
 

@@ -3,6 +3,7 @@ import { NgComponentOutlet } from '@angular/common';
 import {
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -29,6 +30,9 @@ import {
   PaymentTheme,
   PAYMENT_METHOD_LABELS,
   isAnyStripeBnplReturnAttempt,
+  isHeadlessPaymentRetryAllowed,
+  localizePaymentError,
+  resolveMessages,
   type BnplConfirmMode,
   type CheckoutOptions,
   type EasyPaymentButtonsAppearance,
@@ -283,6 +287,7 @@ export class App {
   private readonly configService = inject(EasyPaymentsConfigService);
   private readonly orchestrator = inject(PaymentOrchestratorService);
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
   /** Ionic smoke Android Venmo Chrome fallback — set only when ep_smoke_* query is present. */
   private smokeVenmoChromeBridge: SmokeVenmoChromeBridge | null = null;
   /** Dedicated Sandbox Venmo checkout (hides playground chrome). */
@@ -351,6 +356,37 @@ export class App {
   readonly multiInstanceStyleB: EasyPaymentsVisualStyle = { accentColor: '#34d399' };
   /** Demo-only control for <easy-payments [maxWidth]>. */
   readonly checkoutMaxWidth = signal(640);
+  /**
+   * Demo-only layout preview width (CSS px). Restricts the stage container so
+   * narrow/sidebar/modal widths can be checked without resizing the viewport.
+   * `null` = full available width. Clamped with CSS `max-width: 100%`.
+   */
+  readonly layoutPreviewWidth = signal<number | null>(null);
+  readonly layoutPreviewPresets = [280, 320, 480, 768] as const;
+  /** Demo custom width field (string so the input can be cleared / invalid). */
+  readonly layoutPreviewCustomInput = signal('');
+  readonly layoutPreviewError = signal<string | null>(null);
+  /** Measured frame width after max-width:100% clamping. */
+  readonly layoutPreviewRenderedWidth = signal<number | null>(null);
+  /** Demo-only: host-owned max-height + overflow scroll around the preview. */
+  readonly layoutPreviewHostScroll = signal(false);
+  /**
+   * Demo-only Buttons Only host page surface. Proves the strip sits on the
+   * consumer background (transparent by default) without a library card.
+   */
+  readonly buttonsHostSurface = signal<'page' | 'light' | 'dark'>('page');
+  private readonly layoutPreviewFrame = viewChild<ElementRef<HTMLElement>>('layoutPreviewFrame');
+  readonly layoutPreviewEffectiveNote = computed((): string | null => {
+    const requested = this.layoutPreviewWidth();
+    const rendered = this.layoutPreviewRenderedWidth();
+    if (requested == null || rendered == null) {
+      return null;
+    }
+    if (Math.abs(requested - rendered) <= 1) {
+      return null;
+    }
+    return `Requested ${requested}px · rendered ${rendered}px (clamped to available page width).`;
+  });
   readonly methodRows = signal<MethodRow[]>(DEFAULT_METHODS.map((row) => ({ ...row })));
   readonly lastEvent = signal<string>('No payment events yet.');
   /** Newest first. Safe event lines only. */
@@ -363,6 +399,9 @@ export class App {
     kind: 'success' | 'error' | 'cancel' | 'pending';
     title: string;
     detail: string;
+    /** Host-owned next step hint — never auto-retries payment. */
+    nextStep: string;
+    canRetry: boolean;
   } | null>(null);
   readonly mode = signal<DemoMode>('demo');
   readonly modeMessage = signal<string | null>(null);
@@ -894,7 +933,26 @@ ${cardAppearanceBlock}
       }
       void this.mountSmokeVenmoBoundButtons(host, orderId);
     });
+
+    effect(() => {
+      // Re-measure when the requested width / experience / host-scroll toggle changes.
+      this.layoutPreviewWidth();
+      this.playgroundExperience();
+      this.layoutPreviewHostScroll();
+      queueMicrotask(() => this.syncLayoutPreviewRenderedWidth());
+    });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.onLayoutPreviewWindowResize);
+      this.destroyRef.onDestroy(() => {
+        window.removeEventListener('resize', this.onLayoutPreviewWindowResize);
+      });
+    }
   }
+
+  private readonly onLayoutPreviewWindowResize = (): void => {
+    this.syncLayoutPreviewRenderedWidth();
+  };
 
   private applyThemeFromQuery(): void {
     if (typeof window === 'undefined') {
@@ -1073,6 +1131,70 @@ ${cardAppearanceBlock}
     this.playgroundExperience.set(experience);
     persistDemoExperience(experience);
     this.buttonsHostOutcome.set(null);
+    // Fixed-width layout preview is for library-rendered surfaces only.
+    if (experience === 'headless') {
+      this.layoutPreviewWidth.set(null);
+      this.layoutPreviewCustomInput.set('');
+      this.layoutPreviewError.set(null);
+      this.layoutPreviewRenderedWidth.set(null);
+      this.layoutPreviewHostScroll.set(false);
+      this.buttonsHostSurface.set('page');
+    }
+  }
+
+  /** True when the demo applies a constrained layout preview frame. */
+  layoutPreviewActive(): boolean {
+    return this.playgroundExperience() !== 'headless' && this.layoutPreviewWidth() !== null;
+  }
+
+  setLayoutPreviewHostScroll(enabled: boolean): void {
+    this.layoutPreviewHostScroll.set(enabled);
+  }
+
+  setButtonsHostSurface(surface: 'page' | 'light' | 'dark'): void {
+    this.buttonsHostSurface.set(surface);
+  }
+
+  onLayoutPreviewCustomInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.layoutPreviewCustomInput.set(value);
+    if (this.layoutPreviewError()) {
+      this.layoutPreviewError.set(null);
+    }
+  }
+
+  applyLayoutPreviewCustomWidth(): void {
+    const raw = this.layoutPreviewCustomInput().trim();
+    if (!raw) {
+      this.layoutPreviewError.set('Enter a width in CSS pixels (200–2000).');
+      return;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      this.layoutPreviewError.set('Enter a valid number of CSS pixels (200–2000).');
+      return;
+    }
+    const width = Math.round(parsed);
+    if (width < 200 || width > 2000) {
+      this.layoutPreviewError.set('Enter a whole number between 200 and 2000 CSS pixels.');
+      return;
+    }
+    this.layoutPreviewError.set(null);
+    this.layoutPreviewCustomInput.set(String(width));
+    this.layoutPreviewWidth.set(width);
+  }
+
+  private syncLayoutPreviewRenderedWidth(): void {
+    if (!this.layoutPreviewActive()) {
+      this.layoutPreviewRenderedWidth.set(null);
+      return;
+    }
+    const el = this.layoutPreviewFrame()?.nativeElement;
+    if (!el) {
+      this.layoutPreviewRenderedWidth.set(null);
+      return;
+    }
+    this.layoutPreviewRenderedWidth.set(Math.round(el.getBoundingClientRect().width));
   }
 
   setButtonsLayout(layout: EasyPaymentButtonsLayout): void {
@@ -1463,6 +1585,12 @@ ${cardAppearanceBlock}
     this.recordEvent(`methodChange · ${event.previousMethod ?? 'none'} → ${next}`);
   }
 
+  setLayoutPreviewWidth(width: number | null): void {
+    this.layoutPreviewWidth.set(width);
+    this.layoutPreviewError.set(null);
+    this.layoutPreviewCustomInput.set(width == null ? '' : String(width));
+  }
+
   onPaymentSuccess(result: PaymentResult): void {
     const reference = result.transactionId ?? result.sessionId;
     this.recordEvent(`success · ${result.method}${reference ? ` · ${reference}` : ''}`);
@@ -1473,6 +1601,9 @@ ${cardAppearanceBlock}
         detail: reference
           ? `${result.method} · ${reference} — fulfill only after backend/webhook verification.`
           : `${result.method} — fulfill only after backend/webhook verification.`,
+        nextStep:
+          'Host may navigate to an application-owned confirmation route. Do not mark paid from this event alone.',
+        canRetry: false,
       });
     }
     this.settleSmokeVenmoChromeBridge('approved', result);
@@ -1492,6 +1623,8 @@ ${cardAppearanceBlock}
         kind: 'cancel',
         title: 'Payment cancelled',
         detail: `${result.method} — the buyer cancelled before confirmation.`,
+        nextStep: 'Show an application-owned notice and let the buyer choose another method.',
+        canRetry: true,
       });
     }
     this.settleSmokeVenmoChromeBridge('cancelled', result);
@@ -1719,6 +1852,9 @@ ${cardAppearanceBlock}
         kind: 'pending',
         title: 'Payment pending',
         detail: `${result.method} — not completed. Await backend/webhook before fulfillment.`,
+        nextStep:
+          'Reconcile status on your backend. Do not start another payment for this attempt.',
+        canRetry: false,
       });
     }
   }
@@ -1726,10 +1862,19 @@ ${cardAppearanceBlock}
   onPaymentError(error: PaymentError): void {
     this.recordEvent(`error · ${error.method ?? 'unknown'} · ${error.code}`);
     if (this.playgroundExperience() === 'buttons') {
+      const messages = resolveMessages(resolveEffectiveLocale(this.locale()));
+      const buyerMessage = localizePaymentError(error.code, messages, {
+        method: error.method,
+      });
+      const canRetry = isHeadlessPaymentRetryAllowed('error', error);
       this.buttonsHostOutcome.set({
         kind: 'error',
-        title: 'Payment failed',
-        detail: `${error.method ?? 'unknown'} · ${error.code}`,
+        title: messages.errorTitle,
+        detail: `${error.code} — ${buyerMessage}`,
+        nextStep: canRetry
+          ? 'Offer a host-owned retry only after this failure stage. Never auto-retry confirmation.'
+          : 'Configuration / availability failure — choose another method; do not retry payment.',
+        canRetry,
       });
     }
   }

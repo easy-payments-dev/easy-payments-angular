@@ -1,4 +1,7 @@
-import type { PaymentMethod } from '@easy-payments/angular';
+import {
+  isHeadlessRecoveryRetryable,
+  type PaymentMethod,
+} from '@easy-payments/angular';
 
 /**
  * Stripe Card / Klarna / Affirm / US bank account / Cash App Pay / Afterpay / Alipay
@@ -26,6 +29,8 @@ export function isHeadlessDemoOfficialButtonMethod(method: PaymentMethod): boole
     method === 'venmo' ||
     method === 'google-pay' ||
     method === 'apple-pay' ||
+    method === 'link' ||
+    method === 'amazon-pay' ||
     method === 'zip'
   );
 }
@@ -37,9 +42,5 @@ export function isHeadlessDemoMountDeferred(_method: PaymentMethod): boolean {
 
 /** Transient recovery verification failures that are safe to retry with recoverReturn(). */
 export function isHeadlessDemoRecoveryRetryable(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-  const code = 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
-  return code === 'NETWORK_ERROR' || code === 'SDK_LOAD_FAILED';
+  return isHeadlessRecoveryRetryable(error);
 }
