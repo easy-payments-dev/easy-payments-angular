@@ -15,6 +15,7 @@ import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
 import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
+import { CreateAlipayPaymentIntentDto } from './dto/create-alipay-payment-intent.dto';
 import { CreateLinkPaymentIntentDto } from './dto/create-link-payment-intent.dto';
 import { CreateAmazonPayPaymentIntentDto } from './dto/create-amazon-pay-payment-intent.dto';
 
@@ -50,6 +51,12 @@ export interface CreateCashAppPayPaymentIntentResult {
 
 export interface CreateAfterpayPaymentIntentResult {
   provider: 'afterpay';
+  clientSecret: string;
+  paymentIntentId: string;
+}
+
+export interface CreateAlipayPaymentIntentResult {
+  provider: 'alipay';
   clientSecret: string;
   paymentIntentId: string;
 }
@@ -812,6 +819,112 @@ export class StripeService {
       }
 
       throw new InternalServerErrorException('Failed to create Link PaymentIntent.');
+    }
+  }
+
+  /**
+   * Alipay via Stripe PaymentIntent (payment_method_types: alipay).
+   * Trusted catalog pricing — never trusts a client amount.
+   */
+  async createAlipayPaymentIntent(
+    dto: CreateAlipayPaymentIntentDto,
+  ): Promise<CreateAlipayPaymentIntentResult> {
+    if (!this.stripe) {
+      throw new ServiceUnavailableException(
+        'Stripe is not configured. Set STRIPE_SECRET_KEY=sk_test_... in server/.env',
+      );
+    }
+
+    const catalogProduct = getCatalogProduct(dto.productId);
+    if (!catalogProduct) {
+      throw new BadRequestException(
+        `Unknown productId "${dto.productId}". Use a catalog product (e.g. premium-plan).`,
+      );
+    }
+
+    const currency = dto.currency.toUpperCase();
+    if (currency !== catalogProduct.currency) {
+      throw new BadRequestException(
+        `Currency mismatch: catalog product uses ${catalogProduct.currency}, got ${dto.currency}.`,
+      );
+    }
+
+    const ALIPAY_CURRENCIES = new Set([
+      'AUD', 'CAD', 'CHF', 'CNY', 'EUR', 'GBP', 'HKD', 'JPY', 'MYR', 'NZD', 'SGD', 'USD',
+    ]);
+    if (!ALIPAY_CURRENCIES.has(currency)) {
+      throw new BadRequestException(
+        `Alipay supports AUD, CAD, CHF, CNY, EUR, GBP, HKD, JPY, MYR, NZD, SGD, and USD (got ${currency}).`,
+      );
+    }
+
+    const unitAmount = catalogProduct.unitAmount;
+    const totalMajor = unitAmount * dto.quantity;
+    if (!Number.isFinite(totalMajor) || totalMajor < 0.5 || totalMajor > 999_999.99) {
+      throw new BadRequestException(
+        `Alipay amount must be between 0.50 and 999999.99 (got ${totalMajor}).`,
+      );
+    }
+
+    const unitAmountCents = Math.round(unitAmount * 100);
+    const totalAmount = unitAmountCents * dto.quantity;
+    if (totalAmount > 99_999_999) {
+      throw new BadRequestException('Total charge amount is too large.');
+    }
+
+    const description =
+      dto.description?.trim() ||
+      catalogProduct.name ||
+      `Easy Payments Alipay: ${dto.productId}`;
+
+    const safeMetadata = mergePaymentIntentMetadata(dto.metadata, {
+      productId: dto.productId,
+      quantity: String(dto.quantity),
+      source: 'easy-payments-demo',
+      paymentMethod: 'alipay',
+      trustedUnitAmount: String(catalogProduct.unitAmount),
+    });
+
+    try {
+      const intent = await this.stripe.paymentIntents.create({
+        amount: totalAmount,
+        currency: catalogProduct.currency.toLowerCase(),
+        description,
+        metadata: safeMetadata,
+        // Alipay-only PaymentIntent — keeps Card / Klarna / Affirm / ACH / Afterpay isolated.
+        payment_method_types: ['alipay'],
+      });
+
+      if (!intent.client_secret) {
+        throw new InternalServerErrorException('Stripe did not return a client_secret.');
+      }
+
+      return {
+        provider: 'alipay',
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      const stripeMessage =
+        error instanceof Stripe.errors.StripeError
+          ? error.message
+          : 'Failed to create Alipay PaymentIntent.';
+
+      this.logger.error(`Alipay PaymentIntent creation failed: ${stripeMessage}`);
+
+      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+        throw new BadRequestException(stripeMessage);
+      }
+
+      throw new InternalServerErrorException('Failed to create Alipay PaymentIntent.');
     }
   }
 

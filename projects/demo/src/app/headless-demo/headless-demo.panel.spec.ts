@@ -44,6 +44,7 @@ const METHODS: PaymentMethod[] = [
   'card',
   'klarna',
   'affirm',
+  'alipay',
   'paypal',
   'google-pay',
   'apple-pay',
@@ -74,11 +75,13 @@ function methodStatus(
           ? 'klarna'
           : method === 'affirm'
             ? 'affirm'
-            : method === 'google-pay'
-              ? 'googlePay'
-              : method === 'apple-pay'
-                ? 'applePay'
-                : 'stripe';
+            : method === 'alipay'
+              ? 'alipay'
+              : method === 'google-pay'
+                ? 'googlePay'
+                : method === 'apple-pay'
+                  ? 'applePay'
+                  : 'stripe';
   return {
     method,
     provider,
@@ -131,6 +134,7 @@ describe('headless-demo-mount-policy', () => {
     expect(isHeadlessDemoStripeElementMethod('us-bank-account')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('cash-app-pay')).toBeTrue();
     expect(isHeadlessDemoStripeElementMethod('afterpay')).toBeTrue();
+    expect(isHeadlessDemoStripeElementMethod('alipay')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('paypal')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('venmo')).toBeTrue();
     expect(isHeadlessDemoOfficialButtonMethod('zip')).toBeTrue();
@@ -194,6 +198,7 @@ describe('HeadlessDemoPanel', () => {
         methodStatus('card'),
         methodStatus('klarna'),
         methodStatus('affirm'),
+        methodStatus('alipay'),
         methodStatus('paypal'),
         methodStatus('google-pay'),
         methodStatus('apple-pay', 'loading', false, {
@@ -341,6 +346,25 @@ describe('HeadlessDemoPanel', () => {
     await fixture.componentInstance.onSelectMethod('paypal');
     await fixture.componentInstance.onConfirmPayment();
     expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a host-owned Continue with Alipay CTA gated by readiness', async () => {
+    const fixture = await createPanel();
+    await fixture.componentInstance.onSelectMethod('alipay');
+    fixture.detectChanges();
+
+    const pay = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="headless-demo-pay"]',
+    ) as HTMLButtonElement;
+    expect(pay).toBeTruthy();
+    expect(pay.textContent?.trim()).toBe('Continue with Alipay');
+    expect(fixture.componentInstance.canConfirmPayment()).toBeTrue();
+    expect(pay.disabled).toBeFalse();
+
+    state.set('processing');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canConfirmPayment()).toBeFalse();
+    expect(pay.disabled).toBeTrue();
   });
 
   it('prevents double confirm while processing', async () => {

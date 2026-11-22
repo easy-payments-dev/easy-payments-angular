@@ -20,7 +20,7 @@ Use Headless when you need full layout control (custom method lists, multi-step 
 
 | Method | Merchant pays via | Official control |
 |--------|-------------------|------------------|
-| `card` / `klarna` / `affirm` | `session.confirm()` after mount | Stripe Payment Element |
+| `card` / `klarna` / `affirm` / `alipay` (and other PE methods) | `session.confirm()` after mount | Stripe Payment Element |
 | `paypal` | Buyer clicks PayPal Buttons | PayPal JS SDK Buttons |
 | `google-pay` | Buyer clicks Google Pay button | Google Pay JS SDK |
 | `apple-pay` | Buyer authorizes Apple Pay | Stripe Express Checkout Element |
@@ -138,7 +138,7 @@ session.initialize(): Promise<void>
 session.refreshAvailability(): Promise<readonly HeadlessMethodStatus[]>
 session.selectMethod(method: PaymentMethod | null): void
 session.mount(method, container: HTMLElement): Promise<HeadlessMountHandle>
-session.confirm(): Promise<void>                 // card | klarna | affirm only
+session.confirm(): Promise<void>                 // card | klarna | affirm | alipay | … (PE methods)
 session.recoverReturn(): Promise<PaymentResult | null>  // klarna | affirm after redirect
 session.destroy(): Promise<void>
 
@@ -167,6 +167,12 @@ session.events.started | methodChange | pending | success | cancel | error
 - Often **redirect**; use a **stable** `checkoutInstanceId` (see §E).
 - Backend: `klarnaCreatePaymentUrl` / `affirmCreatePaymentUrl`.
 - Eligibility (currency / Affirm minimums) matches Full Checkout.
+
+### Alipay
+
+- Stripe Payment Element + redirect (same interaction as Klarna/Affirm).
+- Host renders and styles its own confirm button; call `session.confirm()` when readiness is `ready` and `session.state()` is `ready`. Disable while processing.
+- Backend: `alipayCreatePaymentUrl`. See [providers/alipay.md](./providers/alipay.md#headless--host-rendered-confirm-button).
 
 ### PayPal
 
@@ -324,7 +330,7 @@ Full Checkout and Buttons Only remain unchanged; Headless is additive.
 
 When a method's status reports `mock: true` / `interaction: 'mock'`, `mount()` renders a DEMO surface into your container instead of Stripe.js / the PayPal SDK / wallet SDKs (no backend URLs are called):
 
-- `card` / `klarna` / `affirm` — a DEMO panel; call `session.confirm()` from your own CTA. Outcomes follow `MockPaymentController` (success / cancelled / failed) via `orchestrator.processPayment`.
+- `card` / `klarna` / `affirm` / `alipay` — a DEMO panel; call `session.confirm()` from your own CTA. Outcomes follow `MockPaymentController` (success / cancelled / failed) via `orchestrator.processPayment`.
 - `paypal` / `google-pay` / `apple-pay` — a DEMO button; the buyer click starts payment (`session.confirm()` is still rejected, as with real wallets).
 
 Each user action emits exactly one terminal event (`success` / `pending` / `cancel` / `error`). Non-mock sessions are unchanged.

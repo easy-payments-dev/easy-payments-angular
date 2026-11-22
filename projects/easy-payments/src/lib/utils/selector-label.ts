@@ -20,7 +20,8 @@ export function resolveSelectorLabelOverride(
       method !== 'venmo' &&
       method !== 'zip' &&
       method !== 'link' &&
-      method !== 'amazon-pay')
+      method !== 'amazon-pay' &&
+      method !== 'alipay')
   ) {
     return null;
   }

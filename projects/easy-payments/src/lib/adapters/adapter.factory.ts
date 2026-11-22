@@ -26,6 +26,7 @@ import { VenmoAdapter, VenmoMockAdapter } from './venmo/venmo.adapter';
 import { ZipAdapter, ZipMockAdapter } from './zip/zip.adapter';
 import { LinkAdapter, LinkMockAdapter } from './link/link.adapter';
 import { AmazonPayAdapter, AmazonPayMockAdapter } from './amazon-pay/amazon-pay.adapter';
+import { AlipayAdapter, AlipayMockAdapter } from './alipay/alipay.adapter';
 
 type ProviderKey = keyof EasyPaymentsProviderConfig;
 
@@ -43,6 +44,7 @@ const REAL_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   zip: ZipAdapter,
   link: LinkAdapter,
   amazonPay: AmazonPayAdapter,
+  alipay: AlipayAdapter,
 };
 
 const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => PaymentProviderAdapter> = {
@@ -59,6 +61,7 @@ const MOCK_ADAPTERS: Record<PaymentProviderName, new (...args: never[]) => Payme
   zip: ZipMockAdapter,
   link: LinkMockAdapter,
   amazonPay: AmazonPayMockAdapter,
+  alipay: AlipayMockAdapter,
 };
 
 const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
@@ -75,6 +78,7 @@ const CONFIG_KEY_MAP: Record<PaymentProviderName, ProviderKey> = {
   zip: 'zip',
   link: 'link',
   amazonPay: 'amazonPay',
+  alipay: 'alipay',
 };
 
 @Injectable({ providedIn: 'root' })

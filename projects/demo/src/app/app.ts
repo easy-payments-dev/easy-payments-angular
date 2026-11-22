@@ -133,6 +133,7 @@ const DEFAULT_METHODS: MethodRow[] = [
   { method: 'cash-app-pay', enabled: true },
   // Opt-in Afterpay for Full Checkout, Buttons Only, and Headless.
   { method: 'afterpay', enabled: true },
+  { method: 'alipay', enabled: true },
   // Opt-in Venmo (PayPal JS SDK funding) for Full Checkout, Buttons Only, and Headless.
   { method: 'venmo', enabled: true },
   // Opt-in Link (Stripe Express Checkout Element) for Full Checkout, Buttons Only, and Headless.
@@ -526,10 +527,12 @@ export class App {
 
   /**
    * Demo controls for public `[cardButtonAppearance]` — Easy Payments–owned
-   * Stripe Card confirmation CTA (not method tiles / SDK buttons).
+   * confirm CTAs (Card / ACH / Alipay styles; Card `label` vs Alipay `alipayLabel`).
    * Empty fields → `null` (library theme defaults).
    */
   readonly cardCtaLabel = signal('');
+  /** Independent of Card `label` — maps to `cardButtonAppearance.alipayLabel`. */
+  readonly cardCtaAlipayLabel = signal('');
   readonly cardCtaBackgroundColor = signal('');
   readonly cardCtaTextColor = signal('');
   readonly cardCtaFontFamily = signal('');
@@ -561,6 +564,10 @@ export class App {
     const label = this.cardCtaLabel().trim();
     if (label) {
       appearance.label = label;
+    }
+    const alipayLabel = this.cardCtaAlipayLabel().trim();
+    if (alipayLabel) {
+      appearance.alipayLabel = alipayLabel;
     }
     const backgroundColor = this.cardCtaBackgroundColor().trim();
     if (backgroundColor) {
@@ -1199,9 +1206,10 @@ ${cardAppearanceBlock}
     this.cardCtaTextAlign.set(value);
   }
 
-  /** Demo helper: sample branded Card CTA (does not change payment behavior). */
+  /** Demo helper: sample branded CTA styles + independent Card/Alipay labels. */
   applyCardCtaSample(): void {
     this.cardCtaLabel.set('Complete card payment');
+    this.cardCtaAlipayLabel.set('Pay with Alipay');
     this.cardCtaBackgroundColor.set('#0b6e4f');
     this.cardCtaTextColor.set('#f8fafc');
     this.cardCtaFontFamily.set('Georgia, serif');
@@ -1229,6 +1237,7 @@ ${cardAppearanceBlock}
 
   resetCardButtonAppearance(): void {
     this.cardCtaLabel.set('');
+    this.cardCtaAlipayLabel.set('');
     this.cardCtaBackgroundColor.set('');
     this.cardCtaTextColor.set('');
     this.cardCtaFontFamily.set('');
@@ -1340,6 +1349,7 @@ ${cardAppearanceBlock}
               // Link via Stripe Express Checkout Element (same pk_test).
               // Card PE keeps wallets.link: 'never' so Link is not duplicated in the card form.
               link: {},
+              alipay: {},
               // Amazon Pay via Stripe Express Checkout Element (same pk_test).
               amazonPay: {},
             }
@@ -1368,6 +1378,7 @@ ${cardAppearanceBlock}
         createUsBankAccountPaymentUrl: environment.createUsBankAccountPaymentUrl.trim(),
         cashAppPayCreatePaymentUrl: environment.cashAppPayCreatePaymentUrl.trim(),
         afterpayCreatePaymentUrl: environment.afterpayCreatePaymentUrl.trim(),
+        alipayCreatePaymentUrl: environment.alipayCreatePaymentUrl.trim(),
         linkCreatePaymentUrl: environment.linkCreatePaymentUrl.trim(),
         amazonPayCreatePaymentUrl: environment.amazonPayCreatePaymentUrl.trim(),
         zipCreateCheckoutUrl: environment.zipCreateCheckoutUrl.trim(),

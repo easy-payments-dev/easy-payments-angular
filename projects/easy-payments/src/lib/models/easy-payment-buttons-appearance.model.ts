@@ -142,6 +142,7 @@ export interface EasyPaymentButtonsSelectorLabels {
    */
   link?: string;
   amazonPay?: string;
+  alipay?: string;
 }
 
 /** Who renders the Card / Klarna / Affirm / ACH / Cash App Pay / Afterpay triggers. Wallets stay official SDK buttons. */

@@ -82,6 +82,29 @@ describe('EasyPaymentsConfigValidator', () => {
     ).toContain('Amazon Pay:');
   });
 
+  it('treats Alipay as explicit opt-in via providers.alipay', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: { stripe: { publishableKey: 'pk_test_123' } },
+        }),
+      ],
+    });
+    const validator = TestBed.inject(EasyPaymentsConfigValidator);
+
+    expect(validator.validateProvider('alipay', undefined).status).toBe('missing');
+    expect(validator.validateProvider('alipay', {}).status).toBe('configured');
+    expect(
+      validator.validateAll(['alipay'], {
+        providers: { stripe: { publishableKey: 'pk_test_123' }, alipay: {} },
+      }).find((r) => r.provider === 'alipay')?.status,
+    ).toBe('configured');
+    expect(
+      validator.formatStatusLine({ provider: 'alipay', status: 'missing', message: 'x' }),
+    ).toContain('Alipay:');
+  });
+
   it('rejects Stripe secret keys in frontend configuration', () => {
     TestBed.configureTestingModule({
       providers: [

@@ -18,6 +18,7 @@ const ALL_METHODS = new Set<PaymentMethod>([
   'us-bank-account',
   'cash-app-pay',
   'afterpay',
+  'alipay',
   'zip',
   'link',
   'amazon-pay',
@@ -52,6 +53,7 @@ export function interactionForMethod(
     case 'us-bank-account':
     case 'cash-app-pay':
     case 'afterpay':
+    case 'alipay':
       return 'confirm';
     default: {
       const _exhaustive: never = method;

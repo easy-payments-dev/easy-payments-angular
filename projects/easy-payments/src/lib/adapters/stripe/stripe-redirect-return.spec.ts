@@ -75,6 +75,12 @@ describe('buildStripeReturnUrl', () => {
     expect(url.hash).toBe('#done');
   });
 
+  it('stamps ep_method=alipay for Alipay returns', () => {
+    const url = new URL(buildStripeReturnUrl('alipay', '/return', PAGE, 'attempt99'));
+    expect(url.searchParams.get('ep_method')).toBe('alipay');
+    expect(url.searchParams.get('ep_attempt')).toBe('attempt99');
+  });
+
   it('uses the current page when successUrl is omitted', () => {
     const url = parsed(undefined);
     expect(url.origin).toBe('https://shop.example');

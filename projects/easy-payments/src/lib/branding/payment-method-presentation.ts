@@ -70,6 +70,12 @@ const AFTERPAY_MARK_LIGHT =
 const AFTERPAY_MARK_DARK =
   'https://static.afterpaycdn.com/en-US/integration/logo/lockup/new-color-white-32.svg';
 
+/** Alipay brand blue wordmark for light surfaces. */
+const ALIPAY_MARK_LIGHT = 'https://cdn.simpleicons.org/alipay/1677FF';
+
+/** Alipay wordmark for dark surfaces. */
+const ALIPAY_MARK_DARK = 'https://cdn.simpleicons.org/alipay/FFFFFF';
+
 /**
  * Official Venmo wordmark (blue) for light surfaces — PayPal Newsroom brand assets.
  * @see https://newsroom.paypal-corp.com/
@@ -205,6 +211,17 @@ export function getPaymentMethodPresentation(
           'Official Afterpay lockup from Afterpay brand assets (static.afterpaycdn.com). Black lockup on light themes, white on dark. UK Clearpay naming is shown by Stripe Payment Element; selector uses Afterpay lockup.',
       };
 
+    case 'alipay':
+      return {
+        method,
+        label,
+        markIncludesName: true,
+        source: 'official-cdn',
+        markUrl: dark ? ALIPAY_MARK_DARK : ALIPAY_MARK_LIGHT,
+        notes:
+          'Alipay wordmark (brand blue #1677FF on light, white on dark) for library-owned selectors. Real Alipay payment chrome stays Stripe Payment Element.',
+      };
+
     case 'venmo':
       return {
         method,
@@ -273,6 +290,7 @@ export function listPaymentMethodPresentations(
     'us-bank-account',
     'cash-app-pay',
     'afterpay',
+    'alipay',
     'zip',
     'link',
     'amazon-pay',

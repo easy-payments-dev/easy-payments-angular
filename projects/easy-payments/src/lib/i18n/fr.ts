@@ -16,6 +16,7 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   methodUsBankAccount: 'Compte bancaire américain',
   methodCashAppPay: 'Cash App Pay',
   methodAfterpay: 'Afterpay',
+  methodAlipay: 'Alipay',
   methodVenmo: 'Venmo',
   methodZip: 'Zip',
   methodLink: 'Payer avec Link',
@@ -88,6 +89,7 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   usBankAccountPaymentRegionAria: 'Paiement par compte bancaire américain',
   cashAppPayPaymentRegionAria: 'Paiement Cash App Pay',
   afterpayPaymentRegionAria: 'Paiement Afterpay',
+  alipayPaymentRegionAria: 'Paiement Alipay',
   venmoPaymentRegionAria: 'Paiement Venmo',
   zipPaymentRegionAria: 'Paiement Zip',
   linkPaymentRegionAria: 'Paiement Link',
@@ -170,6 +172,11 @@ export const FR_TRANSLATIONS: EasyPaymentsTranslations = {
   secureCheckoutAfterpay: 'Paiement sécurisé propulsé par Afterpay via Stripe',
   preparingAfterpay: 'Préparation d’Afterpay…',
   afterpayFormAria: 'Formulaire de paiement sécurisé Afterpay',
+
+  payWithAlipay: 'Payer avec Alipay',
+  secureCheckoutAlipay: 'Paiement sécurisé propulsé par Alipay via Stripe',
+  preparingAlipay: 'Préparation d’Alipay…',
+  alipayFormAria: 'Formulaire de paiement sécurisé Alipay',
 
   payWithVenmo: 'Payer avec Venmo',
   secureCheckoutVenmo: 'Paiement sécurisé propulsé par Venmo via PayPal',

@@ -898,8 +898,11 @@ function methodLabel(method: StripeRedirectMethod): string {
     case 'affirm':
       return 'Affirm';
     case 'cash-app-pay':
-    case 'afterpay':
       return 'Cash App Pay';
+    case 'afterpay':
+      return 'Afterpay';
+    case 'alipay':
+      return 'Alipay';
     default:
       return 'Klarna';
   }

@@ -23,6 +23,18 @@
 - Requires Dashboard Amazon Pay activation + Payment Method Domains; US presentment USD (EMEA currencies per Stripe)
 - Angular demo includes Amazon Pay; Ionic/Capacitor native confirmation not claimed as verified
 
+### Alipay (opt-in)
+
+- Dedicated `'alipay'` method via Stripe **Payment Element** + redirect confirmation (not Express Checkout)
+- Explicit opt-in: `providers.alipay: {}` + `'alipay'` in `methods` + Stripe `publishableKey` + `backend.alipayCreatePaymentUrl`
+- Server creates PaymentIntent with `payment_method_types: ['alipay']`; catalog amount is authoritative
+- Shared Stripe redirect recovery (`ep_method=alipay` + attempt-scoped pending marker); success only after Stripe status
+- Official Alipay wordmark on library-owned selectors (light/dark); Payment Element stays under Stripe/Alipay branding
+- Available in Full Checkout, Buttons Only (success emits once), and Headless (`mount` + `confirm` / `recoverReturn`)
+- EN / ES / PT / FR library copy; locale passed to Stripe Elements
+- Requires Dashboard Alipay activation; presentment currencies per Stripe (AUD, CAD, CHF, CNY, EUR, GBP, HKD, JPY, MYR, NZD, SGD, USD)
+- Angular demo includes Alipay; Ionic/Capacitor native redirect return not claimed as verified
+
 ### Zip (experimental)
 
 - Zip US Gateway + JS SDK remains available as an **explicit opt-in** (`methods` includes `'zip'` + `providers.zip` + Zip backend URLs)

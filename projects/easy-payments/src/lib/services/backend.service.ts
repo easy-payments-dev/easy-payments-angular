@@ -17,9 +17,11 @@ import {
   AffirmCreatePaymentRequest,
   CapturePayPalOrderResponse,
   AfterpayCreatePaymentRequest,
+  AlipayCreatePaymentRequest,
   CashAppPayCreatePaymentRequest,
   CreateAffirmPaymentResponse,
   CreateAfterpayPaymentResponse,
+  CreateAlipayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
   CreateAmazonPayPaymentResponse,
@@ -41,6 +43,7 @@ import {
   ZipVerifyReturnResponse,
   toAffirmCreatePaymentRequest,
   toAfterpayCreatePaymentRequest,
+  toAlipayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toAmazonPayCreatePaymentRequest,
@@ -513,6 +516,47 @@ export class BackendService {
   }
 
   /**
+   * Posts the Alipay create-payment wire contract.
+   * Forwards validated merchant metadata only. Never forwards a client amount.
+   */
+  async createAlipayPayment(
+    payload:
+      | AlipayCreatePaymentRequest
+      | { productId: string; quantity: number; currency: string },
+  ): Promise<CreateAlipayPaymentResponse> {
+    const url = this.requireEndpoint(
+      'alipayCreatePaymentUrl',
+      'Backend alipayCreatePaymentUrl is not configured.',
+      'alipay',
+      'alipay',
+    );
+
+    const body = toAlipayCreatePaymentRequest(payload);
+    if (body.metadata) {
+      body.metadata = assertMerchantMetadata(body.metadata, 'alipay', 'alipay');
+    }
+
+    return this.postJson<CreateAlipayPaymentResponse>(url, body, 'alipay', 'alipay', {
+      successMessage: 'Failed to create Alipay payment on backend.',
+      networkMessage: 'A network error occurred while creating the Alipay payment session.',
+      validate: (response) => {
+        if (
+          response?.provider !== 'alipay' ||
+          typeof response.clientSecret !== 'string' ||
+          !response.clientSecret.trim()
+        ) {
+          throw new PaymentError({
+            code: 'BACKEND_ERROR',
+            message: 'Invalid Alipay create-payment response from backend.',
+            method: 'alipay',
+            provider: 'alipay',
+          });
+        }
+      },
+    });
+  }
+
+  /**
    * Creates a Zip signed authorize body. Catalog amount is authoritative.
    * Never forwards a client amount.
    */
@@ -678,6 +722,7 @@ export class BackendService {
       | 'linkCreatePaymentUrl'
       | 'amazonPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
+      | 'alipayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'
       | 'zipCaptureUrl'
@@ -699,6 +744,7 @@ export class BackendService {
       | 'linkCreatePaymentUrl'
       | 'amazonPayCreatePaymentUrl'
       | 'afterpayCreatePaymentUrl'
+      | 'alipayCreatePaymentUrl'
       | 'zipCreateCheckoutUrl'
       | 'zipVerifyReturnUrl'
       | 'zipCaptureUrl'

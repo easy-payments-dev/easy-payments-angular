@@ -1,6 +1,6 @@
 # Stripe
 
-Card, Apple Pay, Google Pay, Klarna, Affirm, US bank account (ACH), Cash App Pay, Afterpay, Link, and Amazon Pay in Easy Payments all use **Stripe** on the provider side (PayPal is separate). Card Payment Element keeps `wallets.link: 'never'`; use the dedicated `'link'` / `'amazon-pay'` methods for the official Express Checkout buttons.
+Card, Apple Pay, Google Pay, Klarna, Affirm, US bank account (ACH), Cash App Pay, Afterpay, Alipay, Link, and Amazon Pay in Easy Payments all use **Stripe** on the provider side (PayPal is separate). Card Payment Element keeps `wallets.link: 'never'`; use the dedicated `'link'` / `'amazon-pay'` methods for the official Express Checkout buttons.
 
 ## What you need
 

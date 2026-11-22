@@ -239,6 +239,9 @@ export class PaymentMethodTileComponent {
     if (method === 'afterpay') {
       return this.msgs().methodAfterpay;
     }
+    if (method === 'alipay') {
+      return this.msgs().methodAlipay;
+    }
     if (method === 'link') {
       return this.msgs().methodLink;
     }
@@ -261,13 +264,15 @@ export class PaymentMethodTileComponent {
             ? this.msgs().methodCashAppPay
             : method === 'afterpay'
               ? this.msgs().methodAfterpay
-              : method === 'venmo'
-                ? this.msgs().methodVenmo
-                : method === 'link'
-                  ? this.msgs().methodLink
-                  : method === 'amazon-pay'
-                    ? this.msgs().methodAmazonPay
-                    : PAYMENT_METHOD_LABELS[method]);
+              : method === 'alipay'
+                ? this.msgs().methodAlipay
+                : method === 'venmo'
+                  ? this.msgs().methodVenmo
+                  : method === 'link'
+                    ? this.msgs().methodLink
+                    : method === 'amazon-pay'
+                      ? this.msgs().methodAmazonPay
+                      : PAYMENT_METHOD_LABELS[method]);
     const demo = this.isMock() ? `, ${this.msgs().demoModeAria}` : '';
     const state = this.selected() ? ', selected' : '';
     return `${base}${demo}${state}`;

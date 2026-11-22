@@ -571,4 +571,40 @@ describe('StripeService', () => {
       }),
     );
   });
+
+  it('creates an Alipay PaymentIntent with payment_method_types alipay', async () => {
+    createMock.mockResolvedValue({
+      id: 'pi_alipay',
+      client_secret: 'pi_alipay_secret',
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [StripeService, { provide: ConfigService, useValue: mockConfig() }],
+    }).compile();
+    const service = module.get(StripeService);
+
+    const result = await service.createAlipayPaymentIntent({
+      provider: 'alipay',
+      productId: 'premium-plan',
+      quantity: 1,
+      currency: 'USD',
+    });
+
+    expect(result).toEqual({
+      provider: 'alipay',
+      clientSecret: 'pi_alipay_secret',
+      paymentIntentId: 'pi_alipay',
+    });
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 9900,
+        currency: 'usd',
+        payment_method_types: ['alipay'],
+        metadata: expect.objectContaining({
+          productId: 'premium-plan',
+          paymentMethod: 'alipay',
+        }),
+      }),
+    );
+  });
 });

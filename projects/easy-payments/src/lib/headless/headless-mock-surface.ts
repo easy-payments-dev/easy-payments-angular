@@ -68,7 +68,9 @@ export function renderHeadlessMockSurface(
         ? messages.methodLink
         : method === 'amazon-pay'
           ? messages.methodAmazonPay
-          : PAYMENT_METHOD_LABELS[method];
+          : method === 'alipay'
+            ? messages.methodAlipay
+            : PAYMENT_METHOD_LABELS[method];
   const dark = theme === 'dark';
   const text = dark ? '#f8fafc' : '#0f172a';
   const secondary = dark ? '#94a3b8' : '#64748b';

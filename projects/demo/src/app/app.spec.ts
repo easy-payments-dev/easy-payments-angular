@@ -511,12 +511,14 @@ describe('App', () => {
       'us-bank-account',
       'cash-app-pay',
       'afterpay',
+      'alipay',
       'venmo',
       'link',
       'amazon-pay',
     ]);
     expect(app.methods().includes('zip')).toBeFalse();
     expect(app.methodRows().some((row) => row.method === 'zip')).toBeFalse();
+    expect(app.methods().includes('alipay')).toBeTrue();
     expect(app.methods().includes('link')).toBeTrue();
     expect(app.methods().includes('amazon-pay')).toBeTrue();
     expect(app.checkoutMaxWidth()).toBe(640);
@@ -624,6 +626,7 @@ describe('App', () => {
     app.applyCardCtaSample();
     fixture.detectChanges();
     expect(app.cardButtonAppearance()?.label).toBe('Complete card payment');
+    expect(app.cardButtonAppearance()?.alipayLabel).toBe('Pay with Alipay');
     expect(app.cardButtonAppearance()?.backgroundColor).toBe('#0b6e4f');
     expect(app.cardButtonAppearance()?.border).toBe('none');
 
@@ -637,6 +640,7 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('easy-payment-buttons')).toBeTruthy();
     expect(app.buttonsCodeExample()).toContain('cardButtonAppearance');
     expect(app.buttonsCodeExample()).toContain('Complete card payment');
+    expect(app.buttonsCodeExample()).toContain('Pay with Alipay');
 
     app.resetCardButtonAppearance();
     fixture.detectChanges();

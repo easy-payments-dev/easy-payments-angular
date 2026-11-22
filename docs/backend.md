@@ -205,6 +205,23 @@ Catalog-priced. Creates a PaymentIntent with `payment_method_types: ['amazon_pay
 
 ---
 
+### Alipay (Stripe Payment Element + redirect)
+
+`POST /api/payments/alipay/create` → **201**
+
+```json
+{
+  "provider": "alipay",
+  "productId": "premium-plan",
+  "quantity": 1,
+  "currency": "USD"
+}
+```
+
+Catalog-priced. Creates a PaymentIntent with `payment_method_types: ['alipay']`. Response: `{ provider: 'alipay', clientSecret, paymentIntentId? }`. Enable Alipay in the Dashboard. Buyer completes Alipay redirect/QR; return via `return_url`.
+
+---
+
 ### Catalog (demo helper)
 
 | Method | Path | Purpose |
@@ -227,6 +244,7 @@ Not required for production merchants that already have a catalog API.
 | `affirmCreatePaymentUrl` | `/api/payments/affirm/create` |
 | `linkCreatePaymentUrl` | `/api/payments/link/create` |
 | `amazonPayCreatePaymentUrl` | `/api/payments/amazon-pay/create` |
+| `alipayCreatePaymentUrl` | `/api/payments/alipay/create` |
 | `baseUrl` | Optional. Prefixes relative endpoints only. |
 
 ### `backend.baseUrl`

@@ -98,4 +98,15 @@ describe('resolveCardButtonAppearance', () => {
     expect(resolveCardButtonAppearance({ label: '   ' }).label).toBeNull();
     expect(resolveCardButtonAppearance({ label: 'x'.repeat(81) }).label).toBeNull();
   });
+
+  it('resolves Card label and alipayLabel independently', () => {
+    const resolved = resolveCardButtonAppearance({
+      label: 'Complete card payment',
+      alipayLabel: '  Pay via Alipay  ',
+    });
+    expect(resolved.label).toBe('Complete card payment');
+    expect(resolved.alipayLabel).toBe('Pay via Alipay');
+    expect(resolveCardButtonAppearance({ label: 'Card only' }).alipayLabel).toBeNull();
+    expect(resolveCardButtonAppearance({ alipayLabel: '   ' }).alipayLabel).toBeNull();
+  });
 });

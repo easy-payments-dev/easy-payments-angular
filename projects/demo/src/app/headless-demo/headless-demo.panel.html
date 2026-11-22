@@ -298,6 +298,8 @@
             {{ copy().continueWithKlarna }}
           } @else if (uiSelectedMethod() === 'affirm') {
             {{ copy().continueWithAffirm }}
+          } @else if (uiSelectedMethod() === 'alipay') {
+            {{ copy().continueWithAlipay }}
           } @else {
             {{ elementConfirmPayLabel() }}
           }

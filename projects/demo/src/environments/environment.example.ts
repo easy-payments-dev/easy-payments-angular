@@ -39,6 +39,7 @@ export const environment = {
   createUsBankAccountPaymentUrl: '/api/payments/us-bank-account/create',
   cashAppPayCreatePaymentUrl: '/api/payments/cash-app-pay/create',
   afterpayCreatePaymentUrl: '/api/payments/afterpay/create',
+  alipayCreatePaymentUrl: '/api/payments/alipay/create',
   linkCreatePaymentUrl: '/api/payments/link/create',
   amazonPayCreatePaymentUrl: '/api/payments/amazon-pay/create',
   zipCreateCheckoutUrl: '/api/payments/zip/create',

@@ -45,6 +45,7 @@ const STRIPE_DEPENDENT_METHODS = new Set<PaymentMethod>([
   'us-bank-account',
   'cash-app-pay',
   'afterpay',
+  'alipay',
   'link',
   'amazon-pay',
 ]);

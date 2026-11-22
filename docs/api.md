@@ -22,7 +22,7 @@ Standalone component. Selector: `easy-payments`.
 | `theme` | `PaymentTheme` | `'system'` | No | `light`, `dark`, `system` | Color theme. `system` follows `prefers-color-scheme` and updates when the preference changes. |
 | `appearance` | `EasyPaymentsAppearance` | `'default'` | No | `default`, `transparent` | Outer shell. Independent of `theme`. `transparent` removes built-in card chrome. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | see [Visual style](#visual-style) | Optional EP-owned font / color / token overrides. Invalid fields ignored. Does not restyle provider SDK chrome. |
-| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | see [Stripe Card button appearance](#stripe-card-button-appearance) | Optional label + styles for the EP-owned Stripe Card confirm CTA. Does not restyle the Payment Element iframe or wallet SDK buttons. |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | see [Stripe Card button appearance](#stripe-card-button-appearance) | Optional label + styles for EP-owned confirm CTAs (Card, ACH, Alipay). Does not restyle the Payment Element iframe or wallet SDK buttons. |
 | `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | No | see [Selector labels](#selector-labels) | Optional plain-text overrides for Full Checkout method tiles (`card`, `usBankAccount`, …). Blank/omitted keys keep localized defaults. Accessible names follow the visible label. Does not change confirm CTAs. |
 | `maxWidth` | `number \| string \| null \| undefined` | `640` | No | clamped to **320–1200** px | Max checkout width. Component stays `width: 100%` up to this cap. Invalid values fall back to `640`. |
 | `successBehavior` | `CheckoutSuccessBehavior` | `'confirmation'` | No | `confirmation`, `event-only` | Built-in success UI vs emit-only. Overridden by `checkout.successBehavior` when set. |
@@ -238,6 +238,8 @@ Live **Link** (`'link'`) mirrors Apple Pay: opt in with `providers.link: {}` plu
 
 Live **Amazon Pay** (`'amazon-pay'`) is the same Express Checkout Element pattern: opt in with `providers.amazonPay: {}` plus `'amazon-pay'` in `methods`, a Stripe **publishable** key, and `backend.amazonPayCreatePaymentUrl` (PaymentIntent with `payment_method_types: ['amazon_pay']`). The Amazon Pay ECE uses `paymentMethods.amazonPay: 'auto'` with other wallets `never`. Enable Amazon Pay in the Dashboard and register Payment Method Domains. See [providers/amazon-pay.md](./providers/amazon-pay.md).
 
+Live **Alipay** (`'alipay'`) uses Stripe Payment Element + redirect (not Express Checkout): opt in with `providers.alipay: {}` plus `'alipay'` in `methods`, a Stripe **publishable** key, and `backend.alipayCreatePaymentUrl` (PaymentIntent with `payment_method_types: ['alipay']`). Enable Alipay in the Dashboard. Success fires only after Stripe PaymentIntent status after return. See [providers/alipay.md](./providers/alipay.md).
+
 #### Klarna / Affirm readiness
 
 Live Klarna requires `providers.klarna`, a Stripe **publishable** key, and backend `klarnaCreatePaymentUrl`. Supported presentment currencies include USD, EUR, GBP, CAD, AUD, SEK, NOK, and DKK (same adapter rules as Ready-to-Use Checkout). Live Affirm requires `providers.affirm`, a Stripe **publishable** key, backend `affirmCreatePaymentUrl`, USD or CAD, and a minimum about **$35** total (`amount * quantity`). Enabling the provider in config does **not** guarantee financing for every buyer or cart — Stripe/provider eligibility still applies. Do not treat PaymentIntent creation, a redirect URL, or a browser return as success.
@@ -282,7 +284,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 | `locale` | `EasyPaymentsLocale` | `'auto'` | No | `en` \| `es` \| `pt` \| `fr` \| `auto` (same resolver as checkout). |
 | `translations` | `EasyPaymentsTranslationOverrides` | `{}` | No | Partial overrides for library-owned strings. |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | No | EP-owned color/font/radius/spacing tokens (including theme `--ep-cta-*` used by Klarna/Affirm confirm CTAs). Host fill stays transparent; use `buttonsAppearance.background` for an optional strip fill. Provider SDK chrome is not restyled. |
-| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same Stripe Card CTA API as Full Checkout. Applied to the expanded Card panel confirm button only (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | No | Same CTA API as Full Checkout. Applied to expanded Card, ACH, and Alipay confirm buttons (not Klarna/Affirm Continue CTAs; those follow theme/`visualStyle` `--ep-cta-*` or merchant CSS). |
 | `bnplConfirmMode` | `BnplConfirmMode` | `'element'` | No | **Buttons Only only.** Opt-in Klarna/Affirm confirmation strategy. Default `element` preserves Payment Element + Continue. `auto` uses Stripe Direct when readiness is met, otherwise PE. `direct` requires Direct readiness or emits `CONFIG_INVALID` (no Intent). Not available on Full Checkout or Headless. See [BNPL confirm mode](#buttons-only-bnpl-confirm-mode). |
 
 #### Button customization summary
@@ -291,7 +293,7 @@ When `enableMockMode` is true, live Stripe / PayPal / Google Pay / Apple Pay SDK
 |---------|-------------------------|---------------|
 | Library-owned strip selectors (Card / Klarna / Affirm) | `buttonsAppearance` selector fields and the CSS variables below, or `requestPayment` with `selectorVisibility="merchant"` | Replacing official wallet SDK buttons; injecting HTML into labels |
 | Merchant-owned Card / Klarna / Affirm triggers | Your Angular buttons plus `requestPayment` | A second payment engine, or calling confirm from `ngOnInit` / effects |
-| Card confirm CTA | `cardButtonAppearance` (`--ep-card-cta-*`) | Restyling Stripe Payment Element fields |
+| Card / ACH / Alipay confirm CTA | `cardButtonAppearance` (`--ep-card-cta-*`) | Restyling Stripe Payment Element fields |
 | Klarna / Affirm Continue CTAs | Theme / `visualStyle` `--ep-cta-*`, or scoped CSS on `.ep-klarna__pay` / `.ep-affirm__pay` | Treating them as free-form success screens |
 | PayPal / Google Pay / Apple Pay | Strip `layout` / slot width / gap; SDK-supported style options only | Arbitrary recoloring or unofficial replicas |
 
@@ -827,11 +829,12 @@ See [configuration.md](./configuration.md) for the full public `--ep-*` token ta
 
 ### Stripe Card button appearance
 
-Optional `[cardButtonAppearance]` customizes the **Easy Payments–owned** Stripe Card confirmation button (`.ep-stripe-card__pay`) used by both `<easy-payments>` and `<easy-payment-buttons>`. It does **not** restyle the Stripe Payment Element iframe or official PayPal / Google Pay / Apple Pay buttons.
+Optional `[cardButtonAppearance]` customizes **Easy Payments–owned** confirmation buttons (`.ep-stripe-card__pay`, `.ep-ach__pay`, `.ep-alipay__pay`) used by both `<easy-payments>` and `<easy-payment-buttons>`. Shared style fields apply to all three; `label` is Card/ACH only and `alipayLabel` is Alipay only. It does **not** restyle the Stripe Payment Element iframe or official PayPal / Google Pay / Apple Pay buttons. For Alipay Buttons Only, see [providers/alipay.md](./providers/alipay.md#buttons-only--confirm-cta-customization).
 
 ```ts
 interface EasyPaymentsCardButtonAppearance {
   label?: string;
+  alipayLabel?: string;
   backgroundColor?: string;
   textColor?: string;
   fontFamily?: string;
@@ -860,7 +863,8 @@ interface EasyPaymentsCardButtonAppearance {
 
 | Field | Maps to | Notes |
 |-------|---------|--------|
-| `label` | (text content) | Plain text only. Overrides idle localized label (`Pay {{amount}}` / `Pay with card`). Processing copy stays i18n. |
+| `label` | (text content) | Plain text only. Overrides idle localized **Card/ACH** label (`Pay {{amount}}` / `Pay with card`). Does not affect Alipay. Processing copy stays i18n. |
+| `alipayLabel` | (text content) | Plain text only. Overrides idle localized **Alipay** Continue CTA. Blank/omitted keeps EN/ES/PT/FR `continueToMethod`. Independent of `label`. |
 | `backgroundColor` | `--ep-card-cta-bg` | Falls back to theme `--ep-cta-bg`. |
 | `textColor` | `--ep-card-cta-text` | Falls back to `--ep-cta-text`. |
 | `fontFamily` | `--ep-card-cta-font-family` | Stack, `'inherit'`, or `var(--token)`. |
@@ -883,7 +887,7 @@ interface EasyPaymentsCardButtonAppearance {
 - Light: dark slate CTA (`#0f172a` / `#f8fafc`).
 - Dark: accent-mixed high-contrast CTA with light text (`--ep-cta-*` uses `--ep-accent`).
 - System: follows the resolved light/dark theme.
-- Idle labels stay localized until a valid `label` is provided.
+- Idle Card/ACH labels stay localized until a valid `label` is provided; Alipay until a valid `alipayLabel`.
 
 **Safety**
 

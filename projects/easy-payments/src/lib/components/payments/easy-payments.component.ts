@@ -62,6 +62,7 @@ import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.compon
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
+import { AlipayPaymentComponent } from '../payment-methods/alipay-payment.component';
 import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
 import { ZipPaymentComponent } from '../payment-methods/zip-payment.component';
 import { CheckoutProductSummaryComponent } from '../checkout/checkout-product-summary.component';
@@ -105,6 +106,7 @@ import {
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
+    AlipayPaymentComponent,
     VenmoPaymentComponent,
     ZipPaymentComponent,
     CheckoutOutcomeComponent,
@@ -393,6 +395,10 @@ export class EasyPaymentsComponent {
     this.visibleMethods().some((entry) => entry.method === 'afterpay' && !entry.isMock),
   );
 
+  readonly hasRealAlipayMethod = computed(() =>
+    this.visibleMethods().some((entry) => entry.method === 'alipay' && !entry.isMock),
+  );
+
   readonly hasRealVenmoMethod = computed(() =>
     this.visibleMethods().some((entry) => entry.method === 'venmo' && !entry.isMock),
   );
@@ -440,6 +446,9 @@ export class EasyPaymentsComponent {
       return false;
     }
     if (entry.method === 'afterpay' && !entry.isMock) {
+      return false;
+    }
+    if (entry.method === 'alipay' && !entry.isMock) {
       return false;
     }
     if (entry.method === 'venmo' && !entry.isMock) {
@@ -542,6 +551,9 @@ export class EasyPaymentsComponent {
   readonly showAfterpayPanel = computed(
     () => this.hasRealAfterpayMethod() && this.shouldMountProviderPanel('afterpay'),
   );
+  readonly showAlipayPanel = computed(
+    () => this.hasRealAlipayMethod() && this.shouldMountProviderPanel('alipay'),
+  );
   readonly showVenmoPanel = computed(() => this.hasRealVenmoMethod());
   readonly showZipPanel = computed(() => this.hasRealZipMethod());
 
@@ -625,6 +637,13 @@ export class EasyPaymentsComponent {
       this.showCheckoutForm() &&
       this.selectedMethod() === 'afterpay' &&
       this.hasRealAfterpayMethod(),
+  );
+
+  readonly alipayPanelActive = computed(
+    () =>
+      this.showCheckoutForm() &&
+      this.selectedMethod() === 'alipay' &&
+      this.hasRealAlipayMethod(),
   );
 
   readonly venmoPanelActive = computed(
@@ -978,6 +997,8 @@ export class EasyPaymentsComponent {
           ? 'Cash App Pay'
           : method === 'afterpay'
             ? 'Afterpay'
+            : method === 'alipay'
+              ? 'Alipay'
             : 'Klarna';
     const provider = PAYMENT_METHOD_PROVIDER_MAP[method];
 
@@ -1302,6 +1323,37 @@ export class EasyPaymentsComponent {
     this.clearProviderBusy();
   }
 
+  onAlipaySuccess(result: PaymentResult): void {
+    if (this.stripeRedirectRecovery.wasReturnConsumed() && this.terminalSuccessEmitted) {
+      return;
+    }
+    this.handleSuccess(result);
+  }
+
+  onAlipayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAlipayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
+  /**
+   * Alipay panel busy/returning signals (in-page confirm). Redirect recovery is
+   * owned by recoverStripeReturn() so Processing cannot hang without a panel.
+   */
+  onAlipayReturning(active: boolean): void {
+    if (active) {
+      this.updateSelectedMethod('alipay');
+      if (this.viewState() === 'checkout') {
+        this.viewState.set('processing');
+      }
+      this.markProviderBusy('alipay');
+      return;
+    }
+    this.clearProviderBusy();
+  }
+
   onVenmoSuccess(result: PaymentResult): void {
     this.handleSuccess(result);
   }
@@ -1486,6 +1538,7 @@ export class EasyPaymentsComponent {
         result.method === 'us-bank-account' ||
         result.method === 'cash-app-pay' ||
         result.method === 'afterpay' ||
+        result.method === 'alipay' ||
         result.method === 'zip')
     ) {
       return;
@@ -1499,6 +1552,7 @@ export class EasyPaymentsComponent {
       result.method === 'us-bank-account' ||
       result.method === 'cash-app-pay' ||
       result.method === 'afterpay' ||
+        result.method === 'alipay' ||
       result.method === 'zip'
     ) {
       this.terminalSuccessEmitted = true;

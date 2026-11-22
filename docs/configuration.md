@@ -141,13 +141,14 @@ Markup, empty strings, and values over 64 characters are rejected and fall back 
 
 ## Stripe Card button appearance
 
-Optional `[cardButtonAppearance]` styles the Easy Payments–owned Stripe Card **confirm** button shared by Full Checkout and Buttons Only. It does not change Stripe Elements, PayPal, Google Pay, or Apple Pay SDK UI.
+Optional `[cardButtonAppearance]` styles Easy Payments–owned **confirm** buttons (Card, ACH, Alipay) shared by Full Checkout and Buttons Only. Style fields are shared; `label` is Card/ACH only and `alipayLabel` is Alipay only. It does not change Stripe Elements, PayPal, Google Pay, or Apple Pay SDK UI.
 
 ```ts
 import type { EasyPaymentsCardButtonAppearance } from '@easy-payments/angular';
 
 cardButtonAppearance: EasyPaymentsCardButtonAppearance = {
   label: 'Complete card payment',
+  alipayLabel: 'Pay with Alipay',
   backgroundColor: '#0b6e4f',
   textColor: '#f8fafc',
   fontFamily: 'Georgia, serif',
@@ -193,7 +194,7 @@ cardButtonAppearance: EasyPaymentsCardButtonAppearance = {
 | Topic | Detail |
 |-------|--------|
 | Default look | Unset → theme `--ep-cta-*` (light slate CTA; dark accent-mixed high-contrast CTA; system follows resolved theme). |
-| Label | Valid plain-text `label` replaces idle i18n only. Markup rejected. Loading text stays `processingPayment`. |
+| Label | Valid plain-text `label` replaces Card/ACH idle i18n; `alipayLabel` replaces Alipay idle i18n. Markup rejected. Loading text stays `processingPayment`. |
 | Borders | `border: 'none'` removes the border. Or set `borderWidth` / `borderStyle` / `borderColor`. |
 | Typography / align | `fontFamily`, `fontSize`, `fontWeight`, `textAlign`. |
 | Hover / disabled / loading | Optional dedicated colors; otherwise theme hover and muted color-mix defaults. |

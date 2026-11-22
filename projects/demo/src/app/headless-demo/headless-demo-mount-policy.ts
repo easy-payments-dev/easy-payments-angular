@@ -1,7 +1,8 @@
 import type { PaymentMethod } from '@easy-payments/angular';
 
 /**
- * Stripe Card / Klarna / Affirm / US bank account / Cash App Pay / Afterpay use Payment Element + merchant `session.confirm()`.
+ * Stripe Card / Klarna / Affirm / US bank account / Cash App Pay / Afterpay / Alipay
+ * use Payment Element + merchant `session.confirm()`.
  */
 export function isHeadlessDemoStripeElementMethod(method: PaymentMethod): boolean {
   return (
@@ -10,7 +11,8 @@ export function isHeadlessDemoStripeElementMethod(method: PaymentMethod): boolea
     method === 'affirm' ||
     method === 'us-bank-account' ||
     method === 'cash-app-pay' ||
-    method === 'afterpay'
+    method === 'afterpay' ||
+    method === 'alipay'
   );
 }
 
