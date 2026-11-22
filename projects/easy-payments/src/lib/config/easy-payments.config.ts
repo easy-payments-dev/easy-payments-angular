@@ -127,6 +127,17 @@ export type LinkProviderConfig = Record<string, never>;
 export type AmazonPayProviderConfig = Record<string, never>;
 
 /**
+ * Alipay via Stripe Payment Element (redirect confirmation).
+ * Opt in with `providers.alipay: {}` and `'alipay'` in `methods`.
+ * Requires Stripe publishableKey + backend.alipayCreatePaymentUrl (server creates
+ * PaymentIntent with `payment_method_types: ['alipay']`).
+ * Available in Full Checkout, Payment Buttons Only, and Headless when opted in.
+ *
+ * @see https://docs.stripe.com/payments/alipay
+ */
+export type AlipayProviderConfig = Record<string, never>;
+
+/**
  * Venmo via the PayPal JS SDK (`enable-funding=venmo` + official Venmo Buttons).
  * Opt in with `providers.venmo: {}` (or with sandboxBuyerCountry for sandbox).
  * Requires PayPal `clientId` + backend paypalCreateOrderUrl / paypalCaptureOrderUrl
@@ -214,6 +225,11 @@ export interface EasyPaymentsBackendConfig {
    */
   amazonPayCreatePaymentUrl?: string;
   /**
+   * Creates an Alipay Stripe PaymentIntent (`payment_method_types: ['alipay']`).
+   * Returns clientSecret. Required for real Alipay. Catalog amount is authoritative.
+   */
+  alipayCreatePaymentUrl?: string;
+  /**
    * Optional. Not required for the standard Stripe Payment Element + PaymentIntent flow.
    * Reserved for future provider flows that need an explicit server confirm step.
    */
@@ -234,6 +250,7 @@ export interface EasyPaymentsProviderConfig {
   zip?: ZipProviderConfig;
   link?: LinkProviderConfig;
   amazonPay?: AmazonPayProviderConfig;
+  alipay?: AlipayProviderConfig;
 }
 
 export interface EasyPaymentsConfig {
@@ -260,6 +277,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<keyof EasyPaymentsProviderConfig, st
   zip: 'Zip',
   link: 'Link',
   amazonPay: 'Amazon Pay',
+  alipay: 'Alipay',
 };
 
 export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderConfig, string> = {
@@ -280,6 +298,7 @@ export const PROVIDER_REQUIRED_FIELD_LABEL: Record<keyof EasyPaymentsProviderCon
   link: 'configuration missing (requires Stripe publishableKey + linkCreatePaymentUrl)',
   amazonPay:
     'configuration missing (requires Stripe publishableKey + amazonPayCreatePaymentUrl)',
+  alipay: 'configuration missing (requires Stripe publishableKey + alipayCreatePaymentUrl)',
 };
 
 export type ProviderConfigStatus =

@@ -20,6 +20,7 @@ const ALL_PROVIDERS = [
   'usBankAccount',
   'cashAppPay',
   'afterpay',
+  'alipay',
   'venmo',
   'zip',
   'link',
@@ -143,6 +144,15 @@ export class EasyPaymentsConfigValidator {
         const cfg = providerConfig as EasyPaymentsProviderConfig['afterpay'];
         // Presence of the afterpay config object is enough to opt in.
         // Stripe publishableKey + afterpayCreatePaymentUrl are enforced at runtime.
+        if (!cfg || typeof cfg !== 'object') {
+          return { provider, status: 'invalid', message: required };
+        }
+        break;
+      }
+      case 'alipay': {
+        const cfg = providerConfig as EasyPaymentsProviderConfig['alipay'];
+        // Presence of the alipay config object is enough to opt in.
+        // Stripe publishableKey + alipayCreatePaymentUrl are enforced at runtime.
         if (!cfg || typeof cfg !== 'object') {
           return { provider, status: 'invalid', message: required };
         }

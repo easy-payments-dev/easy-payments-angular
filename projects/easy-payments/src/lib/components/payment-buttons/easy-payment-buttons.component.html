@@ -52,6 +52,7 @@
             slot.kind === 'us-bank-account-selector' ||
             slot.kind === 'cash-app-pay-selector' ||
             slot.kind === 'afterpay-selector' ||
+            slot.kind === 'alipay-selector' ||
             slot.kind === 'zip-selector' ||
             slot.kind === 'link-selector' ||
             slot.kind === 'amazon-pay-selector')
@@ -467,6 +468,45 @@
         [isMock]="true"
         [loading]="processingMethod() === 'afterpay'"
         (pay)="onMockAfterpayPay()"
+      />
+    </section>
+  }
+
+  @if (showAlipayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-alipay-panel"
+      [attr.aria-label]="msgs().alipayPaymentRegionAria"
+    >
+      <easy-alipay-payment
+        [product]="product()"
+        [checkout]="checkout()"
+        [resolvedTheme]="resolvedTheme()"
+        chrome="minimal"
+        [cardButtonAppearance]="cardButtonAppearance()"
+        (started)="onAlipayStarted()"
+        (busyChange)="onAlipayBusy($event)"
+        (success)="onAlipaySuccess($event)"
+        (cancel)="onAlipayCancel($event)"
+        (error)="onAlipayError($event)"
+      />
+    </section>
+  }
+
+  @if (showMockAlipayPanel()) {
+    <section
+      class="ep-payment-buttons__panel"
+      data-testid="easy-payment-buttons-alipay-mock-panel"
+      [attr.aria-label]="msgs().alipayPaymentRegionAria"
+    >
+      <easy-mock-method-panel
+        method="alipay"
+        presentation="expand"
+        [product]="product()"
+        [theme]="resolvedTheme()"
+        [isMock]="true"
+        [loading]="processingMethod() === 'alipay'"
+        (pay)="onMockAlipayPay()"
       />
     </section>
   }

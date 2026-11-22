@@ -85,14 +85,14 @@ describe('payment method presentation', () => {
     expect(dark.markUrl).not.toBe(light.markUrl);
   });
 
-  it('uses official Afterpay lockups with light/dark variants', () => {
-    const light = getPaymentMethodPresentation('afterpay', 'light');
-    const dark = getPaymentMethodPresentation('afterpay', 'dark');
+  it('uses Alipay wordmarks with light/dark variants', () => {
+    const light = getPaymentMethodPresentation('alipay', 'light');
+    const dark = getPaymentMethodPresentation('alipay', 'dark');
     expect(light.source).toBe('official-cdn');
     expect(light.markIncludesName).toBeTrue();
-    expect(light.label).toBe('Afterpay');
-    expect(light.markUrl).toContain('lockup/new-color-black-32.svg');
-    expect(dark.markUrl).toContain('lockup/new-color-white-32.svg');
+    expect(light.label).toBe('Alipay');
+    expect(light.markUrl).toContain('simpleicons.org/alipay');
+    expect(dark.markUrl).toContain('simpleicons.org/alipay');
     expect(dark.markUrl).not.toBe(light.markUrl);
   });
 
@@ -109,6 +109,7 @@ describe('payment method presentation', () => {
       'us-bank-account',
       'cash-app-pay',
       'afterpay',
+      'alipay',
       'zip',
       'link',
       'amazon-pay',

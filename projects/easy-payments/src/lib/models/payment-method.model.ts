@@ -11,7 +11,8 @@ export type PaymentMethod =
   | 'afterpay'
   | 'zip'
   | 'link'
-  | 'amazon-pay';
+  | 'amazon-pay'
+  | 'alipay';
 
 export type PaymentProviderName =
   | 'stripe'
@@ -26,7 +27,8 @@ export type PaymentProviderName =
   | 'afterpay'
   | 'zip'
   | 'link'
-  | 'amazonPay';
+  | 'amazonPay'
+  | 'alipay';
 
 export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderName> = {
   'apple-pay': 'applePay',
@@ -42,6 +44,7 @@ export const PAYMENT_METHOD_PROVIDER_MAP: Record<PaymentMethod, PaymentProviderN
   zip: 'zip',
   link: 'link',
   'amazon-pay': 'amazonPay',
+  alipay: 'alipay',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -58,4 +61,5 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   zip: 'Zip',
   link: 'Link',
   'amazon-pay': 'Amazon Pay',
+  alipay: 'Alipay',
 };

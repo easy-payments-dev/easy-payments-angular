@@ -16,6 +16,7 @@ export interface EasyPaymentsTranslations {
   methodUsBankAccount: string;
   methodCashAppPay: string;
   methodAfterpay: string;
+  methodAlipay: string;
   methodVenmo: string;
   methodZip: string;
   methodLink: string;
@@ -88,6 +89,7 @@ export interface EasyPaymentsTranslations {
   usBankAccountPaymentRegionAria: string;
   cashAppPayPaymentRegionAria: string;
   afterpayPaymentRegionAria: string;
+  alipayPaymentRegionAria: string;
   venmoPaymentRegionAria: string;
   zipPaymentRegionAria: string;
   linkPaymentRegionAria: string;
@@ -166,6 +168,11 @@ export interface EasyPaymentsTranslations {
   secureCheckoutAfterpay: string;
   preparingAfterpay: string;
   afterpayFormAria: string;
+
+  payWithAlipay: string;
+  secureCheckoutAlipay: string;
+  preparingAlipay: string;
+  alipayFormAria: string;
 
   payWithVenmo: string;
   secureCheckoutVenmo: string;

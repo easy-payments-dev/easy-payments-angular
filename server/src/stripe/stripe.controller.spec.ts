@@ -12,6 +12,7 @@ describe('StripeController', () => {
     createUsBankAccountPaymentIntent: jest.Mock;
     createCashAppPayPaymentIntent: jest.Mock;
     createAfterpayPaymentIntent: jest.Mock;
+    createAlipayPaymentIntent: jest.Mock;
     createLinkPaymentIntent: jest.Mock;
     createAmazonPayPaymentIntent: jest.Mock;
   };
@@ -24,6 +25,7 @@ describe('StripeController', () => {
       createUsBankAccountPaymentIntent: jest.fn(),
       createCashAppPayPaymentIntent: jest.fn(),
       createAfterpayPaymentIntent: jest.fn(),
+      createAlipayPaymentIntent: jest.fn(),
       createLinkPaymentIntent: jest.fn(),
       createAmazonPayPaymentIntent: jest.fn(),
     };
@@ -169,6 +171,27 @@ describe('StripeController', () => {
       provider: 'afterpay',
       clientSecret: 'pi_afterpay_secret',
       paymentIntentId: 'pi_afterpay_1',
+    });
+  });
+
+  it('creates an Alipay PaymentIntent via the dedicated endpoint', async () => {
+    service.createAlipayPaymentIntent.mockResolvedValue({
+      provider: 'alipay',
+      clientSecret: 'pi_alipay_secret',
+      paymentIntentId: 'pi_alipay_1',
+    });
+
+    await expect(
+      controller.createAlipayPaymentIntent({
+        provider: 'alipay',
+        productId: 'premium-plan',
+        quantity: 1,
+        currency: 'USD',
+      }),
+    ).resolves.toEqual({
+      provider: 'alipay',
+      clientSecret: 'pi_alipay_secret',
+      paymentIntentId: 'pi_alipay_1',
     });
   });
 

@@ -108,6 +108,7 @@ See [iOS on macOS](#ios-on-macos-windows-cannot-run) below.
 | US bank account | In-WebView PE | Microdeposit / bank may leave | Async `processing` |
 | Link | Stripe ECE Link button in WebView | Same ECE as web when Link eligible | Included in smoke `SMOKE_METHODS` for web/Test; **native Capacitor Link confirmation not claimed as verified** — see [link.md](./providers/link.md) |
 | Amazon Pay | Stripe ECE Amazon Pay button in WebView | Same ECE as web when Amazon Pay eligible | **Not claimed as verified on native Capacitor** in this release — web/Test ECE mounting only until device confirmation; see [amazon-pay.md](./providers/amazon-pay.md) |
+| Alipay | Stripe PE + redirect in WebView | Leave-app redirect / QR common | **Not claimed as verified on native Capacitor** in this release — complete Test-mode redirect return on device before claiming; see [alipay.md](./providers/alipay.md) |
 | Zip | Pending Sandbox merchant access | Zip hosted checkout / popup | **Experimental** opt-in (not in smoke `SMOKE_METHODS`); see [zip.md](./providers/zip.md) |
 
 ## Redirects and App Links

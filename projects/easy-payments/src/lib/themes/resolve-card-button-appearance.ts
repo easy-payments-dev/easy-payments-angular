@@ -40,8 +40,10 @@ export interface CardButtonAppearanceCssVars {
 }
 
 export interface ResolvedCardButtonAppearance {
-  /** Sanitized plain-text label override, or `null` to keep localized default. */
+  /** Sanitized Card/ACH idle label override, or `null` to keep localized default. */
   label: string | null;
+  /** Sanitized Alipay idle label override, or `null` to keep localized default. */
+  alipayLabel: string | null;
   cssVars: CardButtonAppearanceCssVars;
 }
 
@@ -72,12 +74,14 @@ const EMPTY_CSS_VARS: CardButtonAppearanceCssVars = {
 
 const EMPTY_RESOLVED: ResolvedCardButtonAppearance = {
   label: null,
+  alipayLabel: null,
   cssVars: { ...EMPTY_CSS_VARS },
 };
 
 /**
- * Map optional {@link EasyPaymentsCardButtonAppearance} to a sanitized label
+ * Map optional {@link EasyPaymentsCardButtonAppearance} to sanitized labels
  * and host CSS variable overrides. Invalid fields are ignored.
+ * `label` is Card/ACH only; `alipayLabel` is Alipay only. Styles are shared.
  */
 export function resolveCardButtonAppearance(
   appearance: EasyPaymentsCardButtonAppearance | null | undefined,
@@ -85,6 +89,7 @@ export function resolveCardButtonAppearance(
   if (appearance == null || typeof appearance !== 'object') {
     return {
       label: null,
+      alipayLabel: null,
       cssVars: { ...EMPTY_CSS_VARS },
     };
   }
@@ -93,6 +98,7 @@ export function resolveCardButtonAppearance(
 
   return {
     label: sanitizePlainLabel(appearance.label),
+    alipayLabel: sanitizePlainLabel(appearance.alipayLabel),
     cssVars: {
       backgroundColor: sanitizeColor(appearance.backgroundColor),
       textColor: sanitizeColor(appearance.textColor),
@@ -123,6 +129,7 @@ export function resolveCardButtonAppearance(
 export function emptyCardButtonAppearance(): ResolvedCardButtonAppearance {
   return {
     label: EMPTY_RESOLVED.label,
+    alipayLabel: EMPTY_RESOLVED.alipayLabel,
     cssVars: { ...EMPTY_CSS_VARS },
   };
 }

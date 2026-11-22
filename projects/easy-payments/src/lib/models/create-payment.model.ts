@@ -425,6 +425,52 @@ export interface CreateAfterpayPaymentResponse {
 }
 
 /**
+ * Minimal wire contract for Alipay via Stripe create PaymentIntent.
+ * Never includes a browser-controlled amount. Metadata is a validated string map.
+ */
+export interface AlipayCreatePaymentRequest {
+  provider: 'alipay';
+  productId: string;
+  quantity: number;
+  currency: string;
+  /** Validated merchant metadata. Amount and currency are not accepted here. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Maps product identity fields into the Alipay create-payment HTTP body.
+ * Strips amount and any fields other than the validated metadata map.
+ */
+export function toAlipayCreatePaymentRequest(input: {
+  productId: string;
+  quantity: number;
+  currency: string;
+  metadata?: Record<string, string>;
+}): AlipayCreatePaymentRequest {
+  const body: AlipayCreatePaymentRequest = {
+    provider: 'alipay',
+    productId: input.productId.trim(),
+    quantity: input.quantity,
+    currency: input.currency.trim().toUpperCase(),
+  };
+  if (input.metadata && Object.keys(input.metadata).length > 0) {
+    body.metadata = { ...input.metadata };
+  }
+  return body;
+}
+
+/**
+ * Response from POST Alipay create (alipay-only Stripe PaymentIntent).
+ * The backend alone decides the trusted amount and uses the Stripe secret key.
+ */
+export interface CreateAlipayPaymentResponse {
+  provider: 'alipay';
+  clientSecret: string;
+  paymentIntentId?: string;
+  sessionId?: string;
+}
+
+/**
  * Minimal wire contract for Zip US create-checkout (signed authorize body).
  * Never includes a browser-controlled amount. Metadata is a validated string map.
  */
@@ -533,4 +579,5 @@ export type CreatePaymentResponse =
   | CreateLinkPaymentResponse
   | CreateAmazonPayPaymentResponse
   | CreateAfterpayPaymentResponse
+  | CreateAlipayPaymentResponse
   | CreateZipCheckoutResponse;

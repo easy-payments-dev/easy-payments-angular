@@ -502,7 +502,7 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 | `theme` | `'light' \| 'dark' \| 'system'` | `'system'` | System follows OS and updates live |
 | `appearance` | `'default' \| 'transparent'` | `'default'` | Independent of theme |
 | `visualStyle` | `EasyPaymentsVisualStyle \| null` | `null` | Optional EP-owned font/color/token overrides |
-| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | Optional Stripe Card CTA label + styles (EP-owned button only) |
+| `cardButtonAppearance` | `EasyPaymentsCardButtonAppearance \| null` | `null` | Optional EP-owned confirm CTA styles; `label` (Card/ACH) + `alipayLabel` (Alipay) |
 | `selectorLabels` | `EasyPaymentButtonsSelectorLabels \| null` | `null` | Optional Card / US bank account (and other library) selector label overrides |
 | `maxWidth` | `number \| string \| null` | `640` | Clamped **320–1200** |
 | `successBehavior` | `'confirmation' \| 'event-only'` | `'confirmation'` | Overridable via `checkout` |
@@ -960,7 +960,7 @@ Full field notes: **[docs/api.md](docs/api.md#selector-labels)** · **[docs/conf
 
 ### Stripe Card confirmation button (`cardButtonAppearance`)
 
-The Stripe Card flow uses Stripe’s Payment Element plus an **Easy Payments–owned** confirm button (`.ep-stripe-card__pay` — “Pay {{amount}}” in Full Checkout, “Pay with card” in Buttons Only). Optional `[cardButtonAppearance]` customizes that library button only.
+Easy Payments–owned confirm buttons (`.ep-stripe-card__pay`, `.ep-ach__pay`, `.ep-alipay__pay`) share `[cardButtonAppearance]` **styles**. `label` overrides idle Card/ACH copy only; `alipayLabel` overrides Alipay Continue copy only. Card samples do not relabel Alipay.
 
 It does **not** restyle the Stripe Payment Element iframe, PayPal Buttons, Google Pay, or Apple Pay SDK chrome.
 
@@ -1006,7 +1006,8 @@ export class CardCtaExamplesComponent {
   readonly methods: PaymentMethod[] = ['card', 'paypal'];
 
   readonly cardButtonAppearance: EasyPaymentsCardButtonAppearance = {
-    label: 'Complete card payment', // plain text; overrides localized idle label
+    label: 'Complete card payment', // Card/ACH idle label only
+    alipayLabel: 'Pay with Alipay', // Alipay Continue CTA only
     backgroundColor: '#0b6e4f',
     textColor: '#f8fafc',
     fontFamily: 'Georgia, serif',
@@ -1034,7 +1035,7 @@ export class CardCtaExamplesComponent {
 | Concern | Behavior |
 |---------|----------|
 | Defaults | Omit `[cardButtonAppearance]` (or pass `null`) — light uses the dark slate CTA; dark mixes merchant `--ep-accent` into a high-contrast CTA with light text; `system` follows the resolved theme. Localization unchanged. |
-| Label | Optional plain-text `label` replaces the idle localized string only when valid. Processing copy still uses i18n (`processingPayment`). Markup / oversized labels are rejected. |
+| Label | Optional plain-text `label` (Card/ACH) or `alipayLabel` (Alipay) replaces the idle localized string only when valid. Processing copy still uses i18n (`processingPayment`). Markup / oversized labels are rejected. |
 | Styles | Valid fields become instance-local `--ep-card-cta-*` custom properties on `easy-stripe-card-payment`, falling back to theme `--ep-cta-*`. Invalid values are ignored (no CSS injection). |
 | Borders | `border: 'none'` forces no border. Otherwise set `borderWidth` / `borderStyle` / `borderColor`. |
 | A11y | Remains a real `<button>` with disabled / `aria-busy` behavior and `:focus-visible` outline. Prefer sufficient contrast when overriding colors; EP does not silently rewrite your colors. |

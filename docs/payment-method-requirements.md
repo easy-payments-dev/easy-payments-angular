@@ -20,6 +20,7 @@ Setup requirements for every payment method exposed by `@easy-payments/angular` 
 | `us-bank-account` | Stripe ACH | Opt-in | Opt-in | Opt-in | [us-bank-account.md](./providers/us-bank-account.md) |
 | `cash-app-pay` | Stripe Cash App Pay | Opt-in | Opt-in | Opt-in | [cash-app-pay.md](./providers/cash-app-pay.md) |
 | `afterpay` | Stripe Afterpay/Clearpay | Opt-in | Opt-in | Opt-in | [afterpay.md](./providers/afterpay.md) |
+| `alipay` | Stripe Alipay (Payment Element + redirect) | Opt-in | Opt-in | Opt-in | [alipay.md](./providers/alipay.md) |
 | `link` | Stripe Link (Express Checkout Element) | Opt-in | Opt-in | Opt-in | [link.md](./providers/link.md) |
 | `amazon-pay` | Stripe Amazon Pay (Express Checkout Element) | Opt-in | Opt-in | Opt-in | [amazon-pay.md](./providers/amazon-pay.md) |
 | `zip` | Zip US Gateway + JS SDK (**experimental**) | Opt-in | Opt-in | Opt-in | [zip.md](./providers/zip.md) |
@@ -209,6 +210,35 @@ providers: {
 | **Mock / sandbox / prod** | Stripe Test Afterpay |
 | **Unavailable** | Hidden; `PROVIDER_MISCONFIGURED` |
 | **Guide** | [providers/afterpay.md](./providers/afterpay.md) · [Stripe Afterpay](https://docs.stripe.com/payments/afterpay-clearpay) |
+
+---
+
+## Alipay (`alipay`) — opt-in
+
+| | |
+|--|--|
+| **Provider** | Stripe Payment Element (`alipay`) + redirect confirmation — **not** Express Checkout |
+| **Modes** | Full · Buttons · Headless — opt-in |
+| **Merchant** | Stripe; enable Alipay in Dashboard; customers typically in China |
+| **Public** | `providers.alipay: {}` + Stripe `publishableKey` |
+| **Server-only** | Stripe secret |
+| **Backend** | `backend.alipayCreatePaymentUrl` → `{ provider: 'alipay', clientSecret }` with PI types `['alipay']` |
+| **Constraints** | Currencies AUD/CAD/CHF/CNY/EUR/GBP/HKD/JPY/MYR/NZD/SGD/USD; min ~0.50; catalog amount authoritative |
+| **Mock / sandbox / prod** | Stripe Test Alipay |
+| **Unavailable** | Hidden; `PROVIDER_MISCONFIGURED` |
+| **Guide** | [providers/alipay.md](./providers/alipay.md) · [Stripe Alipay](https://docs.stripe.com/payments/alipay) |
+
+```ts
+provideEasyPayments({
+  providers: {
+    stripe: { publishableKey: 'pk_test_...' },
+    alipay: {},
+  },
+  backend: {
+    alipayCreatePaymentUrl: 'https://api.example.com/payments/alipay/create',
+  },
+});
+```
 
 ---
 

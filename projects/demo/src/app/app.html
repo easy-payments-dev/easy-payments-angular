@@ -956,11 +956,12 @@
         </summary>
         <div class="config-section__body">
           <p class="hint">
-            Public <code>[cardButtonAppearance]</code> for the Easy Payments–owned Card
-            <strong>confirmation</strong> button (Full Checkout: “Pay amount”; Buttons Only:
-            “Pay with card”). Does <em>not</em> restyle the Stripe Payment Element iframe or
-            PayPal / Google Pay / Apple Pay SDK buttons. Empty fields keep theme defaults
-            (light slate CTA / dark accent-mixed CTA).
+            Public <code>[cardButtonAppearance]</code> for Easy Payments–owned
+            <strong>confirmation</strong> buttons (Card / ACH / Alipay). Styles are shared.
+            <code>label</code> is Card (and ACH) only; <code>alipayLabel</code> is Alipay only —
+            a Card sample does not relabel Alipay. Does <em>not</em> restyle the Stripe Payment
+            Element iframe or PayPal / Google Pay / Apple Pay SDK buttons. Empty fields keep
+            theme defaults (light slate CTA / dark accent-mixed CTA).
           </p>
           <div class="action-row">
             <button
@@ -985,15 +986,25 @@
             <code data-testid="card-cta-active">{{ cardButtonAppearanceSummary() }}</code>
           </p>
 
-          <h3 class="subheading">Label</h3>
+          <h3 class="subheading">Labels</h3>
           <label class="field">
-            <span>Idle label override (plain text)</span>
+            <span>Card idle label (<code>label</code>)</span>
             <input
               type="text"
               data-testid="card-cta-label"
               [value]="cardCtaLabel()"
               (input)="cardCtaLabel.set($any($event.target).value)"
-              placeholder="Leave empty for localized default"
+              placeholder="Leave empty for localized Card default"
+            />
+          </label>
+          <label class="field">
+            <span>Alipay idle label (<code>alipayLabel</code>)</span>
+            <input
+              type="text"
+              data-testid="card-cta-alipay-label"
+              [value]="cardCtaAlipayLabel()"
+              (input)="cardCtaAlipayLabel.set($any($event.target).value)"
+              placeholder="Leave empty for localized Continue to Alipay"
             />
           </label>
 

@@ -1,10 +1,10 @@
 /**
- * Optional presentation for the Easy Payments–owned Card / ACH confirmation CTA
- * (`.ep-stripe-card__pay` / `.ep-ach__pay`).
+ * Optional presentation for Easy Payments–owned confirmation CTAs
+ * (`.ep-stripe-card__pay` / `.ep-ach__pay` / `.ep-alipay__pay`).
  *
  * Applies to the library button that confirms a Stripe Payment Element payment in
  * both `<easy-payments>` (Full Checkout) and `<easy-payment-buttons>` (Buttons Only).
- * Buttons Only forwards the same input to Card and US bank account panels.
+ * Buttons Only forwards the same input to Card, US bank account, and Alipay panels.
  * It does **not** restyle the Stripe Payment Element iframe or official
  * PayPal / Google Pay / Apple Pay SDK buttons.
  *
@@ -13,14 +13,23 @@
  */
 export interface EasyPaymentsCardButtonAppearance {
   /**
-   * Plain-text label override for the idle CTA.
+   * Plain-text label override for the idle **Card** (and ACH) CTA.
    * When set, replaces the localized default (`Pay {{amount}}` in Full Checkout;
    * `Pay with card` / `Pay with US bank account` in Buttons Only).
+   * Does **not** change the Alipay Continue CTA — use {@link alipayLabel}.
    * Processing/loading copy still uses i18n (`processingPayment`) unless you
    * also customize loading styles only. Buttons Only closes the ACH panel after
    * a verified pending/success; the host consumes `(pending)` / `(success)`.
    */
   label?: string;
+
+  /**
+   * Plain-text label override for the idle **Alipay** Continue CTA
+   * (`.ep-alipay__pay`). Blank/omitted keeps the localized default
+   * (`Continue to Alipay` / ES/PT/FR `continueToMethod`). Independent of
+   * {@link label} so a Card sample does not relabel Alipay.
+   */
+  alipayLabel?: string;
 
   /** Idle background (maps to `--ep-card-cta-bg`, falls back to `--ep-cta-bg`). */
   backgroundColor?: string;

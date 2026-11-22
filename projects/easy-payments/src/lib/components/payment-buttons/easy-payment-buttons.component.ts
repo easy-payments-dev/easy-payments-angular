@@ -90,6 +90,7 @@ import { AffirmPaymentComponent } from '../payment-methods/affirm-payment.compon
 import { UsBankAccountPaymentComponent } from '../payment-methods/us-bank-account-payment.component';
 import { CashAppPayPaymentComponent } from '../payment-methods/cash-app-pay-payment.component';
 import { AfterpayPaymentComponent } from '../payment-methods/afterpay-payment.component';
+import { AlipayPaymentComponent } from '../payment-methods/alipay-payment.component';
 import { ZipPaymentComponent } from '../payment-methods/zip-payment.component';
 import { VenmoPaymentComponent } from '../payment-methods/venmo-payment.component';
 import { MockMethodPanelComponent } from '../checkout/mock-method-panel.component';
@@ -118,6 +119,7 @@ export type EasyPaymentButtonSlotKind =
   | 'us-bank-account-selector'
   | 'cash-app-pay-selector'
   | 'afterpay-selector'
+  | 'alipay-selector'
   | 'zip-selector'
   | 'link-selector'
   | 'amazon-pay-selector'
@@ -139,6 +141,7 @@ const SELECTOR_SLOT_KINDS: ReadonlySet<EasyPaymentButtonSlotKind> = new Set([
   'us-bank-account-selector',
   'cash-app-pay-selector',
   'afterpay-selector',
+  'alipay-selector',
   'zip-selector',
   'link-selector',
   'amazon-pay-selector',
@@ -198,6 +201,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     UsBankAccountPaymentComponent,
     CashAppPayPaymentComponent,
     AfterpayPaymentComponent,
+    AlipayPaymentComponent,
     ZipPaymentComponent,
     VenmoPaymentComponent,
     MockMethodPanelComponent,
@@ -230,6 +234,7 @@ const DEFAULT_BUTTON_METHODS: PaymentMethod[] = [
     '[attr.data-us-bank-account-ready]': 'hasAvailableUsBankAccount() ? "true" : "false"',
     '[attr.data-cash-app-pay-ready]': 'hasAvailableCashAppPay() ? "true" : "false"',
     '[attr.data-afterpay-ready]': 'hasAvailableAfterpay() ? "true" : "false"',
+    '[attr.data-alipay-ready]': 'hasAvailableAlipay() ? "true" : "false"',
     '[attr.data-venmo-ready]': 'hasAvailableVenmo() ? "true" : "false"',
     '[attr.data-bnpl-confirm-mode]': 'bnplConfirmMode()',
     '[attr.data-bnpl-direct-active]': 'bnplDirectActive() ? "true" : "false"',
@@ -564,6 +569,8 @@ export class EasyPaymentButtonsComponent {
               ? msgs.methodCashAppPay
               : method === 'afterpay'
                 ? msgs.methodAfterpay
+                : method === 'alipay'
+                  ? msgs.methodAlipay
                 : method === 'venmo'
                   ? msgs.methodVenmo
                   : method === 'link'
@@ -666,6 +673,10 @@ export class EasyPaymentButtonsComponent {
 
   readonly hasAvailableAfterpay = computed(() =>
     this.methodSlots().some((slot) => slot.method === 'afterpay' && slot.state === 'available'),
+  );
+
+  readonly hasAvailableAlipay = computed(() =>
+    this.methodSlots().some((slot) => slot.method === 'alipay' && slot.state === 'available'),
   );
 
   readonly hasAvailableVenmo = computed(() =>
@@ -804,6 +815,26 @@ export class EasyPaymentButtonsComponent {
 
   readonly showMockAfterpayPanel = computed(() => {
     const entry = this.selectedAfterpayEntry();
+    return !!entry && entry.isMock;
+  });
+
+  readonly selectedAlipayEntry = computed(() => {
+    if (this.selectedMethod() !== 'alipay') {
+      return null;
+    }
+    return (
+      this.availableMethods().find((entry) => entry.method === 'alipay' && entry.available) ??
+      null
+    );
+  });
+
+  readonly showAlipayPanel = computed(() => {
+    const entry = this.selectedAlipayEntry();
+    return !!entry && !entry.isMock;
+  });
+
+  readonly showMockAlipayPanel = computed(() => {
+    const entry = this.selectedAlipayEntry();
     return !!entry && entry.isMock;
   });
 
@@ -980,6 +1011,7 @@ export class EasyPaymentButtonsComponent {
         selected !== 'us-bank-account' &&
         selected !== 'cash-app-pay' &&
         selected !== 'afterpay' &&
+        selected !== 'alipay' &&
         selected !== 'zip' &&
         selected !== 'link' &&
         selected !== 'amazon-pay'
@@ -1105,6 +1137,7 @@ export class EasyPaymentButtonsComponent {
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
       method !== 'afterpay' &&
+      method !== 'alipay' &&
       method !== 'zip' &&
       method !== 'link' &&
       method !== 'amazon-pay'
@@ -1146,6 +1179,7 @@ export class EasyPaymentButtonsComponent {
       method !== 'us-bank-account' &&
       method !== 'cash-app-pay' &&
       method !== 'afterpay' &&
+      method !== 'alipay' &&
       method !== 'zip' &&
       method !== 'link' &&
       method !== 'amazon-pay'
@@ -1332,6 +1366,26 @@ export class EasyPaymentButtonsComponent {
     this.handlePaymentError(error);
   }
 
+  onAlipayStarted(): void {
+    this.onPaymentStarted('alipay');
+  }
+
+  onAlipayBusy(busy: boolean): void {
+    this.onProviderBusy('alipay', busy);
+  }
+
+  onAlipaySuccess(result: PaymentResult): void {
+    this.handleSuccess(result);
+  }
+
+  onAlipayCancel(result: PaymentResult): void {
+    this.handleCancelled(result);
+  }
+
+  onAlipayError(error: PaymentError): void {
+    this.handlePaymentError(error);
+  }
+
   onZipStarted(): void {
     this.onPaymentStarted('zip');
   }
@@ -1497,6 +1551,10 @@ export class EasyPaymentButtonsComponent {
     await this.runMockPayment('afterpay');
   }
 
+  async onMockAlipayPay(): Promise<void> {
+    await this.runMockPayment('alipay');
+  }
+
   onVenmoStarted(): void {
     this.updateSelectedMethod('venmo');
     this.onPaymentStarted('venmo');
@@ -1600,6 +1658,9 @@ export class EasyPaymentButtonsComponent {
     }
     if (method === 'afterpay') {
       return 'afterpay-selector';
+    }
+    if (method === 'alipay') {
+      return 'alipay-selector';
     }
     if (method === 'zip') {
       return 'zip-selector';
@@ -1764,6 +1825,8 @@ export class EasyPaymentButtonsComponent {
           ? 'Cash App Pay'
           : method === 'afterpay'
             ? 'Afterpay'
+            : method === 'alipay'
+              ? 'Alipay'
             : 'Klarna';
     const provider = stripeRedirectProvider(method);
 

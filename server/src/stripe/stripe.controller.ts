@@ -5,6 +5,7 @@ import { CreateAffirmPaymentIntentDto } from './dto/create-affirm-payment-intent
 import { CreateUsBankAccountPaymentIntentDto } from './dto/create-us-bank-account-payment-intent.dto';
 import { CreateCashAppPayPaymentIntentDto } from './dto/create-cash-app-pay-payment-intent.dto';
 import { CreateAfterpayPaymentIntentDto } from './dto/create-afterpay-payment-intent.dto';
+import { CreateAlipayPaymentIntentDto } from './dto/create-alipay-payment-intent.dto';
 import { CreateLinkPaymentIntentDto } from './dto/create-link-payment-intent.dto';
 import { CreateAmazonPayPaymentIntentDto } from './dto/create-amazon-pay-payment-intent.dto';
 import { StripeService } from './stripe.service';
@@ -71,6 +72,16 @@ export class StripeController {
   @HttpCode(201)
   createAfterpayPaymentIntent(@Body() body: CreateAfterpayPaymentIntentDto) {
     return this.stripeService.createAfterpayPaymentIntent(body);
+  }
+
+  /**
+   * Alipay via Stripe PaymentIntent (`payment_method_types: ['alipay']`):
+   * POST http://localhost:3000/api/payments/alipay/create
+   */
+  @Post('alipay/create')
+  @HttpCode(201)
+  createAlipayPaymentIntent(@Body() body: CreateAlipayPaymentIntentDto) {
+    return this.stripeService.createAlipayPaymentIntent(body);
   }
 
   /**

@@ -13,7 +13,7 @@
 import { PaymentError } from '../../errors/payment-error';
 import type { PaymentMethod, PaymentProviderName } from '../../models';
 
-export type StripeRedirectMethod = 'klarna' | 'affirm' | 'cash-app-pay' | 'afterpay';
+export type StripeRedirectMethod = 'klarna' | 'affirm' | 'cash-app-pay' | 'afterpay' | 'alipay';
 
 /** Provider name for a Stripe redirect method (`cash-app-pay` → `cashAppPay`). */
 export function stripeRedirectProvider(method: StripeRedirectMethod): PaymentProviderName {
@@ -105,7 +105,8 @@ function isRedirectMethod(value: string | null | undefined): value is StripeRedi
     value === 'klarna' ||
     value === 'affirm' ||
     value === 'cash-app-pay' ||
-    value === 'afterpay'
+    value === 'afterpay' ||
+    value === 'alipay'
   );
 }
 

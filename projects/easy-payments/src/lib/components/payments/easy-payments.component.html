@@ -325,6 +325,30 @@
       }
     }
 
+    @if (showAlipayPanel()) {
+      @for (key of providerMountKeys(); track key) {
+        <div
+          class="ep-checkout__panel"
+          [class.ep-checkout__panel--inactive]="!alipayPanelActive()"
+          [attr.aria-hidden]="!alipayPanelActive()"
+          [inert]="!alipayPanelActive()"
+        >
+          <easy-alipay-payment
+            [product]="product()"
+            [checkout]="checkout()"
+            [resolvedTheme]="resolvedTheme()"
+            [cardButtonAppearance]="cardButtonAppearance()"
+            (success)="onAlipaySuccess($event)"
+            (cancel)="onAlipayCancel($event)"
+            (error)="onAlipayError($event)"
+            (started)="onPaymentStarted('alipay')"
+            (busyChange)="onProviderBusy('alipay', $event)"
+            (returning)="onAlipayReturning($event)"
+          />
+        </div>
+      }
+    }
+
     @if (showVenmoPanel()) {
       @for (key of providerMountKeys(); track key) {
         <div

@@ -31,6 +31,7 @@ export const environment = {
   createUsBankAccountPaymentUrl: 'http://localhost:3001/api/payments/us-bank-account/create',
   cashAppPayCreatePaymentUrl: 'http://localhost:3001/api/payments/cash-app-pay/create',
   afterpayCreatePaymentUrl: 'http://localhost:3001/api/payments/afterpay/create',
+  alipayCreatePaymentUrl: 'http://localhost:3001/api/payments/alipay/create',
   linkCreatePaymentUrl: 'http://localhost:3001/api/payments/link/create',
   amazonPayCreatePaymentUrl: 'http://localhost:3001/api/payments/amazon-pay/create',
   zipCreateCheckoutUrl: 'http://localhost:3001/api/payments/zip/create',

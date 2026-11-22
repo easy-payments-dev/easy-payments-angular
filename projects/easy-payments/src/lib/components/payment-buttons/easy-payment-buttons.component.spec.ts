@@ -14,6 +14,7 @@ import { ApplePayAdapter } from '../../adapters/apple-pay/apple-pay.adapter';
 import { LinkAdapter } from '../../adapters/link/link.adapter';
 import { KlarnaAdapter } from '../../adapters/klarna/klarna.adapter';
 import { AffirmAdapter } from '../../adapters/affirm/affirm.adapter';
+import { AlipayAdapter } from '../../adapters/alipay/alipay.adapter';
 import { StripeRedirectRecoveryService } from '../../adapters/stripe/stripe-redirect-recovery.service';
 import {
   clearStripePendingReturn,
@@ -1316,6 +1317,118 @@ describe('EasyPaymentButtonsComponent real Stripe card panel', () => {
     expect(panel.textContent).not.toContain('Payment completed');
     expect(panel.textContent).not.toContain('Payment failed');
     expect(panel.textContent).not.toContain('Payment cancelled');
+  });
+});
+
+describe('EasyPaymentButtonsComponent real Alipay panel', () => {
+  let fixture: ComponentFixture<EasyPaymentButtonsComponent>;
+  let adapter: jasmine.SpyObj<AlipayAdapter>;
+
+  beforeEach(async () => {
+    adapter = jasmine.createSpyObj<AlipayAdapter>(
+      'AlipayAdapter',
+      [
+        'initialize',
+        'isAvailable',
+        'createPayment',
+        'ensureStripeLoaded',
+        'createPaymentSession',
+        'mountPaymentElement',
+        'updateAppearance',
+        'destroy',
+        'confirmPayment',
+        'retrieveReturningPayment',
+        'consumeStripeReturn',
+        'wasReturnConsumed',
+        'isConfirming',
+        'hasMountedElement',
+        'unmountPaymentElement',
+      ],
+      {
+        provider: 'alipay',
+        isMock: false,
+      },
+    );
+
+    adapter.initialize.and.resolveTo();
+    adapter.isAvailable.and.resolveTo(true);
+    adapter.ensureStripeLoaded.and.resolveTo({} as never);
+    adapter.createPaymentSession.and.resolveTo({ clientSecret: 'pi_alipay_buttons' });
+    adapter.mountPaymentElement.and.resolveTo();
+    adapter.updateAppearance.and.resolveTo();
+    adapter.destroy.and.resolveTo();
+    adapter.consumeStripeReturn.and.resolveTo(null);
+    adapter.wasReturnConsumed.and.returnValue(false);
+    adapter.isConfirming.and.returnValue(false);
+    adapter.hasMountedElement.and.returnValue(true);
+
+    await TestBed.configureTestingModule({
+      imports: [EasyPaymentButtonsComponent],
+      providers: [
+        provideEasyPayments({
+          enableMockMode: false,
+          providers: {
+            stripe: { publishableKey: 'pk_test_buttons_alipay' },
+            alipay: {},
+          },
+          backend: { alipayCreatePaymentUrl: '/api/payments/alipay/create' },
+        }),
+        { provide: BrowserGuard, useValue: new FakeBrowserGuard() },
+        { provide: AlipayAdapter, useValue: adapter },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(EasyPaymentButtonsComponent);
+    fixture.componentRef.setInput('product', { ...SAMPLE_PRODUCT });
+    fixture.componentRef.setInput('methods', ['alipay', 'card']);
+  });
+
+  it('forwards cardButtonAppearance styles and alipayLabel onto the Alipay Continue CTA', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Complete card payment',
+      alipayLabel: 'Checkout with Alipay',
+      backgroundColor: '#1677FF',
+      textColor: '#ffffff',
+      fontSize: '15px',
+      borderRadius: '8px',
+    });
+    await render(fixture);
+    slotItem(fixture, 'alipay')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const alipayHost = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="easy-payment-buttons-alipay-panel"] easy-alipay-payment',
+    ) as HTMLElement;
+    const cta = alipayHost.querySelector('button.ep-alipay__pay') as HTMLButtonElement;
+    expect(cta.textContent?.trim()).toBe('Checkout with Alipay');
+    expect(cta.textContent).not.toContain('card');
+    expect(alipayHost.style.getPropertyValue('--ep-card-cta-bg').trim()).toBe('#1677FF');
+    expect(alipayHost.style.getPropertyValue('--ep-card-cta-text').trim()).toBe('#ffffff');
+    expect(alipayHost.style.getPropertyValue('--ep-card-cta-font-size').trim()).toBe('15px');
+    expect(alipayHost.style.getPropertyValue('--ep-card-cta-radius').trim()).toBe('8px');
+  });
+
+  it('keeps localized Continue to Alipay when only Card label is set', async () => {
+    fixture.componentRef.setInput('cardButtonAppearance', {
+      label: 'Complete card payment',
+      backgroundColor: '#0b6e4f',
+    });
+    await render(fixture);
+    slotItem(fixture, 'alipay')?.querySelector('button')?.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const cta = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="easy-payment-buttons-alipay-panel"] button.ep-alipay__pay',
+    ) as HTMLButtonElement;
+    expect(cta.textContent?.trim()).toBe('Continue to Alipay');
   });
 });
 

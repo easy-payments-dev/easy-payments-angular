@@ -56,6 +56,7 @@ export interface HeadlessDemoCopy {
   processingCta: string;
   continueWithKlarna: string;
   continueWithAffirm: string;
+  continueWithAlipay: string;
   lifecycleEventsHeading: string;
   lifecycleEmpty: string;
   mountAriaGeneric: string;
@@ -101,7 +102,7 @@ const EN: HeadlessDemoCopy = {
   fulfillmentNote: 'Demo UI outcomes are not authoritative fulfillment.',
   paymentMethodsHeading: 'Payment methods',
   paymentMethodsHint:
-    'Card / Klarna / Affirm mount a Payment Element and use the merchant Pay control. PayPal / Venmo / Google Pay / Apple Pay / Zip mount official provider buttons (buyer click starts payment).',
+    'Card / Klarna / Affirm / Alipay mount a Payment Element and use the merchant Pay control. PayPal / Venmo / Google Pay / Apple Pay / Zip mount official provider buttons (buyer click starts payment).',
   noMethodsAvailable: 'No methods reported available for the current configuration.',
   available: 'available',
   unavailable: 'unavailable',
@@ -117,12 +118,14 @@ const EN: HeadlessDemoCopy = {
   providerSurfaceHeading: 'Provider surface',
   mountIdle: 'Select a payment method to mount its official UI here.',
   mounting: 'Mounting provider UI…',
-  confirmHint: 'Calls public session.confirm() for the selected Stripe method only.',
+  confirmHint:
+    'Host-owned button calls session.confirm() for the selected Stripe Element method. Style and disable it from session readiness / processing state.',
   officialButtonHint:
     'Official provider control is mounted above. Payment starts only from that control — not from a demo-owned Pay button.',
   processingCta: 'Processing…',
   continueWithKlarna: 'Continue with Klarna',
   continueWithAffirm: 'Continue with Affirm',
+  continueWithAlipay: 'Continue with Alipay',
   lifecycleEventsHeading: 'Lifecycle events',
   lifecycleEmpty: 'No Headless lifecycle events yet.',
   mountAriaGeneric: 'Official provider mount',
@@ -191,12 +194,14 @@ const ES: HeadlessDemoCopy = {
   providerSurfaceHeading: 'Superficie del proveedor',
   mountIdle: 'Seleccione un método de pago para montar aquí su UI oficial.',
   mounting: 'Montando la UI del proveedor…',
-  confirmHint: 'Llama a session.confirm() público solo para el método Stripe seleccionado.',
+  confirmHint:
+    'El botón del comercio llama a session.confirm() para el método Stripe Element seleccionado. Estílelo y desactívelo según el estado de readiness / processing de la sesión.',
   officialButtonHint:
     'El control oficial del proveedor está montado arriba. El pago solo comienza desde ese control — no desde un botón Pay de la demo.',
   processingCta: 'Procesando…',
   continueWithKlarna: 'Continuar con Klarna',
   continueWithAffirm: 'Continuar con Affirm',
+  continueWithAlipay: 'Continuar con Alipay',
   lifecycleEventsHeading: 'Eventos del ciclo de vida',
   lifecycleEmpty: 'Aún no hay eventos del ciclo de vida Headless.',
   mountAriaGeneric: 'Montaje del proveedor oficial',
@@ -265,12 +270,14 @@ const PT: HeadlessDemoCopy = {
   providerSurfaceHeading: 'Superfície do provedor',
   mountIdle: 'Selecione um método de pagamento para montar a UI oficial aqui.',
   mounting: 'Montando a UI do provedor…',
-  confirmHint: 'Chama session.confirm() público apenas para o método Stripe selecionado.',
+  confirmHint:
+    'O botão do lojista chama session.confirm() para o método Stripe Element selecionado. Estilize e desative-o conforme readiness / processing da sessão.',
   officialButtonHint:
     'O controle oficial do provedor está montado acima. O pagamento só começa nesse controle — não em um botão Pay da demo.',
   processingCta: 'Processando…',
   continueWithKlarna: 'Continuar com Klarna',
   continueWithAffirm: 'Continuar com Affirm',
+  continueWithAlipay: 'Continuar com Alipay',
   lifecycleEventsHeading: 'Eventos do ciclo de vida',
   lifecycleEmpty: 'Ainda não há eventos do ciclo de vida Headless.',
   mountAriaGeneric: 'Montagem do provedor oficial',
@@ -339,12 +346,14 @@ const FR: HeadlessDemoCopy = {
   providerSurfaceHeading: 'Surface du fournisseur',
   mountIdle: 'Sélectionnez un moyen de paiement pour monter son UI officielle ici.',
   mounting: 'Montage de l’UI du fournisseur…',
-  confirmHint: 'Appelle session.confirm() public uniquement pour la méthode Stripe sélectionnée.',
+  confirmHint:
+    'Le bouton du commerçant appelle session.confirm() pour la méthode Stripe Element sélectionnée. Stylez-le et désactivez-le selon readiness / processing de la session.',
   officialButtonHint:
     'Le contrôle officiel du fournisseur est monté ci-dessus. Le paiement ne démarre que depuis ce contrôle — pas depuis un bouton Pay de la démo.',
   processingCta: 'Traitement…',
   continueWithKlarna: 'Continuer avec Klarna',
   continueWithAffirm: 'Continuer avec Affirm',
+  continueWithAlipay: 'Continuer avec Alipay',
   lifecycleEventsHeading: 'Événements du cycle de vie',
   lifecycleEmpty: 'Aucun événement du cycle de vie Headless pour le moment.',
   mountAriaGeneric: 'Montage du fournisseur officiel',

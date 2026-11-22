@@ -32,6 +32,7 @@ export type {
   AffirmProviderConfig,
   ApplePayProviderConfig,
   AfterpayProviderConfig,
+  AlipayProviderConfig,
   CashAppPayProviderConfig,
   EasyPaymentsBackendConfig,
   EasyPaymentsConfig,
@@ -90,10 +91,12 @@ export {
 export type {
   AffirmCreatePaymentRequest,
   AfterpayCreatePaymentRequest,
+  AlipayCreatePaymentRequest,
   CapturePayPalOrderResponse,
   CashAppPayCreatePaymentRequest,
   CreateAffirmPaymentResponse,
   CreateAfterpayPaymentResponse,
+  CreateAlipayPaymentResponse,
   CreateCashAppPayPaymentResponse,
   CreateKlarnaPaymentResponse,
   CreateAmazonPayPaymentResponse,
@@ -118,6 +121,7 @@ export type {
 export {
   toAffirmCreatePaymentRequest,
   toAfterpayCreatePaymentRequest,
+  toAlipayCreatePaymentRequest,
   toCashAppPayCreatePaymentRequest,
   toKlarnaCreatePaymentRequest,
   toAmazonPayCreatePaymentRequest,
@@ -186,6 +190,9 @@ export type { LinkAvailabilityState } from './lib/adapters/link/link.types';
 export { AmazonPayAdapter } from './lib/adapters/amazon-pay/amazon-pay.adapter';
 export type { AmazonPayAvailabilityState } from './lib/adapters/amazon-pay/amazon-pay.types';
 export { AmazonPayPaymentComponent } from './lib/components/payment-methods/amazon-pay-payment.component';
+export { AlipayAdapter } from './lib/adapters/alipay/alipay.adapter';
+export { AlipayPaymentComponent } from './lib/components/payment-methods/alipay-payment.component';
+export type { AlipayUiState } from './lib/adapters/alipay/alipay.types';
 export type { EasyPaymentsAppearance } from './lib/models/easy-payments-appearance.model';
 export type { EasyPaymentsVisualStyle } from './lib/models/easy-payments-visual-style.model';
 

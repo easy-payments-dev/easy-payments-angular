@@ -45,5 +45,9 @@ describe('selector-label helpers', () => {
       resolveSelectorLabelOverride({ amazonPay: 'Checkout with Amazon Pay' }, 'amazon-pay'),
     ).toBe('Checkout with Amazon Pay');
     expect(resolveSelectorLabelOverride({ amazonPay: '' }, 'amazon-pay')).toBeNull();
+    expect(resolveSelectorLabelOverride({ alipay: 'Pay with Alipay' }, 'alipay')).toBe(
+      'Pay with Alipay',
+    );
+    expect(resolveSelectorLabelOverride({ alipay: '' }, 'alipay')).toBeNull();
   });
 });
